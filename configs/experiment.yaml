@@ -1,0 +1,29 @@
+# Experiment Configuration (Single Source of Truth)
+
+# Models to evaluate (Capability gap)
+models:
+  small: "openai/gpt-oss-20b"
+  large: "openai/gpt-oss-120b"
+
+# Generation Hyperparameters
+generation:
+  temperature: 0.2
+  max_tokens: 1024
+  runs_per_config: 2
+
+# Benchmark Sizing
+dataset:
+  candidate_pool_size: 200
+  mbpp_count: 150
+  humaneval_count: 50
+  pilot_set_size: 50
+
+# Execution & Evaluation
+evaluation:
+  timeout_seconds: 5
+
+# Context Retrieval Settings
+context:
+  embedding_model: "all-MiniLM-L6-v2"
+  few_shot_k: 2
+  rag_chunks_k: 3

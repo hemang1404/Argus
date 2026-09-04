@@ -1,0 +1,22 @@
+# Core Model APIs & Config
+groq>=0.9.0
+pyyaml>=6.0
+
+# Datasets & Benchmarks
+datasets>=2.19.0
+
+# Numerical, ML & Retrieval
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+sentence-transformers>=2.7.0
+faiss-cpu>=1.8.0
+
+# Progress Tracking & Notebooks
+tqdm>=4.66.0
+jupyter>=1.0.0
+ipywidgets>=8.1.0
+
+# Plotting & Visualization
+matplotlib>=3.8.0
+seaborn>=0.13.0
