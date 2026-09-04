@@ -1,0 +1,220 @@
+[
+  {
+    "task_id": "humaneval_1",
+    "category": "B_gap",
+    "prompt": "from typing import List\n\n\ndef separate_paren_groups(paren_string: str) -> List[str]:\n    \"\"\" Input t...",
+    "large_120b": {
+      "passed": true,
+      "exec_time_s": 0.0638,
+      "loc": 25,
+      "ast_nodes": 154,
+      "cyclomatic_complexity": 9,
+      "comprehensions": false,
+      "stdlib_imports": [
+        "typing"
+      ],
+      "code": "from typing import List\n\ndef separate_paren_groups(paren_string: str) -> List[str]:\n    groups: List[str] = []\n    current: List[str] = []\n    depth = 0\n\n    for ch in paren_string:\n        if ch.isspace():\n            continue\n        if ch == '(':\n            if depth == 0:\n                current = []\n            depth += 1\n            current.append(ch)\n        elif ch == ')':\n            if depth == 0:\n                raise ValueError(\"Unbalanced closing parenthesis\")\n            current.append(ch)\n            depth -= 1\n            if depth == 0:\n                groups.append(''.join(current))\n        else:\n            raise ValueError(f\"Invalid character '{ch}' in input\")\n    if depth != 0:\n        raise ValueError(\"Unbalanced parentheses in input\")\n    return groups"
+    },
+    "small_20b_s0": {
+      "passed": true,
+      "exec_time_s": 0.0543,
+      "loc": 19,
+      "ast_nodes": 122,
+      "cyclomatic_complexity": 7,
+      "comprehensions": false,
+      "stdlib_imports": [
+        "typing"
+      ],
+      "code": "from typing import List\n\ndef separate_paren_groups(paren_string: str) -> List[str]:\n    groups: List[str] = []\n    current: List[str] = []\n    depth = 0\n    for ch in paren_string:\n        if ch.isspace():\n            continue\n        if ch == '(':\n            if depth == 0:\n                current = []\n            current.append(ch)\n            depth += 1\n        elif ch == ')':\n            current.append(ch)\n            depth -= 1\n            if depth == 0:\n                groups.append(''.join(current))\n    return groups"
+    },
+    "small_20b_s2_rag": {
+      "passed": false,
+      "exec_time_s": 0.0727,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    }
+  },
+  {
+    "task_id": "humaneval_10",
+    "category": "B_gap",
+    "prompt": "def is_palindrome(string: str) -> bool:\n    \"\"\" Test if given string is a palindrome \"\"\"\n    return ...",
+    "large_120b": {
+      "passed": true,
+      "exec_time_s": 0.0478,
+      "loc": 11,
+      "ast_nodes": 93,
+      "cyclomatic_complexity": 4,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": "def make_palindrome(string: str) -> str:\n    \"\"\"Find the shortest palindrome that begins with the supplied string.\"\"\"\n    if not string:\n        return \"\"\n    for i in range(len(string)):\n        suffix = string[i:]\n        if suffix == suffix[::-1]:\n            prefix = string[:i]\n            return string + prefix[::-1]\n    # Fallback (should never reach here because single character suffix is always palindrome)\n    return string + string[:-1][::-1]"
+    },
+    "small_20b_s0": {
+      "passed": false,
+      "exec_time_s": 0.0795,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    },
+    "small_20b_s2_rag": {
+      "passed": false,
+      "exec_time_s": 0.0709,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    }
+  },
+  {
+    "task_id": "humaneval_33",
+    "category": "B_gap",
+    "prompt": "def sort_third(l: list):\n    \"\"\"This function takes a list l and returns a list l' such that\n    l' ...",
+    "large_120b": {
+      "passed": true,
+      "exec_time_s": 0.0436,
+      "loc": 9,
+      "ast_nodes": 79,
+      "cyclomatic_complexity": 2,
+      "comprehensions": true,
+      "stdlib_imports": [],
+      "code": "def sort_third(l: list):\n    \"\"\"Return a list where elements at indices divisible by 3 are sorted,\n    other elements remain unchanged.\"\"\"\n    result = l.copy()\n    third_vals = [result[i] for i in range(0, len(result), 3)]\n    third_vals.sort()\n    for idx, val in zip(range(0, len(result), 3), third_vals):\n        result[idx] = val\n    return result"
+    },
+    "small_20b_s0": {
+      "passed": false,
+      "exec_time_s": 0.0963,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    },
+    "small_20b_s2_rag": {
+      "passed": false,
+      "exec_time_s": 0.0769,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    }
+  },
+  {
+    "task_id": "humaneval_38",
+    "category": "B_gap",
+    "prompt": "def encode_cyclic(s: str):\n    \"\"\"\n    returns encoded string by cycling groups of three characters....",
+    "large_120b": {
+      "passed": false,
+      "exec_time_s": 0.0839,
+      "loc": 4,
+      "ast_nodes": 97,
+      "cyclomatic_complexity": 2,
+      "comprehensions": true,
+      "stdlib_imports": [],
+      "code": "def decode_cyclic(s: str):\n    groups = [s[(3 * i):min(3 * i + 3, len(s))] for i in range((len(s) + 2) // 3)]\n    groups = [(group[-1] + group[:-1]) if len(group) == 3 else group for group in groups]\n    return \"\".join(groups)"
+    },
+    "small_20b_s0": {
+      "passed": false,
+      "exec_time_s": 0.0783,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    },
+    "small_20b_s2_rag": {
+      "passed": false,
+      "exec_time_s": 0.0689,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    }
+  },
+  {
+    "task_id": "humaneval_0",
+    "category": "A_easy",
+    "prompt": "from typing import List\n\n\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n  ...",
+    "large_120b": {
+      "passed": true,
+      "exec_time_s": 0.0515,
+      "loc": 9,
+      "ast_nodes": 69,
+      "cyclomatic_complexity": 4,
+      "comprehensions": false,
+      "stdlib_imports": [
+        "typing"
+      ],
+      "code": "from typing import List\n\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n    if len(numbers) < 2:\n        return False\n    nums = sorted(numbers)\n    for a, b in zip(nums, nums[1:]):\n        if b - a < threshold:\n            return True\n    return False"
+    },
+    "small_20b_s0": {
+      "passed": true,
+      "exec_time_s": 0.0651,
+      "loc": 9,
+      "ast_nodes": 79,
+      "cyclomatic_complexity": 4,
+      "comprehensions": false,
+      "stdlib_imports": [
+        "typing"
+      ],
+      "code": "from typing import List\n\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n    if len(numbers) < 2:\n        return False\n    sorted_nums = sorted(numbers)\n    for i in range(len(sorted_nums) - 1):\n        if abs(sorted_nums[i + 1] - sorted_nums[i]) < threshold:\n            return True\n    return False"
+    },
+    "small_20b_s2_rag": {
+      "passed": false,
+      "exec_time_s": 0.1056,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    }
+  },
+  {
+    "task_id": "humaneval_11",
+    "category": "A_easy",
+    "prompt": "from typing import List\n\n\ndef string_xor(a: str, b: str) -> str:\n    \"\"\" Input are two strings a and...",
+    "large_120b": {
+      "passed": true,
+      "exec_time_s": 0.0446,
+      "loc": 4,
+      "ast_nodes": 58,
+      "cyclomatic_complexity": 3,
+      "comprehensions": true,
+      "stdlib_imports": [],
+      "code": "def string_xor(a: str, b: str) -> str:\n    if len(a) != len(b):\n        raise ValueError(\"Input strings must have the same length\")\n    return ''.join('1' if x != y else '0' for x, y in zip(a, b))"
+    },
+    "small_20b_s0": {
+      "passed": false,
+      "exec_time_s": 0.1001,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    },
+    "small_20b_s2_rag": {
+      "passed": false,
+      "exec_time_s": 0.0771,
+      "loc": 0,
+      "ast_nodes": 1,
+      "cyclomatic_complexity": 1,
+      "comprehensions": false,
+      "stdlib_imports": [],
+      "code": ""
+    }
+  }
+]

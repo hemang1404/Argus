@@ -1,0 +1,741 @@
+task_id,source,category,model,strategy,run_number,passed,error_type,input_tokens,output_tokens,retrieval_latency_ms,llm_latency_ms,total_latency_ms,estimated_cost_usd,execution_time_s,few_shot_ids,rag_doc_ids,error_msg
+humaneval_1,HumanEval,B_gap,openai/gpt-oss-20b,S0,1,True,,229,368,0.0,2336.99,2336.99,6.25e-05,0.0889,[],[],
+humaneval_10,HumanEval,B_gap,openai/gpt-oss-20b,S0,1,True,,254,939,0.0,1355.07,1355.07,0.000133,0.0693,[],[],
+humaneval_33,HumanEval,B_gap,openai/gpt-oss-20b,S0,1,True,,267,430,0.0,861.93,861.93,7.3e-05,0.0627,[],[],
+humaneval_38,HumanEval,B_gap,openai/gpt-oss-20b,S0,1,False,runtime_error,273,265,0.0,670.17,670.17,5.36e-05,0.1129,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpwggf34bc.py"", line 22, in <module>
+    check(decode_cyclic)
+    ~~~~~^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\"
+humaneval_40,HumanEval,B_gap,openai/gpt-oss-20b,S0,1,True,,273,438,0.0,853.1,853.1,7.44e-05,0.0613,[],[],
+humaneval_41,HumanEval,B_gap,openai/gpt-oss-20b,S0,1,True,,263,533,0.0,1312.14,1312.14,8.5e-05,0.0478,[],[],
+humaneval_9,HumanEval,B_gap,openai/gpt-oss-20b,S0,1,True,,214,229,0.0,575.56,575.56,4.46e-05,0.0735,[],[],
+mbpp_11,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,151,323,0.0,637.43,637.43,5.08e-05,0.0727,[],[],
+mbpp_14,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,147,164,0.0,498.16,498.16,3.14e-05,0.0601,[],[],
+mbpp_16,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,159,274,0.0,659.31,659.31,4.56e-05,0.0659,[],[],
+mbpp_61,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,154,760,0.0,1232.58,1232.58,0.0001035,0.06,[],[],
+mbpp_620,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,155,358,0.0,748.46,748.46,5.54e-05,0.0459,[],[],
+mbpp_627,MBPP,B_gap,openai/gpt-oss-20b,S0,1,False,assertion_error,152,364,0.0,842.23,842.23,5.58e-05,0.0832,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpjf4xxlpl.py"", line 17, in <module>
+    assert find_First_Missing([2,3,5,8,9]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_63,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,149,386,0.0,837.83,837.83,5.82e-05,0.0579,[],[],
+mbpp_635,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,141,297,0.0,716.75,716.75,4.69e-05,0.0617,[],[],
+mbpp_641,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,144,269,0.0,725.9,725.9,4.38e-05,0.0573,[],[],
+mbpp_72,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,155,488,0.0,884.88,884.88,7.1e-05,0.0465,[],[],
+mbpp_734,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,175,339,0.0,704.13,704.13,5.47e-05,0.0632,[],[],
+mbpp_745,MBPP,B_gap,openai/gpt-oss-20b,S0,1,True,,182,404,0.0,4158.77,4158.77,6.3e-05,0.0645,[],[],
+mbpp_747,MBPP,B_gap,openai/gpt-oss-20b,S0,1,False,assertion_error,170,676,0.0,2382.08,2382.08,9.47e-05,0.097,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpdf0sezku.py"", line 33, in <module>
+    assert lcs_of_three('AGGT12', '12TXAYB', '12XBA') == 2
+           ^^^^^^^^^^^^^^^^"
+humaneval_20,HumanEval,C_borderline,openai/gpt-oss-20b,S0,1,True,,282,416,0.0,7879.51,7879.51,7.25e-05,0.0873,[],[],
+mbpp_608,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,142,440,0.0,3698.97,3698.97,6.42e-05,0.0664,[],[],
+mbpp_612,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,177,283,0.0,3835.58,3835.58,4.81e-05,0.0658,[],[],
+mbpp_614,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,155,382,0.0,1934.69,1934.69,5.82e-05,0.0613,[],[],
+mbpp_637,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,False,runtime_error,152,340,0.0,2762.21,2762.21,5.3e-05,0.1046,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmprcuwx1t2.py"", line 5, in <module>
+    assert noprofit_noloss(1500,1200)==False
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^
+Type"
+mbpp_644,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,False,assertion_error,148,253,0.0,4714.77,4714.77,4.22e-05,0.087,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpusujuh1j.py"", line 11, in <module>
+    assert reverse_Array_Upto_K([1, 2, 3, 4, 5, 6],4) == [4, 3, 2, 1, 5, 6]
+          "
+mbpp_67,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,149,438,0.0,1885.79,1885.79,6.45e-05,0.0666,[],[],
+mbpp_722,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,186,213,0.0,4685.37,4685.37,4.04e-05,0.0718,[],[],
+mbpp_723,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,159,135,0.0,516.67,516.67,2.89e-05,0.0619,[],[],
+mbpp_726,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,183,186,0.0,4525.7,4525.7,3.7e-05,0.0568,[],[],
+mbpp_739,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,False,runtime_error,169,1024,0.0,1716.1,1716.1,0.0001364,0.1021,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpd2m81ery.py"", line 4, in <module>
+    assert find_Index(2) == 4
+           ^^^^^^^^^^
+NameError: name 'find_Index' is not"
+mbpp_741,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,150,135,0.0,9627.68,9627.68,2.82e-05,0.0541,[],[],
+mbpp_757,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,170,317,0.0,681.67,681.67,5.16e-05,0.0656,[],[],
+mbpp_770,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,151,577,0.0,1348.7,1348.7,8.13e-05,0.068,[],[],
+mbpp_779,MBPP,C_borderline,openai/gpt-oss-20b,S0,1,True,,176,866,0.0,8488.35,8488.35,0.000118,0.0656,[],[],
+humaneval_0,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,239,246,0.0,7728.76,7728.76,4.86e-05,0.0646,[],[],
+humaneval_11,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,192,259,0.0,651.15,651.15,4.64e-05,0.0754,[],[],
+humaneval_12,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,216,225,0.0,4658.73,4658.73,4.43e-05,0.068,[],[],
+humaneval_13,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,184,195,0.0,898.08,898.08,3.81e-05,0.0581,[],[],
+humaneval_14,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,173,100,0.0,3580.72,3580.72,2.58e-05,0.0613,[],[],
+humaneval_15,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,182,251,0.0,1652.72,1652.72,4.47e-05,0.0663,[],[],
+humaneval_16,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,187,148,0.0,1592.49,1592.49,3.27e-05,0.0686,[],[],
+humaneval_17,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,284,242,0.0,673.06,673.06,5.18e-05,0.0791,[],[],
+humaneval_18,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,202,217,0.0,4703.31,4703.31,4.22e-05,0.0534,[],[],
+humaneval_19,HumanEval,A_easy,openai/gpt-oss-20b,S0,1,True,,219,463,0.0,924.7,924.7,7.31e-05,0.0882,[],[],
+humaneval_32,HumanEval,D_hard,openai/gpt-oss-20b,S0,1,False,runtime_error,374,906,0.0,4594.96,4594.96,0.0001386,0.1033,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp16aqtz2p.py"", line 47, in <module>
+    check(find_zero)
+    ~~~~~^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\Temp\tmp"
+humaneval_36,HumanEval,D_hard,openai/gpt-oss-20b,S0,1,True,,193,483,0.0,7818.98,7818.98,7.34e-05,0.0536,[],[],
+humaneval_39,HumanEval,D_hard,openai/gpt-oss-20b,S0,1,False,syntax_error,210,1024,0.0,5903.52,5903.52,0.0001397,0.0985,[],[],"File ""C:\Users\dell\AppData\Local\Temp\tmp0tgcgdcr.py"", line 20
+    small_primes = [2, 3, 5, 7, 11, 13, 17, 19,
+                   ^
+SyntaxError: '[' was never closed"
+mbpp_18,MBPP,D_hard,openai/gpt-oss-20b,S0,1,False,runtime_error,151,372,0.0,7671.12,7671.12,5.67e-05,0.102,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpqua2wuvt.py"", line 5, in <module>
+    assert remove_dirty_chars(""probasscurve"", ""pros"") == 'bacuve'
+           ^^^^^^^^^^"
+mbpp_56,MBPP,D_hard,openai/gpt-oss-20b,S0,1,False,runtime_error,149,238,0.0,2644.09,2644.09,4.05e-05,0.0994,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpisz6vsht.py"", line 6, in <module>
+    assert check(70) == False
+           ^^^^^
+NameError: name 'check' is not defined"
+humaneval_1,HumanEval,B_gap,openai/gpt-oss-20b,S0,2,False,assertion_error,229,688,0.0,3222.69,3222.69,0.0001009,0.1092,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp8bnei2dn.py"", line 39, in <module>
+    check(separate_paren_groups)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File ""C:\Users\del"
+humaneval_10,HumanEval,B_gap,openai/gpt-oss-20b,S0,2,False,assertion_error,254,615,0.0,8168.78,8168.78,9.41e-05,0.0953,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpvj_gsnt9.py"", line 25, in <module>
+    check(make_palindrome)
+    ~~~~~^^^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Lo"
+humaneval_33,HumanEval,B_gap,openai/gpt-oss-20b,S0,2,True,,267,525,0.0,6155.98,6155.98,8.44e-05,0.0478,[],[],
+humaneval_38,HumanEval,B_gap,openai/gpt-oss-20b,S0,2,False,runtime_error,273,330,0.0,3858.11,3858.11,6.14e-05,0.1014,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp71pdft65.py"", line 25, in <module>
+    check(decode_cyclic)
+    ~~~~~^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\"
+humaneval_40,HumanEval,B_gap,openai/gpt-oss-20b,S0,2,True,,273,600,0.0,5050.16,5050.16,9.38e-05,0.0618,[],[],
+humaneval_41,HumanEval,B_gap,openai/gpt-oss-20b,S0,2,False,syntax_error,263,1024,0.0,3552.3,3552.3,0.0001439,0.1022,[],[],"File ""C:\Users\dell\AppData\Local\Temp\tmpcovhd96h.py"", line 2
+    """"""Return the number of collisions between two
+    ^
+SyntaxError: unterminated triple-quoted string literal (detected at line 14)"
+humaneval_9,HumanEval,B_gap,openai/gpt-oss-20b,S0,2,True,,214,252,0.0,9841.47,9841.47,4.74e-05,0.0618,[],[],
+mbpp_11,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,151,428,0.0,2887.19,2887.19,6.34e-05,0.0742,[],[],
+mbpp_14,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,147,292,0.0,2699.63,2699.63,4.68e-05,0.0626,[],[],
+mbpp_16,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,159,910,0.0,3412.61,3412.61,0.0001219,0.0736,[],[],
+mbpp_61,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,154,508,0.0,7892.94,7892.94,7.33e-05,0.0654,[],[],
+mbpp_620,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,155,380,0.0,3884.39,3884.39,5.8e-05,0.041,[],[],
+mbpp_627,MBPP,B_gap,openai/gpt-oss-20b,S0,2,False,assertion_error,152,340,0.0,4838.18,4838.18,5.3e-05,0.1049,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpqpq5sonc.py"", line 13, in <module>
+    assert find_First_Missing([2,3,5,8,9]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_63,MBPP,B_gap,openai/gpt-oss-20b,S0,2,False,assertion_error,149,431,0.0,1884.7,1884.7,6.36e-05,0.1023,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp5lj1j4fr.py"", line 14, in <module>
+    assert max_difference([(3, 5), (1, 7), (10, 3), (1, 2)]) == 7
+           ^^^^^^^^^"
+mbpp_635,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,141,534,0.0,3855.34,3855.34,7.54e-05,0.0476,[],[],
+mbpp_641,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,144,277,0.0,5715.68,5715.68,4.48e-05,0.0452,[],[],
+mbpp_72,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,155,555,0.0,3196.42,3196.42,7.9e-05,0.0572,[],[],
+mbpp_734,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,175,374,0.0,3788.56,3788.56,5.89e-05,0.0693,[],[],
+mbpp_745,MBPP,B_gap,openai/gpt-oss-20b,S0,2,True,,182,418,0.0,4048.64,4048.64,6.47e-05,0.0497,[],[],
+mbpp_747,MBPP,B_gap,openai/gpt-oss-20b,S0,2,False,assertion_error,170,518,0.0,4653.12,4653.12,7.58e-05,0.1749,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpuzh8zajh.py"", line 29, in <module>
+    assert lcs_of_three('AGGT12', '12TXAYB', '12XBA') == 2
+           ^^^^^^^^^^^^^^^^"
+humaneval_20,HumanEval,C_borderline,openai/gpt-oss-20b,S0,2,True,,282,570,0.0,5124.1,5124.1,9.1e-05,0.0891,[],[],
+mbpp_608,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,142,894,0.0,5153.36,5153.36,0.0001186,0.0663,[],[],
+mbpp_612,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,False,assertion_error,177,157,0.0,5602.22,5602.22,3.3e-05,0.1018,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmperefwq5y.py"", line 9, in <module>
+    assert merge([['x', 'y','z' ], ['a', 'b','c'], ['m', 'n','o']]) == [['x', 'a', 'm']"
+mbpp_614,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,155,165,0.0,2557.88,2557.88,3.22e-05,0.0689,[],[],
+mbpp_637,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,152,265,0.0,1668.92,1668.92,4.4e-05,0.0705,[],[],
+mbpp_644,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,False,assertion_error,148,209,0.0,3704.89,3704.89,3.69e-05,0.1351,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpofq0iqeo.py"", line 14, in <module>
+    assert reverse_Array_Upto_K([1, 2, 3, 4, 5, 6],4) == [4, 3, 2, 1, 5, 6]
+          "
+mbpp_67,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,149,502,0.0,1928.62,1928.62,7.22e-05,0.0648,[],[],
+mbpp_722,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,186,223,0.0,4740.06,4740.06,4.16e-05,0.0621,[],[],
+mbpp_723,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,159,105,0.0,2525.46,2525.46,2.53e-05,0.055,[],[],
+mbpp_726,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,183,176,0.0,719.64,719.64,3.58e-05,0.0477,[],[],
+mbpp_739,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,169,399,0.0,1854.41,1854.41,6.14e-05,0.0726,[],[],
+mbpp_741,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,150,139,0.0,4586.64,4586.64,2.87e-05,0.0583,[],[],
+mbpp_757,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,False,runtime_error,170,1024,0.0,1430.03,1430.03,0.0001365,0.1079,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpl9s5sgcy.py"", line 4, in <module>
+    assert count_reverse_pairs([""julia"", ""best"", ""tseb"", ""for"", ""ailuj""])== 2
+         "
+mbpp_770,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,151,246,0.0,8577.74,8577.74,4.16e-05,0.0669,[],[],
+mbpp_779,MBPP,C_borderline,openai/gpt-oss-20b,S0,2,True,,176,342,0.0,2882.99,2882.99,5.51e-05,0.0648,[],[],
+humaneval_0,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,239,159,0.0,3550.81,3550.81,3.82e-05,0.0953,[],[],
+humaneval_11,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,192,137,0.0,2692.5,2692.5,3.18e-05,0.0704,[],[],
+humaneval_12,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,216,172,0.0,1632.55,1632.55,3.79e-05,0.0482,[],[],
+humaneval_13,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,184,178,0.0,2599.57,2599.57,3.61e-05,0.0508,[],[],
+humaneval_14,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,173,95,0.0,2477.24,2477.24,2.52e-05,0.0533,[],[],
+humaneval_15,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,182,75,0.0,1484.06,1484.06,2.36e-05,0.0613,[],[],
+humaneval_16,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,187,167,0.0,1552.06,1552.06,3.5e-05,0.0639,[],[],
+humaneval_17,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,284,266,0.0,2716.57,2716.57,5.46e-05,0.0768,[],[],
+humaneval_18,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,202,251,0.0,2643.36,2643.36,4.63e-05,0.0768,[],[],
+humaneval_19,HumanEval,A_easy,openai/gpt-oss-20b,S0,2,True,,219,271,0.0,3700.62,3700.62,5e-05,0.0838,[],[],
+humaneval_32,HumanEval,D_hard,openai/gpt-oss-20b,S0,2,False,runtime_error,374,620,0.0,5094.84,5094.84,0.0001043,0.1372,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp7dr76jg3.py"", line 52, in <module>
+    check(find_zero)
+    ~~~~~^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\Temp\tmp"
+humaneval_36,HumanEval,D_hard,openai/gpt-oss-20b,S0,2,True,,193,779,0.0,5439.21,5439.21,0.0001089,0.0711,[],[],
+humaneval_39,HumanEval,D_hard,openai/gpt-oss-20b,S0,2,True,,210,979,0.0,6469.95,6469.95,0.0001343,0.0673,[],[],
+mbpp_18,MBPP,D_hard,openai/gpt-oss-20b,S0,2,False,runtime_error,151,1024,0.0,8532.73,8532.73,0.000135,0.153,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpupht1lj9.py"", line 4, in <module>
+    assert remove_dirty_chars(""probasscurve"", ""pros"") == 'bacuve'
+           ^^^^^^^^^^"
+mbpp_56,MBPP,D_hard,openai/gpt-oss-20b,S0,2,False,runtime_error,149,245,0.0,7911.19,7911.19,4.13e-05,0.0917,[],[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpumf6o5br.py"", line 9, in <module>
+    assert check(70) == False
+           ^^^^^
+NameError: name 'check' is not defined"
+humaneval_1,HumanEval,B_gap,openai/gpt-oss-20b,S1,1,True,,343,466,87.32,4095.23,4182.55,8.34e-05,0.0776,"[""fs_640"", ""fs_725""]",[],
+humaneval_10,HumanEval,B_gap,openai/gpt-oss-20b,S1,1,False,assertion_error,359,624,35.15,5060.44,5095.59,0.0001036,0.1152,"[""fs_604"", ""fs_643""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpcmacy8hp.py"", line 24, in <module>
+    check(make_palindrome)
+    ~~~~~^^^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Lo"
+humaneval_33,HumanEval,B_gap,openai/gpt-oss-20b,S1,1,True,,450,455,23.0,7971.63,7994.63,9.06e-05,0.0532,"[""fs_755"", ""fs_754""]",[],
+humaneval_38,HumanEval,B_gap,openai/gpt-oss-20b,S1,1,False,runtime_error,418,310,25.68,5736.1,5761.78,7.06e-05,0.0969,"[""fs_602"", ""fs_619""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp57tpvl2_.py"", line 19, in <module>
+    check(decode_cyclic)
+    ~~~~~^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\"
+humaneval_40,HumanEval,B_gap,openai/gpt-oss-20b,S1,1,True,,423,529,26.92,5025.86,5052.78,9.73e-05,0.0531,"[""fs_728"", ""fs_744""]",[],
+humaneval_41,HumanEval,B_gap,openai/gpt-oss-20b,S1,1,False,runtime_error,693,1024,22.12,8269.92,8292.04,0.0001783,0.1032,"[""fs_603"", ""fs_721""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpa4m4wkrq.py"", line 13, in <module>
+    check(car_race_collision)
+          ^^^^^^^^^^^^^^^^^^
+NameError: name 'car_race_c"
+humaneval_9,HumanEval,B_gap,openai/gpt-oss-20b,S1,1,True,,368,652,14.04,10230.63,10244.67,0.0001077,0.058,"[""fs_611"", ""fs_753""]",[],
+mbpp_11,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,278,281,11.4,6883.41,6894.81,5.6e-05,0.0398,"[""fs_602"", ""fs_640""]",[],
+mbpp_14,MBPP,B_gap,openai/gpt-oss-20b,S1,1,False,runtime_error,276,352,9.67,3973.37,3983.04,6.43e-05,0.0947,"[""fs_742"", ""fs_731""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmppy8pn5q0.py"", line 5, in <module>
+    assert find_Volume(10,8,6) == 240
+           ~~~~~~~~~~~^^^^^^^^
+TypeError: find_Vo"
+mbpp_16,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,258,323,13.37,3628.03,3641.4,5.94e-05,0.0733,"[""fs_624"", ""fs_631""]",[],
+mbpp_61,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,300,800,9.19,4204.65,4213.84,0.00012,0.0691,"[""fs_724"", ""fs_639""]",[],
+mbpp_620,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,289,246,9.69,7732.49,7742.18,5.26e-05,0.0541,"[""fs_611"", ""fs_755""]",[],
+mbpp_627,MBPP,B_gap,openai/gpt-oss-20b,S1,1,False,assertion_error,311,267,8.67,3733.36,3742.03,5.69e-05,0.0948,"[""fs_755"", ""fs_753""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpmuqetb4b.py"", line 14, in <module>
+    assert find_First_Missing([2,3,5,8,9]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_63,MBPP,B_gap,openai/gpt-oss-20b,S1,1,False,runtime_error,356,224,8.69,3764.02,3772.71,5.54e-05,0.1037,"[""fs_740"", ""fs_763""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmphckf0q2i.py"", line 7, in <module>
+    assert max_difference([(3, 5), (1, 7), (10, 3), (1, 2)]) == 7
+           ~~~~~~~~~~"
+mbpp_635,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,285,539,8.7,4062.21,4070.91,8.75e-05,0.062,"[""fs_749"", ""fs_755""]",[],
+mbpp_641,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,370,300,12.46,5895.09,5907.55,6.56e-05,0.0481,"[""fs_752"", ""fs_623""]",[],
+mbpp_72,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,346,556,12.03,5080.62,5092.65,9.44e-05,0.066,"[""fs_763"", ""fs_616""]",[],
+mbpp_734,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,380,367,14.12,4806.43,4820.55,7.44e-05,0.0558,"[""fs_758"", ""fs_728""]",[],
+mbpp_745,MBPP,B_gap,openai/gpt-oss-20b,S1,1,True,,311,263,15.3,5599.93,5615.23,5.64e-05,0.0712,"[""fs_629"", ""fs_619""]",[],
+mbpp_747,MBPP,B_gap,openai/gpt-oss-20b,S1,1,False,assertion_error,349,658,15.51,4084.85,4100.36,0.0001069,0.1124,"[""fs_754"", ""fs_602""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp4tg0ine7.py"", line 29, in <module>
+    assert lcs_of_three('AGGT12', '12TXAYB', '12XBA') == 2
+           ^^^^^^^^^^^^^^^^"
+humaneval_20,HumanEval,C_borderline,openai/gpt-oss-20b,S1,1,True,,441,307,29.7,7794.49,7824.19,7.21e-05,0.0859,"[""fs_755"", ""fs_753""]",[],
+mbpp_608,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,False,assertion_error,368,357,10.43,4845.52,4855.95,7.23e-05,0.112,"[""fs_623"", ""fs_752""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp15ww11l0.py"", line 15, in <module>
+    assert bell_Number(2) == 2
+           ^^^^^^^^^^^^^^^^^^^
+AssertionError"
+mbpp_612,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,False,assertion_error,382,168,14.47,4669.31,4683.78,5.07e-05,0.083,"[""fs_728"", ""fs_758""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpa7iodjl4.py"", line 9, in <module>
+    assert merge([['x', 'y','z' ], ['a', 'b','c'], ['m', 'n','o']]) == [['x', 'a', 'm']"
+mbpp_614,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,266,554,10.7,2990.44,3001.14,8.78e-05,0.0739,"[""fs_615"", ""fs_750""]",[],
+mbpp_637,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,False,runtime_error,309,260,48.95,5775.83,5824.78,5.59e-05,0.0932,"[""fs_605"", ""fs_762""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpk6b7udcu.py"", line 5, in <module>
+    assert noprofit_noloss(1500,1200)==False
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^
+Type"
+mbpp_644,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,False,assertion_error,263,208,11.88,3694.62,3706.5,4.6e-05,0.0959,"[""fs_743"", ""fs_604""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpfw9crsfj.py"", line 7, in <module>
+    assert reverse_Array_Upto_K([1, 2, 3, 4, 5, 6],4) == [4, 3, 2, 1, 5, 6]
+           "
+mbpp_67,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,345,460,10.4,4099.79,4110.19,8.28e-05,0.0471,"[""fs_623"", ""fs_603""]",[],
+mbpp_722,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,370,226,15.16,4704.91,4720.07,5.67e-05,0.0634,"[""fs_753"", ""fs_740""]",[],
+mbpp_723,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,305,115,12.51,3625.29,3637.8,3.82e-05,0.0663,"[""fs_728"", ""fs_760""]",[],
+mbpp_726,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,311,143,16.46,2961.48,2977.94,4.2e-05,0.0834,"[""fs_750"", ""fs_616""]",[],
+mbpp_739,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,False,runtime_error,381,1024,15.46,4621.77,4637.23,0.0001534,0.1043,"[""fs_603"", ""fs_755""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpixczew6c.py"", line 4, in <module>
+    assert find_Index(2) == 4
+           ^^^^^^^^^^
+NameError: name 'find_Index' is not"
+mbpp_741,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,268,102,9.7,7585.21,7594.91,3.37e-05,0.0515,"[""fs_602"", ""fs_760""]",[],
+mbpp_757,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,279,345,15.06,2827.04,2842.1,6.37e-05,0.0642,"[""fs_604"", ""fs_602""]",[],
+mbpp_770,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,307,150,11.59,3596.36,3607.95,4.26e-05,0.054,"[""fs_724"", ""fs_738""]",[],
+mbpp_779,MBPP,C_borderline,openai/gpt-oss-20b,S1,1,True,,337,139,11.37,3593.38,3604.75,4.36e-05,0.0656,"[""fs_758"", ""fs_750""]",[],
+humaneval_0,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,358,249,26.92,3472.51,3499.43,5.85e-05,0.0945,"[""fs_755"", ""fs_629""]",[],
+humaneval_11,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,364,100,20.26,3534.35,3554.61,4.11e-05,0.0763,"[""fs_633"", ""fs_619""]",[],
+humaneval_12,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,364,325,23.43,3826.05,3849.48,6.81e-05,0.0819,"[""fs_639"", ""fs_602""]",[],
+humaneval_13,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,406,269,18.51,5064.6,5083.11,6.48e-05,0.0873,"[""fs_605"", ""fs_603""]",[],
+humaneval_14,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,290,443,17.4,2875.68,2893.08,7.64e-05,0.0894,"[""fs_602"", ""fs_732""]",[],
+humaneval_15,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,313,186,18.68,5620.05,5638.73,4.74e-05,0.0746,"[""fs_619"", ""fs_732""]",[],
+humaneval_16,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,305,208,19.1,2713.34,2732.44,4.94e-05,0.0839,"[""fs_602"", ""fs_760""]",[],
+humaneval_17,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,476,312,37.9,4795.75,4833.65,7.55e-05,0.1003,"[""fs_603"", ""fs_629""]",[],
+humaneval_18,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,379,173,35.48,4590.99,4626.47,5.11e-05,0.1002,"[""fs_602"", ""fs_758""]",[],
+humaneval_19,HumanEval,A_easy,openai/gpt-oss-20b,S1,1,True,,363,367,29.54,3843.09,3872.63,7.31e-05,0.1025,"[""fs_749"", ""fs_755""]",[],
+humaneval_32,HumanEval,D_hard,openai/gpt-oss-20b,S1,1,True,,540,907,58.85,7416.31,7475.16,0.000152,0.2523,"[""fs_632"", ""fs_633""]",[],
+humaneval_36,HumanEval,D_hard,openai/gpt-oss-20b,S1,1,True,,415,650,22.11,8120.51,8142.62,0.0001112,0.0743,"[""fs_603"", ""fs_605""]",[],
+humaneval_39,HumanEval,D_hard,openai/gpt-oss-20b,S1,1,True,,432,580,22.19,8259.43,8281.62,0.0001042,0.0717,"[""fs_605"", ""fs_603""]",[],
+mbpp_18,MBPP,D_hard,openai/gpt-oss-20b,S1,1,False,runtime_error,280,453,11.08,6002.12,6013.2,7.68e-05,0.0975,"[""fs_748"", ""fs_602""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp8byqdmyd.py"", line 5, in <module>
+    assert remove_dirty_chars(""probasscurve"", ""pros"") == 'bacuve'
+           ^^^^^^^^^^"
+mbpp_56,MBPP,D_hard,openai/gpt-oss-20b,S1,1,False,runtime_error,268,245,12.51,3644.18,3656.69,5.08e-05,0.1067,"[""fs_755"", ""fs_629""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpyrs9b1z4.py"", line 8, in <module>
+    assert check(70) == False
+           ^^^^^
+NameError: name 'check' is not defined"
+humaneval_1,HumanEval,B_gap,openai/gpt-oss-20b,S1,2,True,,343,440,24.43,4889.44,4913.87,8.02e-05,0.0545,"[""fs_640"", ""fs_725""]",[],
+humaneval_10,HumanEval,B_gap,openai/gpt-oss-20b,S1,2,False,assertion_error,359,846,62.12,5554.82,5616.94,0.0001302,0.1119,"[""fs_604"", ""fs_643""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp8sk_w5up.py"", line 21, in <module>
+    check(make_palindrome)
+    ~~~~~^^^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Lo"
+humaneval_33,HumanEval,B_gap,openai/gpt-oss-20b,S1,2,True,,450,462,23.4,8875.23,8898.63,9.14e-05,0.0499,"[""fs_755"", ""fs_754""]",[],
+humaneval_38,HumanEval,B_gap,openai/gpt-oss-20b,S1,2,False,runtime_error,418,276,26.81,5761.99,5788.8,6.66e-05,0.1073,"[""fs_602"", ""fs_619""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpajr30u3v.py"", line 22, in <module>
+    check(decode_cyclic)
+    ~~~~~^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\"
+humaneval_40,HumanEval,B_gap,openai/gpt-oss-20b,S1,2,True,,423,588,29.92,5141.42,5171.34,0.0001044,0.0837,"[""fs_728"", ""fs_744""]",[],
+humaneval_41,HumanEval,B_gap,openai/gpt-oss-20b,S1,2,True,,693,389,38.15,7925.33,7963.48,0.0001021,0.0687,"[""fs_603"", ""fs_721""]",[],
+humaneval_9,HumanEval,B_gap,openai/gpt-oss-20b,S1,2,True,,368,244,19.42,5712.55,5731.97,5.87e-05,0.0768,"[""fs_611"", ""fs_753""]",[],
+mbpp_11,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,278,269,12.67,3732.6,3745.27,5.45e-05,0.0539,"[""fs_602"", ""fs_640""]",[],
+mbpp_14,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,276,273,9.66,3775.48,3785.14,5.48e-05,0.063,"[""fs_742"", ""fs_731""]",[],
+mbpp_16,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,258,284,11.61,2713.26,2724.87,5.47e-05,0.0709,"[""fs_624"", ""fs_631""]",[],
+mbpp_61,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,300,247,12.18,4789.65,4801.83,5.36e-05,0.0617,"[""fs_724"", ""fs_639""]",[],
+mbpp_620,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,289,310,10.84,3834.87,3845.71,6.03e-05,0.0489,"[""fs_611"", ""fs_755""]",[],
+mbpp_627,MBPP,B_gap,openai/gpt-oss-20b,S1,2,False,assertion_error,311,402,14.42,3916.73,3931.15,7.31e-05,0.1127,"[""fs_755"", ""fs_753""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpr31h2au9.py"", line 13, in <module>
+    assert find_First_Missing([2,3,5,8,9]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_63,MBPP,B_gap,openai/gpt-oss-20b,S1,2,False,assertion_error,356,325,11.41,4500.68,4512.09,6.75e-05,0.1137,"[""fs_740"", ""fs_763""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmprche7wlo.py"", line 10, in <module>
+    assert max_difference([(3, 5), (1, 7), (10, 3), (1, 2)]) == 7
+           ^^^^^^^^^"
+mbpp_635,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,285,203,10.17,4536.1,4546.27,4.72e-05,0.0705,"[""fs_749"", ""fs_755""]",[],
+mbpp_641,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,370,407,7.8,3891.94,3899.74,7.84e-05,0.0478,"[""fs_752"", ""fs_623""]",[],
+mbpp_72,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,346,390,13.95,3863.92,3877.87,7.45e-05,0.0692,"[""fs_763"", ""fs_616""]",[],
+mbpp_734,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,380,400,16.91,5892.91,5909.82,7.84e-05,0.0608,"[""fs_758"", ""fs_728""]",[],
+mbpp_745,MBPP,B_gap,openai/gpt-oss-20b,S1,2,True,,311,227,16.05,5704.4,5720.45,5.21e-05,0.0694,"[""fs_629"", ""fs_619""]",[],
+mbpp_747,MBPP,B_gap,openai/gpt-oss-20b,S1,2,False,assertion_error,349,650,12.84,4235.51,4248.35,0.0001059,0.0981,"[""fs_754"", ""fs_602""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpybn92kbd.py"", line 29, in <module>
+    assert lcs_of_three('AGGT12', '12TXAYB', '12XBA') == 2
+           ^^^^^^^^^^^^^^^^"
+humaneval_20,HumanEval,C_borderline,openai/gpt-oss-20b,S1,2,True,,441,331,30.93,6771.89,6802.82,7.5e-05,0.0879,"[""fs_755"", ""fs_753""]",[],
+mbpp_608,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,False,assertion_error,368,468,12.5,5276.8,5289.3,8.56e-05,0.1199,"[""fs_623"", ""fs_752""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpxqkv3nit.py"", line 16, in <module>
+    assert bell_Number(2) == 2
+           ^^^^^^^^^^^^^^^^^^^
+AssertionError"
+mbpp_612,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,False,assertion_error,382,140,13.84,5666.42,5680.26,4.74e-05,0.1187,"[""fs_728"", ""fs_758""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpxx1stldo.py"", line 7, in <module>
+    assert merge([['x', 'y','z' ], ['a', 'b','c'], ['m', 'n','o']]) == [['x', 'a', 'm']"
+mbpp_614,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,266,411,11.53,795.03,806.56,7.06e-05,0.0638,"[""fs_615"", ""fs_750""]",[],
+mbpp_637,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,False,runtime_error,309,227,10.59,4697.44,4708.03,5.2e-05,0.1049,"[""fs_605"", ""fs_762""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpqajv85lj.py"", line 5, in <module>
+    assert noprofit_noloss(1500,1200)==False
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^
+Type"
+mbpp_644,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,263,227,9.85,2491.92,2501.77,4.83e-05,0.0732,"[""fs_743"", ""fs_604""]",[],
+mbpp_67,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,345,1024,38.57,5566.02,5604.59,0.0001505,0.0695,"[""fs_623"", ""fs_603""]",[],
+mbpp_722,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,370,165,14.57,8746.36,8760.93,4.94e-05,0.0685,"[""fs_753"", ""fs_740""]",[],
+mbpp_723,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,305,101,11.55,2491.56,2503.11,3.65e-05,0.0458,"[""fs_728"", ""fs_760""]",[],
+mbpp_726,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,311,136,13.69,2556.82,2570.51,4.12e-05,0.0479,"[""fs_750"", ""fs_616""]",[],
+mbpp_739,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,False,runtime_error,381,1024,13.81,4799.98,4813.79,0.0001534,0.0891,"[""fs_603"", ""fs_755""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpo1czw5_8.py"", line 4, in <module>
+    assert find_Index(2) == 4
+           ^^^^^^^^^^
+NameError: name 'find_Index' is not"
+mbpp_741,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,268,114,11.11,8526.14,8537.25,3.51e-05,0.0482,"[""fs_602"", ""fs_760""]",[],
+mbpp_757,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,279,356,13.64,2795.23,2808.87,6.5e-05,0.065,"[""fs_604"", ""fs_602""]",[],
+mbpp_770,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,307,164,11.53,3500.25,3511.78,4.42e-05,0.0493,"[""fs_724"", ""fs_738""]",[],
+mbpp_779,MBPP,C_borderline,openai/gpt-oss-20b,S1,2,True,,337,263,13.4,3710.36,3723.76,5.85e-05,0.0721,"[""fs_758"", ""fs_750""]",[],
+humaneval_0,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,358,548,23.54,4047.85,4071.39,9.44e-05,0.0799,"[""fs_755"", ""fs_629""]",[],
+humaneval_11,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,364,215,15.48,6424.61,6440.09,5.49e-05,0.0716,"[""fs_633"", ""fs_619""]",[],
+humaneval_12,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,364,131,25.97,3678.29,3704.26,4.48e-05,0.0822,"[""fs_639"", ""fs_602""]",[],
+humaneval_13,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,406,190,14.17,3756.5,3770.67,5.53e-05,0.0504,"[""fs_605"", ""fs_603""]",[],
+humaneval_14,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,290,161,14.69,2623.5,2638.19,4.25e-05,0.0691,"[""fs_602"", ""fs_732""]",[],
+humaneval_15,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,313,247,24.0,3856.56,3880.56,5.47e-05,0.057,"[""fs_619"", ""fs_732""]",[],
+humaneval_16,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,305,131,17.12,2591.56,2608.68,4.01e-05,0.0714,"[""fs_602"", ""fs_760""]",[],
+humaneval_17,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,476,311,32.25,3790.89,3823.14,7.54e-05,0.0578,"[""fs_603"", ""fs_629""]",[],
+humaneval_18,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,379,312,22.08,3776.16,3798.24,6.78e-05,0.0798,"[""fs_602"", ""fs_758""]",[],
+humaneval_19,HumanEval,A_easy,openai/gpt-oss-20b,S1,2,True,,363,253,21.09,6731.4,6752.49,5.94e-05,0.0834,"[""fs_749"", ""fs_755""]",[],
+humaneval_32,HumanEval,D_hard,openai/gpt-oss-20b,S1,2,True,,540,774,38.92,4347.17,4386.09,0.0001361,0.0828,"[""fs_632"", ""fs_633""]",[],
+humaneval_36,HumanEval,D_hard,openai/gpt-oss-20b,S1,2,False,runtime_error,415,1024,17.57,10751.87,10769.44,0.0001561,0.0943,"[""fs_603"", ""fs_605""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmplaw1apjn.py"", line 16, in <module>
+    check(fizz_buzz)
+          ^^^^^^^^^
+NameError: name 'fizz_buzz' is not defined"
+humaneval_39,HumanEval,D_hard,openai/gpt-oss-20b,S1,2,True,,432,558,17.0,10020.95,10037.95,0.0001015,0.0839,"[""fs_605"", ""fs_603""]",[],
+mbpp_18,MBPP,D_hard,openai/gpt-oss-20b,S1,2,False,runtime_error,280,1024,25.18,5473.98,5499.16,0.0001453,0.1607,"[""fs_748"", ""fs_602""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp49a2jr03.py"", line 4, in <module>
+    assert remove_dirty_chars(""probasscurve"", ""pros"") == 'bacuve'
+           ^^^^^^^^^^"
+mbpp_56,MBPP,D_hard,openai/gpt-oss-20b,S1,2,False,runtime_error,268,288,26.27,8728.64,8754.91,5.6e-05,0.1289,"[""fs_755"", ""fs_629""]",[],"Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpmpflzju3.py"", line 8, in <module>
+    assert check(70) == False
+           ^^^^^
+NameError: name 'check' is not defined"
+humaneval_1,HumanEval,B_gap,openai/gpt-oss-20b,S2,1,True,,617,440,27.43,7139.61,7167.04,0.0001022,0.117,[],"[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_edge_cases_checklist""]",
+humaneval_10,HumanEval,B_gap,openai/gpt-oss-20b,S2,1,True,,615,436,79.52,6908.37,6987.89,0.0001015,0.1062,[],"[""rag_two_pointers"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+humaneval_33,HumanEval,B_gap,openai/gpt-oss-20b,S2,1,True,,677,426,17.54,8013.78,8031.32,0.0001053,0.0595,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_set_operations""]",
+humaneval_38,HumanEval,B_gap,openai/gpt-oss-20b,S2,1,False,runtime_error,691,297,24.91,7976.52,8001.43,9.09e-05,0.1105,[],"[""rag_string_manipulation"", ""rag_type_conversions"", ""rag_regex_patterns""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmph7j89ud8.py"", line 19, in <module>
+    check(decode_cyclic)
+    ~~~~~^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\"
+humaneval_40,HumanEval,B_gap,openai/gpt-oss-20b,S2,1,True,,719,476,26.22,4998.93,5025.15,0.0001146,0.0654,[],"[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_set_operations""]",
+humaneval_41,HumanEval,B_gap,openai/gpt-oss-20b,S2,1,True,,677,415,21.11,7967.53,7988.64,0.000104,0.0452,[],"[""rag_collections_deque"", ""rag_bit_manipulation"", ""rag_binary_search""]",
+humaneval_9,HumanEval,B_gap,openai/gpt-oss-20b,S2,1,True,,588,216,16.67,5596.89,5613.56,7.3e-05,0.0849,[],"[""rag_heap_priority_queue"", ""rag_collections_deque"", ""rag_sorting_custom_keys""]",
+mbpp_11,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,532,345,9.37,6012.27,6021.64,8.4e-05,0.067,[],"[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_hashmap_counter""]",
+mbpp_14,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,578,351,8.66,4892.7,4901.36,8.84e-05,0.0721,[],"[""rag_math_geometry"", ""rag_math_gcd_lcm"", ""rag_binary_search""]",
+mbpp_16,MBPP,B_gap,openai/gpt-oss-20b,S2,1,False,runtime_error,547,1024,11.97,8483.32,8495.29,0.0001666,0.1039,[],"[""rag_string_manipulation"", ""rag_edge_cases_checklist"", ""rag_regex_patterns""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpzsupk9kz.py"", line 4, in <module>
+    assert text_lowercase_underscore(""aab_cbbbc"")==(True)
+           ^^^^^^^^^^^^^^^^^^"
+mbpp_61,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,508,551,9.03,11105.32,11114.35,0.0001068,0.0741,[],"[""rag_regex_patterns"", ""rag_prefix_sums"", ""rag_hashmap_counter""]",
+mbpp_620,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,508,349,9.55,6906.52,6916.07,8.25e-05,0.0762,[],"[""rag_itertools_combinations"", ""rag_math_gcd_lcm"", ""rag_heap_priority_queue""]",
+mbpp_627,MBPP,B_gap,openai/gpt-oss-20b,S2,1,False,assertion_error,524,257,7.59,5866.89,5874.48,7.28e-05,0.0836,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_math_gcd_lcm""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpv0pzncny.py"", line 13, in <module>
+    assert find_First_Missing([2,3,5,8,9]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_63,MBPP,B_gap,openai/gpt-oss-20b,S2,1,False,assertion_error,542,548,8.71,4027.02,4035.73,0.0001091,0.1066,[],"[""rag_set_operations"", ""rag_itertools_combinations"", ""rag_edge_cases_checklist""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpgl9r28ni.py"", line 16, in <module>
+    assert max_difference([(3, 5), (1, 7), (10, 3), (1, 2)]) == 7
+           ^^^^^^^^^"
+mbpp_635,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,502,170,9.57,8488.88,8498.45,6.06e-05,0.0764,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_itertools_combinations""]",
+mbpp_641,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,620,292,8.74,5734.53,5743.27,8.46e-05,0.0793,[],"[""rag_bit_manipulation"", ""rag_recursion_base_cases"", ""rag_prime_numbers_sieve""]",
+mbpp_72,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,593,747,11.52,7255.85,7267.37,0.0001371,0.0541,[],"[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_math_gcd_lcm""]",
+mbpp_734,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,532,512,17.3,9007.57,9024.87,0.000104,0.0615,[],"[""rag_prefix_sums"", ""rag_itertools_combinations"", ""rag_edge_cases_checklist""]",
+mbpp_745,MBPP,B_gap,openai/gpt-oss-20b,S2,1,True,,571,280,15.28,4777.17,4792.45,7.93e-05,0.068,[],"[""rag_regex_patterns"", ""rag_math_gcd_lcm"", ""rag_type_conversions""]",
+mbpp_747,MBPP,B_gap,openai/gpt-oss-20b,S2,1,False,assertion_error,505,700,15.06,8310.24,8325.3,0.0001244,0.0959,[],"[""rag_hashmap_counter"", ""rag_sliding_window"", ""rag_monotonic_stack""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpfuewf0e3.py"", line 40, in <module>
+    assert lcs_of_three('AGGT12', '12TXAYB', '12XBA') == 2
+           ^^^^^^^^^^^^^^^^"
+humaneval_20,HumanEval,C_borderline,openai/gpt-oss-20b,S2,1,True,,674,581,28.9,9366.92,9395.82,0.0001236,0.0969,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_binary_search""]",
+mbpp_608,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,False,assertion_error,665,534,12.27,8997.3,9009.57,0.0001173,0.1484,[],"[""rag_bit_manipulation"", ""rag_type_conversions"", ""rag_prime_numbers_sieve""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpa17wkizd.py"", line 18, in <module>
+    assert bell_Number(2) == 2
+           ^^^^^^^^^^^^^^^^^^^
+AssertionError"
+mbpp_612,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,False,assertion_error,556,176,20.51,6685.31,6705.82,6.56e-05,0.2162,[],"[""rag_collections_deque"", ""rag_set_operations"", ""rag_itertools_combinations""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpof3mdifg.py"", line 7, in <module>
+    assert merge([['x', 'y','z' ], ['a', 'b','c'], ['m', 'n','o']]) == [['x', 'a', 'm']"
+mbpp_614,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,512,232,15.57,4411.47,4427.04,6.88e-05,0.057,[],"[""rag_prefix_sums"", ""rag_edge_cases_checklist"", ""rag_itertools_combinations""]",
+mbpp_637,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,549,416,8.01,6070.85,6078.86,9.38e-05,0.0744,[],"[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_two_pointers""]",
+mbpp_644,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,False,assertion_error,549,290,10.0,6777.76,6787.76,7.87e-05,0.104,[],"[""rag_sorting_custom_keys"", ""rag_monotonic_stack"", ""rag_matrix_2d_grid""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp7x61j08s.py"", line 9, in <module>
+    assert reverse_Array_Upto_K([1, 2, 3, 4, 5, 6],4) == [4, 3, 2, 1, 5, 6]
+           "
+mbpp_67,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,523,380,28.52,6025.11,6053.63,8.74e-05,0.0699,[],"[""rag_itertools_combinations"", ""rag_bit_manipulation"", ""rag_dynamic_programming_1d""]",
+mbpp_722,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,False,assertion_error,555,251,12.74,5488.87,5501.61,7.45e-05,0.1329,[],"[""rag_sorting_custom_keys"", ""rag_edge_cases_checklist"", ""rag_monotonic_stack""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpn9a7cs3t.py"", line 10, in <module>
+    assert filter_data({'Cierra Vega': (6.2, 70), 'Alden Cantrell': (5.9, 65), 'Kierra"
+mbpp_723,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,576,148,11.04,5687.66,5698.7,6.38e-05,0.4276,[],"[""rag_bit_manipulation"", ""rag_hashmap_counter"", ""rag_edge_cases_checklist""]",
+mbpp_726,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,514,172,784.92,3683.07,4467.99,6.18e-05,0.05,[],"[""rag_itertools_combinations"", ""rag_dynamic_programming_1d"", ""rag_recursion_base_cases""]",
+mbpp_739,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,585,546,10.03,6060.11,6070.14,0.0001123,0.0675,[],"[""rag_math_gcd_lcm"", ""rag_binary_search"", ""rag_type_conversions""]",
+mbpp_741,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,531,112,10.75,6560.22,6570.97,5.59e-05,0.0487,[],"[""rag_string_manipulation"", ""rag_hashmap_counter"", ""rag_regex_patterns""]",
+mbpp_757,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,566,345,11.87,4842.75,4854.62,8.67e-05,0.0658,[],"[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_sorting_custom_keys""]",
+mbpp_770,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,532,362,10.48,5838.23,5848.71,8.6e-05,0.0569,[],"[""rag_bit_manipulation"", ""rag_math_gcd_lcm"", ""rag_itertools_combinations""]",
+mbpp_779,MBPP,C_borderline,openai/gpt-oss-20b,S2,1,True,,566,171,11.82,6685.84,6697.66,6.58e-05,0.0704,[],"[""rag_hashmap_counter"", ""rag_itertools_combinations"", ""rag_bit_manipulation""]",
+humaneval_0,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,667,405,20.03,3842.85,3862.88,0.000102,0.081,[],"[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_binary_search""]",
+humaneval_11,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,659,255,15.85,9777.27,9793.12,8.33e-05,0.0679,[],"[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_string_manipulation""]",
+humaneval_12,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,597,290,18.78,5815.14,5833.92,8.26e-05,0.0579,[],"[""rag_string_manipulation"", ""rag_hashmap_counter"", ""rag_regex_patterns""]",
+humaneval_13,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,665,142,13.03,6612.4,6625.43,7.02e-05,0.0553,[],"[""rag_math_gcd_lcm"", ""rag_prime_numbers_sieve"", ""rag_type_conversions""]",
+humaneval_14,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,553,135,15.51,4692.81,4708.32,6.04e-05,0.0688,[],"[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_sorting_custom_keys""]",
+humaneval_15,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,600,222,13.47,4734.06,4747.53,7.46e-05,0.0596,[],"[""rag_regex_patterns"", ""rag_string_manipulation"", ""rag_type_conversions""]",
+humaneval_16,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,568,212,14.91,6572.59,6587.5,7.09e-05,0.1091,[],"[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+humaneval_17,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,661,376,29.1,785.71,814.81,9.8e-05,0.0712,[],"[""rag_hashmap_counter"", ""rag_collections_deque"", ""rag_edge_cases_checklist""]",
+mbpp_11,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,532,327,12.48,52826.49,52838.97,8.18e-05,0.0504,[],"[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_hashmap_counter""]",
+mbpp_722,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,555,333,15.47,45644.04,45659.51,8.44e-05,0.0713,[],"[""rag_sorting_custom_keys"", ""rag_edge_cases_checklist"", ""rag_monotonic_stack""]",
+mbpp_18,MBPP,D_hard,openai/gpt-oss-20b,S2,2,False,runtime_error,532,326,12.78,35975.46,35988.24,8.17e-05,0.1223,[],"[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_hashmap_counter""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp1ewkvg37.py"", line 6, in <module>
+    assert remove_dirty_chars(""probasscurve"", ""pros"") == 'bacuve'
+           ^^^^^^^^^^"
+mbpp_612,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,False,runtime_error,757,196,32.44,33661.09,33693.53,8.41e-05,0.1097,"[""fs_728"", ""fs_758""]","[""rag_collections_deque"", ""rag_set_operations"", ""rag_itertools_combinations""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpg3z7ynk7.py"", line 10, in <module>
+    assert merge([['x', 'y','z' ], ['a', 'b','c'], ['m', 'n','o']]) == [['x', 'a', 'm'"
+humaneval_18,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,756,212,20.46,59766.95,59787.41,8.59e-05,0.0563,"[""fs_602"", ""fs_758""]","[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+mbpp_635,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,642,186,12.35,47712.54,47724.89,7.37e-05,0.0488,"[""fs_749"", ""fs_755""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_itertools_combinations""]",
+humaneval_12,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,741,228,27.27,60747.27,60774.54,8.66e-05,0.0433,"[""fs_639"", ""fs_602""]","[""rag_string_manipulation"", ""rag_hashmap_counter"", ""rag_regex_patterns""]",
+humaneval_18,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,583,306,15.03,880.24,895.27,8.34e-05,0.0647,[],"[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+mbpp_63,MBPP,B_gap,openai/gpt-oss-20b,S2,2,False,assertion_error,542,326,7.69,54924.29,54931.98,8.25e-05,0.0924,[],"[""rag_set_operations"", ""rag_itertools_combinations"", ""rag_edge_cases_checklist""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp8wjtfg6z.py"", line 13, in <module>
+    assert max_difference([(3, 5), (1, 7), (10, 3), (1, 2)]) == 7
+           ^^^^^^^^^"
+mbpp_770,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,532,597,9.35,56141.03,56150.38,0.0001142,0.0489,[],"[""rag_bit_manipulation"", ""rag_math_gcd_lcm"", ""rag_itertools_combinations""]",
+humaneval_9,HumanEval,B_gap,openai/gpt-oss-20b,S3,1,True,,738,163,29.92,46722.55,46752.47,7.86e-05,0.0607,"[""fs_611"", ""fs_753""]","[""rag_heap_priority_queue"", ""rag_collections_deque"", ""rag_sorting_custom_keys""]",
+mbpp_726,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,638,164,25.43,33627.07,33652.5,7.07e-05,0.0487,"[""fs_750"", ""fs_616""]","[""rag_itertools_combinations"", ""rag_dynamic_programming_1d"", ""rag_recursion_base_cases""]",
+humaneval_38,HumanEval,B_gap,openai/gpt-oss-20b,S3,2,False,runtime_error,832,344,42.85,53661.04,53703.89,0.0001078,0.0905,"[""fs_602"", ""fs_619""]","[""rag_string_manipulation"", ""rag_type_conversions"", ""rag_regex_patterns""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp_ijxrq7o.py"", line 22, in <module>
+    check(decode_cyclic)
+    ~~~~~^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\"
+mbpp_644,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,False,assertion_error,660,367,14.21,61069.66,61083.87,9.68e-05,0.0824,"[""fs_743"", ""fs_604""]","[""rag_sorting_custom_keys"", ""rag_monotonic_stack"", ""rag_matrix_2d_grid""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp7h44el96.py"", line 15, in <module>
+    assert reverse_Array_Upto_K([1, 2, 3, 4, 5, 6],4) == [4, 3, 2, 1, 5, 6]
+          "
+mbpp_18,MBPP,D_hard,openai/gpt-oss-20b,S3,2,False,runtime_error,657,207,11.91,42713.9,42725.81,7.74e-05,0.0828,"[""fs_748"", ""fs_602""]","[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_hashmap_counter""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmps70v_prq.py"", line 6, in <module>
+    assert remove_dirty_chars(""probasscurve"", ""pros"") == 'bacuve'
+           ^^^^^^^^^^"
+humaneval_19,HumanEval,A_easy,openai/gpt-oss-20b,S2,1,True,,637,259,13.58,507.01,520.59,7.17e-05,0.1209,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_type_conversions""]",
+humaneval_32,HumanEval,D_hard,openai/gpt-oss-20b,S2,1,True,,828,846,32.08,1743.25,1775.33,0.0001339,0.0958,[],"[""rag_bit_manipulation"", ""rag_edge_cases_checklist"", ""rag_type_conversions""]",
+humaneval_36,HumanEval,D_hard,openai/gpt-oss-20b,S2,1,True,,631,591,20.2,1096.3,1116.5,9.78e-05,0.1072,[],"[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_math_gcd_lcm""]",
+humaneval_39,HumanEval,D_hard,openai/gpt-oss-20b,S2,1,True,,691,992,17.53,1499.14,1516.67,0.0001346,0.0581,[],"[""rag_prime_numbers_sieve"", ""rag_type_conversions"", ""rag_math_gcd_lcm""]",
+mbpp_18,MBPP,D_hard,openai/gpt-oss-20b,S2,1,False,runtime_error,532,305,26.17,727.16,753.33,6.7e-05,0.0713,[],"[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_hashmap_counter""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp4_d6n469.py"", line 6, in <module>
+    assert remove_dirty_chars(""probasscurve"", ""pros"") == 'bacuve'
+           ^^^^^^^^^^"
+mbpp_56,MBPP,D_hard,openai/gpt-oss-20b,S2,1,False,runtime_error,595,225,16.09,751.34,767.43,6.56e-05,0.0944,[],"[""rag_bit_manipulation"", ""rag_sorting_custom_keys"", ""rag_type_conversions""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpgebujw94.py"", line 9, in <module>
+    assert check(70) == False
+           ^^^^^
+NameError: name 'check' is not defined"
+humaneval_1,HumanEval,B_gap,openai/gpt-oss-20b,S2,2,True,,617,455,20.23,1213.82,1234.05,8.58e-05,0.0607,[],"[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_edge_cases_checklist""]",
+humaneval_10,HumanEval,B_gap,openai/gpt-oss-20b,S2,2,False,assertion_error,615,530,31.01,936.15,967.16,9.16e-05,0.0804,[],"[""rag_two_pointers"", ""rag_string_manipulation"", ""rag_regex_patterns""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpu_f1121w.py"", line 27, in <module>
+    check(make_palindrome)
+    ~~~~~^^^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Lo"
+humaneval_33,HumanEval,B_gap,openai/gpt-oss-20b,S2,2,True,,677,480,23.33,763.89,787.22,9.26e-05,0.0503,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_set_operations""]",
+humaneval_38,HumanEval,B_gap,openai/gpt-oss-20b,S2,2,False,runtime_error,691,454,32.17,1061.07,1093.24,9.16e-05,0.0744,[],"[""rag_string_manipulation"", ""rag_type_conversions"", ""rag_regex_patterns""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpk1cpx5jr.py"", line 19, in <module>
+    check(decode_cyclic)
+    ~~~~~^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\"
+humaneval_40,HumanEval,B_gap,openai/gpt-oss-20b,S2,2,True,,719,488,28.03,1591.72,1619.75,9.66e-05,0.0431,[],"[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_set_operations""]",
+humaneval_41,HumanEval,B_gap,openai/gpt-oss-20b,S2,2,True,,677,687,22.18,1183.61,1205.79,0.0001091,0.0362,[],"[""rag_collections_deque"", ""rag_bit_manipulation"", ""rag_binary_search""]",
+humaneval_9,HumanEval,B_gap,openai/gpt-oss-20b,S2,2,True,,588,290,18.75,834.92,853.67,7.02e-05,0.0541,[],"[""rag_heap_priority_queue"", ""rag_collections_deque"", ""rag_sorting_custom_keys""]",
+mbpp_14,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,578,369,12.38,920.02,932.4,7.58e-05,0.0553,[],"[""rag_math_geometry"", ""rag_math_gcd_lcm"", ""rag_binary_search""]",
+mbpp_16,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,547,318,16.6,995.85,1012.45,6.92e-05,0.0678,[],"[""rag_string_manipulation"", ""rag_edge_cases_checklist"", ""rag_regex_patterns""]",
+mbpp_61,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,508,480,10.14,836.46,846.6,7.9e-05,0.0526,[],"[""rag_regex_patterns"", ""rag_prefix_sums"", ""rag_hashmap_counter""]",
+mbpp_620,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,508,313,9.67,841.18,850.85,6.57e-05,0.0424,[],"[""rag_itertools_combinations"", ""rag_math_gcd_lcm"", ""rag_heap_priority_queue""]",
+mbpp_627,MBPP,B_gap,openai/gpt-oss-20b,S2,2,False,assertion_error,524,353,12.81,977.26,990.07,7.02e-05,0.0751,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_math_gcd_lcm""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpxmnnzwgy.py"", line 13, in <module>
+    assert find_First_Missing([2,3,5,8,9]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_635,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,502,292,6.27,2061.13,2067.4,6.35e-05,0.0481,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_itertools_combinations""]",
+mbpp_641,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,620,284,12.65,1036.61,1049.26,7.23e-05,0.1581,[],"[""rag_bit_manipulation"", ""rag_recursion_base_cases"", ""rag_prime_numbers_sieve""]",
+mbpp_72,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,593,572,11.18,1121.52,1132.7,9.32e-05,0.0436,[],"[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_math_gcd_lcm""]",
+mbpp_734,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,532,336,22.97,919.42,942.39,6.94e-05,0.0668,[],"[""rag_prefix_sums"", ""rag_itertools_combinations"", ""rag_edge_cases_checklist""]",
+mbpp_745,MBPP,B_gap,openai/gpt-oss-20b,S2,2,True,,571,343,19.91,909.37,929.28,7.31e-05,0.0457,[],"[""rag_regex_patterns"", ""rag_math_gcd_lcm"", ""rag_type_conversions""]",
+mbpp_747,MBPP,B_gap,openai/gpt-oss-20b,S2,2,False,assertion_error,505,822,19.84,1453.47,1473.31,0.0001062,0.0792,[],"[""rag_hashmap_counter"", ""rag_sliding_window"", ""rag_monotonic_stack""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp32pr_88q.py"", line 33, in <module>
+    assert lcs_of_three('AGGT12', '12TXAYB', '12XBA') == 2
+           ^^^^^^^^^^^^^^^^"
+humaneval_20,HumanEval,C_borderline,openai/gpt-oss-20b,S2,2,True,,674,275,29.22,875.87,905.09,7.59e-05,0.0651,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_binary_search""]",
+mbpp_608,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,665,355,19.7,822.98,842.68,8.16e-05,0.0457,[],"[""rag_bit_manipulation"", ""rag_type_conversions"", ""rag_prime_numbers_sieve""]",
+mbpp_612,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,False,runtime_error,556,168,16.36,752.82,769.18,5.79e-05,0.0816,[],"[""rag_collections_deque"", ""rag_set_operations"", ""rag_itertools_combinations""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmptzvmnnpo.py"", line 11, in <module>
+    assert merge([['x', 'y','z' ], ['a', 'b','c'], ['m', 'n','o']]) == [['x', 'a', 'm'"
+mbpp_614,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,512,221,13.87,531.02,544.89,5.86e-05,0.0735,[],"[""rag_prefix_sums"", ""rag_edge_cases_checklist"", ""rag_itertools_combinations""]",
+mbpp_637,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,549,418,17.05,891.27,908.32,7.74e-05,0.046,[],"[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_two_pointers""]",
+mbpp_644,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,False,assertion_error,549,317,13.89,547.46,561.35,6.93e-05,0.0879,[],"[""rag_sorting_custom_keys"", ""rag_monotonic_stack"", ""rag_matrix_2d_grid""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpnsa9kxwd.py"", line 15, in <module>
+    assert reverse_Array_Upto_K([1, 2, 3, 4, 5, 6],4) == [4, 3, 2, 1, 5, 6]
+          "
+mbpp_67,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,523,451,16.24,894.4,910.64,7.79e-05,0.0539,[],"[""rag_itertools_combinations"", ""rag_bit_manipulation"", ""rag_dynamic_programming_1d""]",
+mbpp_723,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,576,185,17.51,653.57,671.08,6.09e-05,0.0445,[],"[""rag_bit_manipulation"", ""rag_hashmap_counter"", ""rag_edge_cases_checklist""]",
+mbpp_726,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,514,209,14.82,695.14,709.96,5.78e-05,0.0522,[],"[""rag_itertools_combinations"", ""rag_dynamic_programming_1d"", ""rag_recursion_base_cases""]",
+mbpp_739,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,False,runtime_error,585,1024,16.85,1650.33,1667.18,0.0001287,0.0851,[],"[""rag_math_gcd_lcm"", ""rag_binary_search"", ""rag_type_conversions""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpjx3rvil_.py"", line 4, in <module>
+    assert find_Index(2) == 4
+           ^^^^^^^^^^
+NameError: name 'find_Index' is not"
+mbpp_741,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,531,165,9.57,769.82,779.39,5.57e-05,0.044,[],"[""rag_string_manipulation"", ""rag_hashmap_counter"", ""rag_regex_patterns""]",
+mbpp_757,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,566,592,15.31,1067.55,1082.86,9.26e-05,0.0484,[],"[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_sorting_custom_keys""]",
+mbpp_779,MBPP,C_borderline,openai/gpt-oss-20b,S2,2,True,,566,227,17.39,667.06,684.45,6.34e-05,0.0546,[],"[""rag_hashmap_counter"", ""rag_itertools_combinations"", ""rag_bit_manipulation""]",
+humaneval_0,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,667,670,21.2,1363.39,1384.59,0.000107,0.0688,[],"[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_binary_search""]",
+humaneval_11,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,659,199,15.74,750.81,766.55,6.86e-05,0.0683,[],"[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_string_manipulation""]",
+humaneval_12,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,597,213,25.12,689.76,714.88,6.48e-05,0.0539,[],"[""rag_string_manipulation"", ""rag_hashmap_counter"", ""rag_regex_patterns""]",
+humaneval_13,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,665,123,17.52,308.5,326.02,6.3e-05,0.0443,[],"[""rag_math_gcd_lcm"", ""rag_prime_numbers_sieve"", ""rag_type_conversions""]",
+humaneval_14,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,553,174,13.82,587.23,601.05,5.82e-05,0.0605,[],"[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_sorting_custom_keys""]",
+humaneval_15,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,600,159,15.17,659.22,674.39,6.07e-05,0.0499,[],"[""rag_regex_patterns"", ""rag_string_manipulation"", ""rag_type_conversions""]",
+humaneval_16,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,568,145,22.46,594.44,616.9,5.7e-05,0.0491,[],"[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+humaneval_17,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,661,363,23.6,896.81,920.41,8.19e-05,0.0573,[],"[""rag_hashmap_counter"", ""rag_collections_deque"", ""rag_edge_cases_checklist""]",
+humaneval_18,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,583,263,20.28,732.88,753.16,6.77e-05,0.0565,[],"[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+humaneval_19,HumanEval,A_easy,openai/gpt-oss-20b,S2,2,True,,637,240,24.19,703.95,728.14,7.02e-05,0.0573,[],"[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_type_conversions""]",
+humaneval_32,HumanEval,D_hard,openai/gpt-oss-20b,S2,2,False,runtime_error,828,974,47.54,1457.91,1505.45,0.0001442,0.0815,[],"[""rag_bit_manipulation"", ""rag_edge_cases_checklist"", ""rag_type_conversions""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpes8757mp.py"", line 52, in <module>
+    check(find_zero)
+    ~~~~~^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\Temp\tmp"
+humaneval_36,HumanEval,D_hard,openai/gpt-oss-20b,S2,2,False,runtime_error,631,1024,13.89,1519.24,1533.13,0.0001324,0.0783,[],"[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_math_gcd_lcm""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp8gw3jpm6.py"", line 16, in <module>
+    check(fizz_buzz)
+          ^^^^^^^^^
+NameError: name 'fizz_buzz' is not defined"
+humaneval_39,HumanEval,D_hard,openai/gpt-oss-20b,S2,2,True,,691,569,21.18,1151.22,1172.4,0.0001008,0.5927,[],"[""rag_prime_numbers_sieve"", ""rag_type_conversions"", ""rag_math_gcd_lcm""]",
+mbpp_56,MBPP,D_hard,openai/gpt-oss-20b,S2,2,False,runtime_error,595,354,13.73,873.35,887.08,7.59e-05,0.0878,[],"[""rag_bit_manipulation"", ""rag_sorting_custom_keys"", ""rag_type_conversions""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp45x577c0.py"", line 9, in <module>
+    assert check(70) == False
+           ^^^^^
+NameError: name 'check' is not defined"
+humaneval_1,HumanEval,B_gap,openai/gpt-oss-20b,S3,1,True,,727,301,37.34,760.02,797.36,8.22e-05,0.0551,"[""fs_640"", ""fs_725""]","[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_edge_cases_checklist""]",
+humaneval_10,HumanEval,B_gap,openai/gpt-oss-20b,S3,1,False,assertion_error,716,536,44.19,1023.83,1068.02,0.0001002,0.0912,"[""fs_604"", ""fs_643""]","[""rag_two_pointers"", ""rag_string_manipulation"", ""rag_regex_patterns""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpse8pxf96.py"", line 28, in <module>
+    check(make_palindrome)
+    ~~~~~^^^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Lo"
+humaneval_33,HumanEval,B_gap,openai/gpt-oss-20b,S3,1,True,,856,434,40.53,904.65,945.18,0.0001032,0.0489,"[""fs_755"", ""fs_754""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_set_operations""]",
+humaneval_38,HumanEval,B_gap,openai/gpt-oss-20b,S3,1,False,runtime_error,832,368,43.17,894.96,938.13,9.6e-05,0.0863,"[""fs_602"", ""fs_619""]","[""rag_string_manipulation"", ""rag_type_conversions"", ""rag_regex_patterns""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpk96f2gey.py"", line 19, in <module>
+    check(decode_cyclic)
+    ~~~~~^^^^^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\"
+humaneval_40,HumanEval,B_gap,openai/gpt-oss-20b,S3,1,True,,865,466,57.46,956.26,1013.72,0.0001065,0.0577,"[""fs_728"", ""fs_744""]","[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_set_operations""]",
+humaneval_41,HumanEval,B_gap,openai/gpt-oss-20b,S3,1,True,,1103,796,38.15,1737.1,1775.25,0.0001519,0.0779,"[""fs_603"", ""fs_721""]","[""rag_collections_deque"", ""rag_bit_manipulation"", ""rag_binary_search""]",
+mbpp_11,MBPP,B_gap,openai/gpt-oss-20b,S3,1,True,,655,298,19.82,799.37,819.19,7.62e-05,0.0498,"[""fs_602"", ""fs_640""]","[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_hashmap_counter""]",
+mbpp_14,MBPP,B_gap,openai/gpt-oss-20b,S3,1,False,runtime_error,703,514,21.64,1067.02,1088.66,9.74e-05,0.087,"[""fs_742"", ""fs_731""]","[""rag_math_geometry"", ""rag_math_gcd_lcm"", ""rag_binary_search""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp44ep4i83.py"", line 15, in <module>
+    assert find_Volume(10,8,6) == 240
+           ~~~~~~~~~~~^^^^^^^^
+  File ""C:\Users\"
+mbpp_16,MBPP,B_gap,openai/gpt-oss-20b,S3,1,True,,642,407,22.41,1114.28,1136.69,8.39e-05,0.0536,"[""fs_624"", ""fs_631""]","[""rag_string_manipulation"", ""rag_edge_cases_checklist"", ""rag_regex_patterns""]",
+mbpp_61,MBPP,B_gap,openai/gpt-oss-20b,S3,1,False,assertion_error,650,541,24.24,1106.2,1130.44,9.53e-05,0.0773,"[""fs_724"", ""fs_639""]","[""rag_regex_patterns"", ""rag_prefix_sums"", ""rag_hashmap_counter""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmph6qkbgc2.py"", line 20, in <module>
+    assert count_Substrings('1101112') == 12
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_620,MBPP,B_gap,openai/gpt-oss-20b,S3,1,True,,638,356,18.99,887.44,906.43,7.95e-05,0.044,"[""fs_611"", ""fs_755""]","[""rag_itertools_combinations"", ""rag_math_gcd_lcm"", ""rag_heap_priority_queue""]",
+mbpp_627,MBPP,B_gap,openai/gpt-oss-20b,S3,1,False,assertion_error,679,438,18.83,1019.53,1038.36,8.94e-05,0.0774,"[""fs_755"", ""fs_753""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_math_gcd_lcm""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp_qaqof6c.py"", line 22, in <module>
+    assert find_First_Missing([2,3,5,8,9]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_63,MBPP,B_gap,openai/gpt-oss-20b,S3,1,False,assertion_error,745,349,18.28,881.72,900.0,8.75e-05,0.0856,"[""fs_740"", ""fs_763""]","[""rag_set_operations"", ""rag_itertools_combinations"", ""rag_edge_cases_checklist""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpkvjgzve7.py"", line 14, in <module>
+    assert max_difference([(3, 5), (1, 7), (10, 3), (1, 2)]) == 7
+           ^^^^^^^^^"
+mbpp_635,MBPP,B_gap,openai/gpt-oss-20b,S3,1,True,,642,130,19.13,595.18,614.31,6.18e-05,0.0497,"[""fs_749"", ""fs_755""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_itertools_combinations""]",
+mbpp_641,MBPP,B_gap,openai/gpt-oss-20b,S3,1,True,,842,314,19.18,568.25,587.43,9.25e-05,0.0426,"[""fs_752"", ""fs_623""]","[""rag_bit_manipulation"", ""rag_recursion_base_cases"", ""rag_prime_numbers_sieve""]",
+mbpp_72,MBPP,B_gap,openai/gpt-oss-20b,S3,1,True,,780,709,21.39,1301.61,1323.0,0.0001191,0.0432,"[""fs_763"", ""fs_616""]","[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_math_gcd_lcm""]",
+mbpp_734,MBPP,B_gap,openai/gpt-oss-20b,S3,1,True,,733,422,29.99,994.05,1024.04,9.24e-05,0.0443,"[""fs_758"", ""fs_728""]","[""rag_prefix_sums"", ""rag_itertools_combinations"", ""rag_edge_cases_checklist""]",
+mbpp_745,MBPP,B_gap,openai/gpt-oss-20b,S3,1,True,,696,296,25.77,775.83,801.6,7.94e-05,0.0441,"[""fs_629"", ""fs_619""]","[""rag_regex_patterns"", ""rag_math_gcd_lcm"", ""rag_type_conversions""]",
+mbpp_747,MBPP,B_gap,openai/gpt-oss-20b,S3,1,False,assertion_error,680,681,17.83,1202.13,1219.96,0.0001089,0.0812,"[""fs_754"", ""fs_602""]","[""rag_hashmap_counter"", ""rag_sliding_window"", ""rag_monotonic_stack""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpn0n34t6z.py"", line 29, in <module>
+    assert lcs_of_three('AGGT12', '12TXAYB', '12XBA') == 2
+           ^^^^^^^^^^^^^^^^"
+humaneval_20,HumanEval,C_borderline,openai/gpt-oss-20b,S3,1,True,,829,374,39.55,1011.97,1051.52,9.62e-05,0.0584,"[""fs_755"", ""fs_753""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_binary_search""]",
+mbpp_608,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,False,runtime_error,887,1024,20.15,1712.91,1733.06,0.0001529,0.0769,"[""fs_623"", ""fs_752""]","[""rag_bit_manipulation"", ""rag_type_conversions"", ""rag_prime_numbers_sieve""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp9m8m_d14.py"", line 4, in <module>
+    assert bell_Number(2) == 2
+           ^^^^^^^^^^^
+NameError: name 'bell_Number' is "
+mbpp_614,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,619,433,23.44,910.67,934.11,8.42e-05,0.069,"[""fs_615"", ""fs_750""]","[""rag_prefix_sums"", ""rag_edge_cases_checklist"", ""rag_itertools_combinations""]",
+mbpp_637,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,False,runtime_error,702,375,20.0,800.21,820.21,8.62e-05,0.0776,"[""fs_605"", ""fs_762""]","[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_two_pointers""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpx2ytc5ys.py"", line 12, in <module>
+    assert noprofit_noloss(1500,1200)==False
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^
+Typ"
+mbpp_644,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,False,assertion_error,660,348,14.78,795.96,810.74,8.06e-05,0.078,"[""fs_743"", ""fs_604""]","[""rag_sorting_custom_keys"", ""rag_monotonic_stack"", ""rag_matrix_2d_grid""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpzu0gjt34.py"", line 17, in <module>
+    assert reverse_Array_Upto_K([1, 2, 3, 4, 5, 6],4) == [4, 3, 2, 1, 5, 6]
+          "
+mbpp_67,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,715,710,19.92,1248.13,1268.05,0.000114,0.0469,"[""fs_623"", ""fs_603""]","[""rag_itertools_combinations"", ""rag_bit_manipulation"", ""rag_dynamic_programming_1d""]",
+mbpp_722,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,735,217,29.24,753.47,782.71,7.62e-05,0.0591,"[""fs_753"", ""fs_740""]","[""rag_sorting_custom_keys"", ""rag_edge_cases_checklist"", ""rag_monotonic_stack""]",
+mbpp_723,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,718,107,21.88,566.08,587.96,6.6e-05,0.044,"[""fs_728"", ""fs_760""]","[""rag_bit_manipulation"", ""rag_hashmap_counter"", ""rag_edge_cases_checklist""]",
+mbpp_739,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,False,runtime_error,793,1024,20.86,1503.8,1524.66,0.0001454,0.0693,"[""fs_603"", ""fs_755""]","[""rag_math_gcd_lcm"", ""rag_binary_search"", ""rag_type_conversions""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpcc3a5tfx.py"", line 4, in <module>
+    assert find_Index(2) == 4
+           ^^^^^^^^^^
+NameError: name 'find_Index' is not"
+mbpp_741,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,645,123,19.58,858.16,877.74,6.14e-05,0.0393,"[""fs_602"", ""fs_760""]","[""rag_string_manipulation"", ""rag_hashmap_counter"", ""rag_regex_patterns""]",
+mbpp_757,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,671,346,35.75,890.66,926.41,8.14e-05,0.082,"[""fs_604"", ""fs_602""]","[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_sorting_custom_keys""]",
+mbpp_770,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,684,423,19.71,727.69,747.4,8.86e-05,0.0611,"[""fs_724"", ""fs_738""]","[""rag_bit_manipulation"", ""rag_math_gcd_lcm"", ""rag_itertools_combinations""]",
+mbpp_779,MBPP,C_borderline,openai/gpt-oss-20b,S3,1,True,,723,96,22.86,502.33,525.19,6.55e-05,0.0651,"[""fs_758"", ""fs_750""]","[""rag_hashmap_counter"", ""rag_itertools_combinations"", ""rag_bit_manipulation""]",
+humaneval_0,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,782,323,39.42,826.91,866.33,8.84e-05,0.0759,"[""fs_755"", ""fs_629""]","[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_binary_search""]",
+humaneval_11,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,827,165,29.42,582.5,611.92,7.94e-05,0.0648,"[""fs_633"", ""fs_619""]","[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_string_manipulation""]",
+humaneval_12,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,741,260,41.18,665.59,706.77,8.01e-05,0.0745,"[""fs_639"", ""fs_602""]","[""rag_string_manipulation"", ""rag_hashmap_counter"", ""rag_regex_patterns""]",
+humaneval_13,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,883,196,29.3,619.81,649.11,8.63e-05,0.069,"[""fs_605"", ""fs_603""]","[""rag_math_gcd_lcm"", ""rag_prime_numbers_sieve"", ""rag_type_conversions""]",
+humaneval_14,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,666,139,28.2,602.45,630.65,6.44e-05,0.0626,"[""fs_602"", ""fs_732""]","[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_sorting_custom_keys""]",
+humaneval_15,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,727,221,26.72,623.95,650.67,7.58e-05,0.0543,"[""fs_619"", ""fs_732""]","[""rag_regex_patterns"", ""rag_string_manipulation"", ""rag_type_conversions""]",
+humaneval_16,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,682,169,34.71,731.96,766.67,6.81e-05,0.0623,"[""fs_602"", ""fs_760""]","[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+humaneval_17,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,849,358,47.25,840.76,888.01,9.66e-05,0.0609,"[""fs_603"", ""fs_629""]","[""rag_hashmap_counter"", ""rag_collections_deque"", ""rag_edge_cases_checklist""]",
+humaneval_19,HumanEval,A_easy,openai/gpt-oss-20b,S3,1,True,,777,309,36.9,777.8,814.7,8.69e-05,0.0744,"[""fs_749"", ""fs_755""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_type_conversions""]",
+humaneval_32,HumanEval,D_hard,openai/gpt-oss-20b,S3,1,False,syntax_error,990,1024,65.47,9866.21,9931.68,0.0001611,0.0893,"[""fs_632"", ""fs_633""]","[""rag_bit_manipulation"", ""rag_edge_cases_checklist"", ""rag_type_conversions""]","File ""C:\Users\dell\AppData\Local\Temp\tmpyw86d9vv.py"", line 4
+    """"""Find a real root of an odd\u2011degree polynomial given by coefficients
+    ^
+SyntaxError: unterminated triple-quoted string liter"
+humaneval_36,HumanEval,D_hard,openai/gpt-oss-20b,S3,1,True,,849,680,25.3,1356.3,1381.6,0.0001223,0.0564,"[""fs_603"", ""fs_605""]","[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_math_gcd_lcm""]",
+humaneval_39,HumanEval,D_hard,openai/gpt-oss-20b,S3,1,True,,909,429,30.67,8024.75,8055.42,0.000107,0.0515,"[""fs_605"", ""fs_603""]","[""rag_prime_numbers_sieve"", ""rag_type_conversions"", ""rag_math_gcd_lcm""]",
+mbpp_18,MBPP,D_hard,openai/gpt-oss-20b,S3,1,False,runtime_error,657,613,18.08,1104.14,1122.22,0.0001016,0.102,"[""fs_748"", ""fs_602""]","[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_hashmap_counter""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp_coh2b27.py"", line 6, in <module>
+    assert remove_dirty_chars(""probasscurve"", ""pros"") == 'bacuve'
+           ^^^^^^^^^^"
+mbpp_56,MBPP,D_hard,openai/gpt-oss-20b,S3,1,False,runtime_error,710,288,15.99,5558.49,5574.48,7.98e-05,0.0907,"[""fs_755"", ""fs_629""]","[""rag_bit_manipulation"", ""rag_sorting_custom_keys"", ""rag_type_conversions""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpw2tzgm9v.py"", line 9, in <module>
+    assert check(70) == False
+           ^^^^^
+NameError: name 'check' is not defined"
+humaneval_1,HumanEval,B_gap,openai/gpt-oss-20b,S3,2,True,,727,733,39.42,1382.33,1421.75,0.0001168,0.0709,"[""fs_640"", ""fs_725""]","[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_edge_cases_checklist""]",
+humaneval_10,HumanEval,B_gap,openai/gpt-oss-20b,S3,2,False,runtime_error,716,1024,57.94,6729.83,6787.77,0.0001392,0.091,"[""fs_604"", ""fs_643""]","[""rag_two_pointers"", ""rag_string_manipulation"", ""rag_regex_patterns""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpvt_1iaw1.py"", line 16, in <module>
+    check(make_palindrome)
+          ^^^^^^^^^^^^^^^
+NameError: name 'make_palindrome'"
+humaneval_33,HumanEval,B_gap,openai/gpt-oss-20b,S3,2,True,,856,466,42.55,1122.82,1165.37,0.0001058,0.0603,"[""fs_755"", ""fs_754""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_set_operations""]",
+humaneval_40,HumanEval,B_gap,openai/gpt-oss-20b,S3,2,True,,865,613,55.52,13141.01,13196.53,0.0001182,0.0563,"[""fs_728"", ""fs_744""]","[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_set_operations""]",
+humaneval_41,HumanEval,B_gap,openai/gpt-oss-20b,S3,2,True,,1103,483,37.6,1153.64,1191.24,0.0001269,0.053,"[""fs_603"", ""fs_721""]","[""rag_collections_deque"", ""rag_bit_manipulation"", ""rag_binary_search""]",
+humaneval_9,HumanEval,B_gap,openai/gpt-oss-20b,S3,2,True,,738,221,33.14,7835.97,7869.11,7.67e-05,0.0754,"[""fs_611"", ""fs_753""]","[""rag_heap_priority_queue"", ""rag_collections_deque"", ""rag_sorting_custom_keys""]",
+mbpp_11,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,655,333,16.76,526.05,542.81,7.9e-05,0.0608,"[""fs_602"", ""fs_640""]","[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_hashmap_counter""]",
+mbpp_14,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,703,194,19.5,599.57,619.07,7.18e-05,0.0603,"[""fs_742"", ""fs_731""]","[""rag_math_geometry"", ""rag_math_gcd_lcm"", ""rag_binary_search""]",
+mbpp_16,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,642,350,16.62,728.47,745.09,7.94e-05,0.0714,"[""fs_624"", ""fs_631""]","[""rag_string_manipulation"", ""rag_edge_cases_checklist"", ""rag_regex_patterns""]",
+mbpp_61,MBPP,B_gap,openai/gpt-oss-20b,S3,2,False,syntax_error,650,1024,16.57,9339.28,9355.85,0.0001339,0.0941,"[""fs_724"", ""fs_639""]","[""rag_regex_patterns"", ""rag_prefix_sums"", ""rag_hashmap_counter""]","File ""C:\Users\dell\AppData\Local\Temp\tmpua7ua3un.py"", line 6
+    assert count_Substrings('112112') == 6
+IndentationError: expected an indented block after 'for' statement on line 3"
+mbpp_620,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,638,412,16.35,853.64,869.99,8.4e-05,0.0584,"[""fs_611"", ""fs_755""]","[""rag_itertools_combinations"", ""rag_math_gcd_lcm"", ""rag_heap_priority_queue""]",
+mbpp_627,MBPP,B_gap,openai/gpt-oss-20b,S3,2,False,assertion_error,679,296,17.53,5946.38,5963.91,7.8e-05,0.0974,"[""fs_755"", ""fs_753""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_math_gcd_lcm""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpx0qtck93.py"", line 14, in <module>
+    assert find_First_Missing([2,3,5,8,9]) == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+mbpp_63,MBPP,B_gap,openai/gpt-oss-20b,S3,2,False,runtime_error,745,473,19.16,924.42,943.58,9.74e-05,0.107,"[""fs_740"", ""fs_763""]","[""rag_set_operations"", ""rag_itertools_combinations"", ""rag_edge_cases_checklist""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpfav6ve8_.py"", line 17, in <module>
+    assert max_difference([(3, 5), (1, 7), (10, 3), (1, 2)]) == 7
+           ~~~~~~~~~"
+mbpp_641,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,842,271,18.74,10763.02,10781.76,8.9e-05,0.0602,"[""fs_752"", ""fs_623""]","[""rag_bit_manipulation"", ""rag_recursion_base_cases"", ""rag_prime_numbers_sieve""]",
+mbpp_72,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,780,862,410.16,1377.18,1787.34,0.0001314,0.0704,"[""fs_763"", ""fs_616""]","[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_math_gcd_lcm""]",
+mbpp_734,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,733,816,59.14,1310.29,1369.43,0.0001239,0.0563,"[""fs_758"", ""fs_728""]","[""rag_prefix_sums"", ""rag_itertools_combinations"", ""rag_edge_cases_checklist""]",
+mbpp_745,MBPP,B_gap,openai/gpt-oss-20b,S3,2,True,,696,279,29.52,752.27,781.79,7.8e-05,0.0752,"[""fs_629"", ""fs_619""]","[""rag_regex_patterns"", ""rag_math_gcd_lcm"", ""rag_type_conversions""]",
+mbpp_747,MBPP,B_gap,openai/gpt-oss-20b,S3,2,False,assertion_error,680,648,31.77,12338.18,12369.95,0.0001062,0.1311,"[""fs_754"", ""fs_602""]","[""rag_hashmap_counter"", ""rag_sliding_window"", ""rag_monotonic_stack""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpyxk1o4fe.py"", line 29, in <module>
+    assert lcs_of_three('AGGT12', '12TXAYB', '12XBA') == 2
+           ^^^^^^^^^^^^^^^^"
+humaneval_20,HumanEval,C_borderline,openai/gpt-oss-20b,S3,2,True,,829,546,93.24,1304.17,1397.41,0.00011,0.0823,"[""fs_755"", ""fs_753""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_binary_search""]",
+mbpp_608,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,False,syntax_error,887,1024,25.04,9940.54,9965.58,0.0001529,0.1359,"[""fs_623"", ""fs_752""]","[""rag_bit_manipulation"", ""rag_type_conversions"", ""rag_prime_numbers_sieve""]","File ""C:\Users\dell\AppData\Local\Temp\tmplr_0l9hf.py"", line 8
+    first = prev_row[-
+                    ^
+SyntaxError: '[' was never closed"
+mbpp_612,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,False,runtime_error,757,160,35.01,632.81,667.82,7.34e-05,0.1872,"[""fs_728"", ""fs_758""]","[""rag_collections_deque"", ""rag_set_operations"", ""rag_itertools_combinations""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpk3y0j4oh.py"", line 10, in <module>
+    assert merge([['x', 'y','z' ], ['a', 'b','c'], ['m', 'n','o']]) == [['x', 'a', 'm'"
+mbpp_614,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,False,assertion_error,619,324,30.43,8960.89,8991.32,7.54e-05,0.115,"[""fs_615"", ""fs_750""]","[""rag_prefix_sums"", ""rag_edge_cases_checklist"", ""rag_itertools_combinations""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp9l_43_vg.py"", line 12, in <module>
+    assert cummulative_sum([(1, 3), (5, 6, 7), (2, 6)]) == 30
+           ^^^^^^^^^^^^^"
+mbpp_637,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,False,runtime_error,702,345,17.87,766.32,784.19,8.38e-05,0.1147,"[""fs_605"", ""fs_762""]","[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_two_pointers""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpussxe0lj.py"", line 8, in <module>
+    assert noprofit_noloss(1500,1200)==False
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^
+Type"
+mbpp_67,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,715,487,27.58,6092.43,6120.01,9.62e-05,0.0639,"[""fs_623"", ""fs_603""]","[""rag_itertools_combinations"", ""rag_bit_manipulation"", ""rag_dynamic_programming_1d""]",
+mbpp_722,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,735,193,47.39,615.66,663.05,7.42e-05,0.0708,"[""fs_753"", ""fs_740""]","[""rag_sorting_custom_keys"", ""rag_edge_cases_checklist"", ""rag_monotonic_stack""]",
+mbpp_723,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,718,130,26.87,4401.88,4428.75,6.78e-05,0.0744,"[""fs_728"", ""fs_760""]","[""rag_bit_manipulation"", ""rag_hashmap_counter"", ""rag_edge_cases_checklist""]",
+mbpp_726,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,638,135,37.91,554.16,592.07,6.18e-05,0.0725,"[""fs_750"", ""fs_616""]","[""rag_itertools_combinations"", ""rag_dynamic_programming_1d"", ""rag_recursion_base_cases""]",
+mbpp_739,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,793,529,38.43,6808.45,6846.88,0.0001058,0.0642,"[""fs_603"", ""fs_755""]","[""rag_math_gcd_lcm"", ""rag_binary_search"", ""rag_type_conversions""]",
+mbpp_741,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,645,113,21.35,800.61,821.96,6.06e-05,0.0793,"[""fs_602"", ""fs_760""]","[""rag_string_manipulation"", ""rag_hashmap_counter"", ""rag_regex_patterns""]",
+mbpp_757,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,671,427,30.02,7027.96,7057.98,8.78e-05,0.0751,"[""fs_604"", ""fs_602""]","[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_sorting_custom_keys""]",
+mbpp_770,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,684,204,21.04,665.27,686.31,7.1e-05,0.0799,"[""fs_724"", ""fs_738""]","[""rag_bit_manipulation"", ""rag_math_gcd_lcm"", ""rag_itertools_combinations""]",
+mbpp_779,MBPP,C_borderline,openai/gpt-oss-20b,S3,2,True,,723,126,27.05,6648.59,6675.64,6.79e-05,0.0575,"[""fs_758"", ""fs_750""]","[""rag_hashmap_counter"", ""rag_itertools_combinations"", ""rag_bit_manipulation""]",
+humaneval_0,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,782,321,51.13,774.55,825.68,8.82e-05,0.0803,"[""fs_755"", ""fs_629""]","[""rag_edge_cases_checklist"", ""rag_bit_manipulation"", ""rag_binary_search""]",
+humaneval_11,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,827,202,48.4,5672.5,5720.9,8.23e-05,0.0906,"[""fs_633"", ""fs_619""]","[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_string_manipulation""]",
+humaneval_13,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,883,202,38.47,627.99,666.46,8.68e-05,0.0697,"[""fs_605"", ""fs_603""]","[""rag_math_gcd_lcm"", ""rag_prime_numbers_sieve"", ""rag_type_conversions""]",
+humaneval_14,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,666,166,38.48,35728.16,35766.64,6.66e-05,0.1021,"[""fs_602"", ""fs_732""]","[""rag_string_manipulation"", ""rag_regex_patterns"", ""rag_sorting_custom_keys""]",
+humaneval_15,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,727,181,36.36,883.49,919.85,7.26e-05,0.0801,"[""fs_619"", ""fs_732""]","[""rag_regex_patterns"", ""rag_string_manipulation"", ""rag_type_conversions""]",
+humaneval_16,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,682,176,48.83,637.5,686.33,6.86e-05,0.1045,"[""fs_602"", ""fs_760""]","[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+humaneval_17,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,849,320,59.21,754.93,814.14,9.35e-05,0.1139,"[""fs_603"", ""fs_629""]","[""rag_hashmap_counter"", ""rag_collections_deque"", ""rag_edge_cases_checklist""]",
+humaneval_18,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,756,284,82.86,465.04,547.9,8.32e-05,0.1024,"[""fs_602"", ""fs_758""]","[""rag_hashmap_counter"", ""rag_string_manipulation"", ""rag_regex_patterns""]",
+humaneval_19,HumanEval,A_easy,openai/gpt-oss-20b,S3,2,True,,777,354,100.41,527.33,627.74,9.05e-05,0.1127,"[""fs_749"", ""fs_755""]","[""rag_sorting_custom_keys"", ""rag_heap_priority_queue"", ""rag_type_conversions""]",
+humaneval_32,HumanEval,D_hard,openai/gpt-oss-20b,S3,2,False,runtime_error,990,782,169.57,1820.23,1989.8,0.0001418,0.141,"[""fs_632"", ""fs_633""]","[""rag_bit_manipulation"", ""rag_edge_cases_checklist"", ""rag_type_conversions""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmpzp6ju3o8.py"", line 52, in <module>
+    check(find_zero)
+    ~~~~~^^^^^^^^^^^
+  File ""C:\Users\dell\AppData\Local\Temp\tmp"
+humaneval_36,HumanEval,D_hard,openai/gpt-oss-20b,S3,2,True,,849,658,40.4,1202.26,1242.66,0.0001206,0.0716,"[""fs_603"", ""fs_605""]","[""rag_type_conversions"", ""rag_bit_manipulation"", ""rag_math_gcd_lcm""]",
+humaneval_39,HumanEval,D_hard,openai/gpt-oss-20b,S3,2,True,,909,537,40.7,991.74,1032.44,0.0001157,0.0922,"[""fs_605"", ""fs_603""]","[""rag_prime_numbers_sieve"", ""rag_type_conversions"", ""rag_math_gcd_lcm""]",
+mbpp_56,MBPP,D_hard,openai/gpt-oss-20b,S3,2,False,runtime_error,710,263,26.04,694.8,720.84,7.78e-05,0.1133,"[""fs_755"", ""fs_629""]","[""rag_bit_manipulation"", ""rag_sorting_custom_keys"", ""rag_type_conversions""]","Traceback (most recent call last):
+  File ""C:\Users\dell\AppData\Local\Temp\tmp41kj27ph.py"", line 8, in <module>
+    assert check(70) == False
+           ^^^^^
+NameError: name 'check' is not defined"
