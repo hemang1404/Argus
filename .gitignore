@@ -1,0 +1,66 @@
+﻿# === SECRETS — NEVER COMMIT ===
+.env
+*.env.local
+
+# === PYTHON ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+env/
+
+# === JUPYTER ===
+.ipynb_checkpoints/
+*.ipynb_meta
+
+# === ML / MODEL ARTIFACTS ===
+models/rl_policy/
+*.pkl
+*.pt
+*.pth
+*.onnx
+*.h5
+
+# === DATA — LARGE FILES ===
+data/benchmarks/raw/
+*.parquet
+*.arrow
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === IDE ===
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# === SCRATCH ===
+scratch/
+notebooks/
+
+# === LOGS ===
+*.log
+logs/
+
+# === RESEARCH DOCS (internal only, not for repo) ===
+*.pdf
+DEFENSE_QNA.md
+SLIDE_DECK.md
+STUDY_GUIDE.md
+REPORT.md
+PROJECT_SYNOPSIS.md
+llm_deep_dive.md
+system_deep_dive.md
+rp2.pdf
+rp3.pdf
+implementation_plan.md
