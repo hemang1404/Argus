@@ -1,4 +1,4 @@
-ï»¿# === SECRETS â€” NEVER COMMIT ===
+# === SECRETS — NEVER COMMIT ===
 .env
 *.env.local
 
@@ -28,7 +28,7 @@ models/rl_policy/
 *.onnx
 *.h5
 
-# === DATA â€” LARGE FILES ===
+# === DATA — LARGE FILES ===
 data/benchmarks/raw/
 *.parquet
 *.arrow
@@ -63,4 +63,5 @@ llm_deep_dive.md
 system_deep_dive.md
 rp2.pdf
 rp3.pdf
-implementation_plan.md
+implementation_plan*.md
+implementation_plan2.md
