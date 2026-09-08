@@ -2,8 +2,16 @@ name: PR Agent
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - review_requested
+
   issue_comment:
+    types:
+      - created
+      - edited
 
 jobs:
   pr_agent_job:
@@ -22,13 +30,21 @@ jobs:
       - name: PR Agent
         id: pragent
         uses: the-pr-agent/pr-agent@main
+
         env:
+          # GitHub authentication
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+          # LLM configuration
           config.model: "groq/openai/gpt-oss-120b"
           config.fallback_models: '["groq/openai/gpt-oss-20b"]'
 
-          GROQ__KEY: ${{ secrets.GROQ_API_KEY }}
+          # Groq authentication
+          GROQ.KEY: ${{ secrets.GROQ_API_KEY }}
 
+          # Standard LiteLLM/Groq environment variable
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+          # Automatic PR actions
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
