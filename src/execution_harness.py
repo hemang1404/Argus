@@ -58,14 +58,14 @@ class ProblemResult:
 
 
 CSV_FIELDNAMES = [
-    "task_id", "source", "attempt_number", "action_taken", "model_used",
+    "strategy", "task_id", "source", "attempt_number", "action_taken", "model_used",
     "passed", "tests_total", "tests_passed", "tests_failed", "test_pass_rate",
     "error_type", "input_tokens", "output_tokens", "cost_usd",
     "cumulative_cost_usd", "remaining_budget_usd", "latency_ms", "timestamp"
 ]
 
 
-def log_attempt_to_csv(csv_path: str, record: AttemptRecord, task_id: str, source: str, remaining_budget: float) -> None:
+def log_attempt_to_csv(csv_path: str, record: AttemptRecord, task_id: str, source: str, remaining_budget: float, strategy: str = "unknown") -> None:
     """Appends an AttemptRecord to CSV immediately and flushes disk buffer for crash-safety."""
     file_has_header = os.path.exists(csv_path) and os.path.getsize(csv_path) > 0
     os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
@@ -75,6 +75,7 @@ def log_attempt_to_csv(csv_path: str, record: AttemptRecord, task_id: str, sourc
         if not file_has_header:
             writer.writeheader()
         row = record.to_dict()
+        row["strategy"] = strategy
         row["task_id"] = task_id
         row["source"] = source
         row["remaining_budget_usd"] = remaining_budget
@@ -125,6 +126,8 @@ def run_problem(
     csv_log_path: Optional[str] = None,
     small_model: str = "openai/gpt-oss-20b",
     large_model: str = "openai/gpt-oss-120b",
+    initial_model: Optional[str] = None,
+    strategy_name: Optional[str] = None,
     retriever: Optional[Any] = None
 ) -> ProblemResult:
     """Runs a single coding problem through the iterative inference loop.
@@ -165,7 +168,7 @@ def run_problem(
         if current_attempt == 1:
             action = "INITIAL"
             prompt = format_task_prompt(task)
-            model = small_model
+            model = initial_model or small_model
             query_res = groq_client.query(prompt, model=model, system_prompt=SYSTEM_PROMPT, temperature=0.2)
             code = query_res.get("content", "")
             cost_usd = query_res.get("estimated_cost_usd", 0.0)
@@ -220,7 +223,8 @@ def run_problem(
         
         # Crash-safe flush to CSV
         if csv_log_path:
-            log_attempt_to_csv(csv_log_path, record, task_id, source, rem_budget)
+            active_strat = strategy_name or getattr(strategy_fn, "name", "unknown")
+            log_attempt_to_csv(csv_log_path, record, task_id, source, rem_budget, active_strat)
             
         # Terminal check: did all tests pass?
         if eval_res["passed"]:
