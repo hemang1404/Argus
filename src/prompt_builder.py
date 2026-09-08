@@ -5,7 +5,12 @@ RAG technical documentation chunks, or both.
 """
 
 from typing import Dict, List, Any, Tuple, Optional
-from src.retrieval import ContextRetriever
+try:
+    from typing import TYPE_CHECKING
+    if TYPE_CHECKING:
+        from src.retrieval import ContextRetriever
+except ImportError:
+    pass
 
 
 SYSTEM_PROMPT = (
