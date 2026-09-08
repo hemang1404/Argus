@@ -28,7 +28,7 @@ jobs:
           config.model: "groq/openai/gpt-oss-120b"
           config.fallback_models: '["groq/openai/gpt-oss-20b"]'
 
-          GROQ.KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ__KEY: ${{ secrets.GROQ_API_KEY }}
 
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
