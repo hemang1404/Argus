@@ -1,0 +1,74 @@
+[config]
+# Keep model selection in the GitHub Action.
+# This file controls PR-Agent behavior.
+
+repo_context_files = ["AGENTS.md"]
+repo_context_from_default_branch = true
+
+# Keep reviews focused and reasonably strict.
+temperature = 0.2
+
+# Don't overwhelm the PR with findings.
+# PR-Agent's review config below also limits findings.
+max_model_tokens = 32000
+
+
+[pr_reviewer]
+# Keep reviews focused on real, actionable problems.
+extra_instructions = """
+Review the PR as a senior software engineer.
+
+Prioritize:
+- correctness and behavioral bugs
+- security vulnerabilities
+- reliability and failure handling
+- concurrency and state-management issues
+- performance problems with realistic impact
+- test coverage gaps for changed behavior
+
+Do not report:
+- purely stylistic preferences
+- hypothetical problems without a concrete scenario
+- issues that are unrelated to the changed code
+- intentional architectural choices unless they create a clear defect
+
+For each finding, explain:
+1. what is wrong
+2. why it matters
+3. when it can happen
+4. what should be changed
+
+Be precise and conservative. Prefer one strong finding over several weak findings.
+"""
+
+num_max_findings = 5
+
+require_tests_review = true
+require_security_review = true
+require_estimate_effort_to_review = true
+
+# Keep the final review readable.
+persistent_comment = true
+
+
+[pr_code_suggestions]
+# Only suggest changes when they are meaningful.
+num_code_suggestions = 3
+
+# Avoid low-confidence nitpicks.
+suggestions_score_threshold = 7
+
+
+[pr_description]
+# Keep generated PR descriptions useful rather than verbose.
+publish_labels = false
+use_bullet_points = true
+enable_pr_type = true
+enable_pr_description = true
+
+
+[github_action_config]
+# Automatic behavior is intentionally kept here too,
+# so the repo configuration documents the desired behavior.
+auto_review = true
+auto_describe = true
