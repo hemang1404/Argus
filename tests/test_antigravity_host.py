@@ -168,9 +168,13 @@ def test_antigravity_cli_missing_raises_clear_error(monkeypatch):
 
 def test_antigravity_cli_unauthenticated(tmp_path):
     """Verify unauthenticated host CLI reports 401 and guides user to authenticate."""
-    fake_cli = tmp_path / "fake_agy.bat"
-    # Bat that exits with 1 and prints auth failure
-    fake_cli.write_text("@echo off\necho Error: unauthenticated. Login required to access Antigravity.\nexit /b 1\n")
+    if os.name == "nt":
+        fake_cli = tmp_path / "fake_agy.bat"
+        fake_cli.write_text("@echo off\necho Error: unauthenticated. Login required to access Antigravity.\nexit /b 1\n")
+    else:
+        fake_cli = tmp_path / "fake_agy.sh"
+        fake_cli.write_text("#!/bin/sh\necho 'Error: unauthenticated. Login required to access Antigravity.'\nexit 1\n")
+        fake_cli.chmod(0o755)
 
     adapter = AntigravityHostAdapter(cli_path=fake_cli)
     conn_res = adapter.test_connection()
