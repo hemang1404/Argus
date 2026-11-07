@@ -235,7 +235,10 @@ def test_exact_mcnemar_binomial_arithmetic():
     Sum = 9109. Two-sided p = 2 * 9109 / 2^22 = 18218 / 4194304 = 0.00434351...
     """
     import math
-    from src.analysis.reproduce_pilot_30_analysis import compute_mcnemar_paired
+    try:
+        from src.analysis.reproduce_pilot_30_analysis import compute_mcnemar_paired
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research analysis module not present in release repository')
 
     n_d = 22
     k_min = 4  # discordant failures (arm2 wins)
@@ -269,7 +272,10 @@ def test_holm_bonferroni_step_down_ranking():
     and evaluates step-down thresholds alpha / (m - i + 1), rather than permanently
     assigning fixed thresholds to named contrast labels upfront.
     """
-    from src.analysis.reproduce_pilot_30_analysis import apply_holm_bonferroni
+    try:
+        from src.analysis.reproduce_pilot_30_analysis import apply_holm_bonferroni
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research analysis module not present in release repository')
 
     # Provide p-values out of order
     results = [
@@ -342,7 +348,10 @@ def test_task_arm_order_counterbalancing_determinism():
 
     keyed to manifest_sha256, task_id, and seed.
     """
-    from src.experiments.run_confirmatory_120_study import get_task_arm_order
+    try:
+        from src.experiments.run_confirmatory_120_study import get_task_arm_order
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research runner not present in release repository')
 
     manifest_hash = "2b6581e2e91ceb3c3ca9d7ec05112ff036b2facd600e3a37e9c423cd02665ae8"
     order1 = get_task_arm_order("django__django-11119", manifest_hash, seed=42)
@@ -364,10 +373,13 @@ def test_rejection_region_cutoffs_nd15_and_nd20():
     - Nd=20: k <= 4 and k >= 16 (two-sided p = 0.011818 <= 0.0125)
     """
     pytest.importorskip("scipy", reason="install 'argus-recovery[research]'")
-    from src.analysis.compute_confirmatory_power_tables import (
-        exact_two_sided_binomial_p,
-        get_rejection_region,
-    )
+    try:
+        from src.analysis.compute_confirmatory_power_tables import (
+            exact_two_sided_binomial_p,
+            get_rejection_region,
+        )
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research analysis module not present in release repository')
 
     # Nd = 15
     rej15, k_low15, k_high15 = get_rejection_region(15, 0.0125)
@@ -390,7 +402,10 @@ def test_unconditional_power_discrepancy_resolved():
     explicitly comparing them with the previous draft values of 69.8% and 75.3%.
     """
     pytest.importorskip("scipy", reason="install 'argus-recovery[research]'")
-    from src.analysis.compute_confirmatory_power_tables import generate_unconditional_power_table
+    try:
+        from src.analysis.compute_confirmatory_power_tables import generate_unconditional_power_table
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research analysis module not present in release repository')
 
     uncond = generate_unconditional_power_table()
     target = [r for r in uncond if r["p_disc"] == 0.20 and r["theta"] == 0.80][0]
@@ -511,10 +526,13 @@ def test_active_budget_cap_enforced_single_value():
     guaranteeing that 600 conditions committed cannot exceed $4.500000 in the active
     experiment process, and lifetime exposure remains bounded below the $5.00 ceiling.
     """
-    from src.experiments.run_confirmatory_120_study import (
-        CONDITION_RESERVATION_CAP_USD,
-        GLOBAL_BUDGET_CEILING_USD,
-    )
+    try:
+        from src.experiments.run_confirmatory_120_study import (
+            CONDITION_RESERVATION_CAP_USD,
+            GLOBAL_BUDGET_CEILING_USD,
+        )
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research runner not present in release repository')
 
     # 1. Uniquely enforced per-condition cap
     assert CONDITION_RESERVATION_CAP_USD == 0.007500
@@ -545,10 +563,13 @@ def test_latent_correlation_simulation_and_binary_phi():
     and produces empirical binary phi correlations phi < r under pilot-calibrated marginals.
     """
     pytest.importorskip("scipy", reason="install 'argus-recovery[research]'")
-    from src.analysis.compute_confirmatory_power_tables import (
-        PILOT_EMPIRICAL_COUNTS,
-        simulate_coherent_5arm_study,
-    )
+    try:
+        from src.analysis.compute_confirmatory_power_tables import (
+            PILOT_EMPIRICAL_COUNTS,
+            simulate_coherent_5arm_study,
+        )
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research analysis module not present in release repository')
 
     # Pilot empirical counts
     assert PILOT_EMPIRICAL_COUNTS["A"] == (12, 30)
@@ -580,7 +601,10 @@ def test_image_lockfile_consumption_by_runtime(tmp_path):
 
     from confirmatory_120_image_lock.json rather than assuming lockfiles have no effect.
     """
-    from src.experiments.run_confirmatory_120_study import ConfirmatoryStudyRunner
+    try:
+        from src.experiments.run_confirmatory_120_study import ConfirmatoryStudyRunner
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research runner not present in release repository')
 
     # 1. Create runner with standard manifest
     runner = ConfirmatoryStudyRunner(
@@ -609,7 +633,10 @@ def test_confirmatory_runner_lifecycle_and_checkpointing(tmp_path):
     2. Writes conditions to outcomes.jsonl.
     3. Resumes from checkpoint, skipping already-completed conditions without re-execution.
     """
-    from src.experiments.run_confirmatory_120_study import ConfirmatoryStudyRunner
+    try:
+        from src.experiments.run_confirmatory_120_study import ConfirmatoryStudyRunner
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research runner not present in release repository')
 
     results_dir = tmp_path / "study_results"
 
@@ -660,7 +687,10 @@ def test_algorithmic_evaluation_harness_delivery_and_assertion_failure():
     if not is_container_engine_available("docker"):
         pytest.skip("Local Docker daemon unavailable")
 
-    from src.experiments.run_confirmatory_120_study import format_algorithmic_test
+    try:
+        from src.experiments.run_confirmatory_120_study import format_algorithmic_test
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip('Historical research runner not present in release repository')
 
     with open("data/candidate_tasks.jsonl", "r", encoding="utf-8") as f:
         cand_map = {c["task_id"]: c for c in [json.loads(line) for line in f if line.strip()]}

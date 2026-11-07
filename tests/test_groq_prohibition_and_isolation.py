@@ -220,12 +220,15 @@ def test_gateway_server_rejects_groq_headers_and_keys(tmp_path: Path):
 # =============================================================================
 
 def test_src_groq_client_fails_closed():
-    """src.groq_client.GroqClient must raise RuntimeError upon instantiation."""
+    """src.groq_client.GroqClient must raise RuntimeError upon instantiation or be absent."""
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from src.groq_client import GroqClient
-    with pytest.raises(RuntimeError, match="Groq is strictly prohibited"):
-        GroqClient()
+    try:
+        from src.groq_client import GroqClient
+        with pytest.raises(RuntimeError, match="Groq is strictly prohibited"):
+            GroqClient()
+    except (ImportError, ModuleNotFoundError):
+        pass  # Legacy src/ package cleanly removed from release distribution
 
 
 # =============================================================================

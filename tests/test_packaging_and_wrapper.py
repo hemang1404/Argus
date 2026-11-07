@@ -15,6 +15,7 @@ import pytest
 from argus.launcher import install_desktop_shortcut
 
 
+@pytest.mark.packaging
 def test_package_json_validity():
     """Verify package.json format, binary entrypoint, and metadata."""
     pkg_file = Path("package.json")
@@ -27,6 +28,7 @@ def test_package_json_validity():
     assert data["bin"]["argus"] == "bin/argus.js"
 
 
+@pytest.mark.packaging
 def test_node_wrapper_script():
     """Verify bin/argus.js exists and runs syntax check via Node if available."""
     wrapper = Path("bin/argus.js")
@@ -68,6 +70,7 @@ def test_pyproject_package_data():
     assert 'scipy>=1.11.0' in pyproject
 
 
+@pytest.mark.packaging
 def test_package_json_dependencies_declared():
     """Verify root package.json declares OpenTUI runtime dependencies and test tooling."""
     pkg = json.loads(Path("package.json").read_text(encoding="utf-8"))

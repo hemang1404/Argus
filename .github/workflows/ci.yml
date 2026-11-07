@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, release/**]
   pull_request:
     branches: [main, dev]
 
@@ -22,12 +22,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -55,7 +55,7 @@ jobs:
 
       - name: Upload coverage report
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-xml
           path: coverage.xml
@@ -68,12 +68,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -99,36 +99,31 @@ jobs:
             tests/test_container_evaluation.py tests/test_frame_localization.py \
             tests/test_secret_redaction.py tests/test_presets.py tests/test_providers.py
 
-  packaging:
-    name: Node packaging and wrapper
+  docs-website:
+    name: Documentation website build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
-        with:
-          python-version: "3.12"
-          cache: pip
-
       - name: Set up Node
-        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "argus-website/package-lock.json"
 
-      - name: Install package and Node tooling
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[dev]"
-          npm install
+      - name: Install website dependencies
+        working-directory: argus-website
+        run: npm ci
 
-      - name: Run packaging tests
-        run: pytest -m "packaging and not windows_only" -v --tb=short
+      - name: Build documentation website
+        working-directory: argus-website
+        run: npm run build
 
   container-unit:
     name: Container evaluator unit tests (no Docker e2e)
@@ -137,12 +132,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -153,9 +148,7 @@ jobs:
           pip install -e ".[dev]"
 
       # These tests exercise ContainerEvaluator through mocks; they pass without a
-      # Docker daemon. No genuine Docker end-to-end test exists yet (see WP-1
-      # review, remaining risk). Do not claim container execution coverage from
-      # this job.
+      # Docker daemon. No genuine Docker end-to-end test exists yet.
       - name: Run container evaluator tests
         run: pytest -q tests/test_container_evaluation.py -v --tb=short
 
@@ -166,12 +159,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip

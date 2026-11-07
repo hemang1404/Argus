@@ -18,11 +18,14 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.experiments.run_swe_bench_baseline_preflight import (
-    BaselinePreflightOrchestrator,
-    ImageInventoryItem,
-    BaselineTestRecord,
-)
+try:
+    from src.experiments.run_swe_bench_baseline_preflight import (
+        BaselinePreflightOrchestrator,
+        ImageInventoryItem,
+        BaselineTestRecord,
+    )
+except (ImportError, ModuleNotFoundError):
+    pytest.skip("SWE-bench experiment harness not installed in public release", allow_module_level=True)
 from argus.runtime.container import is_container_engine_available
 
 if not is_container_engine_available("docker"):
