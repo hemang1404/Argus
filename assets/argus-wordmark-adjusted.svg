@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 90" width="680" height="90">
+  <style>
+    .argus-letter {
+      fill: none;
+      stroke: #e5e7ef;
+      stroke-width: 2.4;
+      stroke-linecap: butt;
+      stroke-linejoin: round;
+    }
+  </style>
+  <g id="argus-wordmark" transform="translate(40, 13)">
+    <!-- A (width 70, height 64) -->
+    <g transform="translate(0, 0)">
+      <path d="M 0 64 V 20 Q 0 0 20 0 H 50 Q 70 0 70 20 V 64" class="argus-letter"/>
+      <path d="M 0 36 H 70" class="argus-letter"/>
+      <path d="M -7 64 H 7 M 63 64 H 77" class="argus-letter"/>
+    </g>
+
+    <!-- R (width 72, height 64) - Wide bowl and elegant diagonal stride -->
+    <g transform="translate(125, 0)">
+      <path d="M 0 64 V 0 H 50 Q 70 0 70 19 Q 70 36 50 36 L 72 64" class="argus-letter"/>
+      <path d="M 0 36 H 50" class="argus-letter"/>
+      <path d="M -7 64 H 7" class="argus-letter"/>
+    </g>
+
+    <!-- G (width 70, height 64) - Wide open circular geometry matching reference -->
+    <g transform="translate(250, 0)">
+      <path d="M 64 0 H 20 Q 0 0 0 20 V 44 Q 0 64 20 64 H 50 Q 70 64 70 44 V 34 H 42" class="argus-letter"/>
+    </g>
+
+    <!-- U (width 68, height 64) - Wide square bowl matching reference 1:1 aspect ratio -->
+    <g transform="translate(375, 0)">
+      <path d="M 0 0 V 40 Q 0 64 24 64 H 44 Q 68 64 68 40 V 0" class="argus-letter"/>
+    </g>
+
+    <!-- S (width 70, height 64) - Wide horizontal curves -->
+    <g transform="translate(495, 0)">
+      <path d="M 70 0 H 20 Q 0 0 0 18 V 19 Q 0 33 18 33 H 52 Q 70 33 70 47 V 48 Q 70 64 50 64 H 0" class="argus-letter"/>
+    </g>
+  </g>
+</svg>
