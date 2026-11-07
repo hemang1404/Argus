@@ -1,0 +1,314 @@
+---
+import Wordmark from './Wordmark.astro';
+import { version } from '../data/nav.mjs';
+---
+
+<section class="hero" aria-labelledby="argus-hero-title">
+  <p class="hero-eyebrow">Local AI-assisted code recovery runtime</p>
+  <h1 class="sr-only" id="argus-hero-title">
+    Argus — test-gated recovery for AI-generated code
+  </h1>
+  <Wordmark class="hero-wordmark" />
+  <p class="hero-tagline">
+    Repairs broken AI-generated patches in an isolated workspace, verifies them
+    against your tests, and hands you a signed candidate to approve.
+  </p>
+
+  <figure class="terminal">
+    <figcaption class="sr-only">
+      The Argus terminal start screen, showing the recovery prompt and policy hints.
+    </figcaption>
+    <div class="term-prompt">
+      <span class="term-chevron" aria-hidden="true">❯</span>
+      <span class="term-cursor" aria-hidden="true"></span>
+      <span class="term-placeholder">Run test command… "pytest tests/test_calculator.py" or "/" for commands</span>
+    </div>
+    <div class="term-meta">
+      <span class="term-group">
+        <span>Recover</span>
+        <span class="term-dot">·</span>
+        <span class="term-tier">argus/auto</span>
+        <span class="term-dot">·</span>
+        <span>$0.03 cap</span>
+      </span>
+      <span class="term-keys">
+        <kbd>tab</kbd> policy
+        <kbd>ctrl+p</kbd> commands
+      </span>
+    </div>
+  </figure>
+
+  <p class="hero-tip">
+    <span class="tip-dot" aria-hidden="true"></span>
+    <strong>Tip</strong>
+    <span>Run <code>/connect</code> to link Cursor, Claude Code, or Aider</span>
+  </p>
+
+  <div class="hero-actions">
+    <a class="btn-primary" href="/getting-started/quick-start/">Get started</a>
+    <a class="btn-ghost" href="/project/architecture/">Read the architecture</a>
+  </div>
+
+  <dl class="hero-spec">
+    <div><dt>Version</dt><dd>v{version}</dd></div>
+    <div><dt>Status</dt><dd>Pre-release</dd></div>
+    <div><dt>Runtime</dt><dd>Python 3.11–3.14</dd></div>
+    <div><dt>License</dt><dd>MIT</dd></div>
+  </dl>
+</section>
+
+<style>
+  .hero {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 4.5rem 1.5rem 0;
+    text-align: center;
+  }
+
+  .hero-eyebrow {
+    margin: 0;
+    font-family: var(--a-mono);
+    font-size: 0.6563rem;
+    letter-spacing: 0.19em;
+    text-transform: uppercase;
+    color: var(--a-text-muted);
+  }
+
+  .hero-wordmark {
+    display: block;
+    width: clamp(250px, 40vw, 430px);
+    height: auto;
+    margin: 1.9rem auto 1.5rem;
+    color: #e9ebf2;
+  }
+
+  .hero-tagline {
+    max-width: 40rem;
+    margin: 0 auto;
+    font-size: 1.0625rem;
+    line-height: 1.62;
+    color: var(--a-text-secondary);
+  }
+
+  .terminal {
+    max-width: 760px;
+    margin: 2.6rem auto 0;
+    border: 1px solid var(--a-border);
+    border-inline-start: 2px solid var(--a-blue-deep);
+    border-radius: 4px;
+    background: var(--a-bg-raised);
+    text-align: start;
+    font-family: var(--a-mono);
+    overflow: hidden;
+  }
+
+  .term-prompt {
+    display: flex;
+    align-items: baseline;
+    gap: 0.55rem;
+    padding: 1rem 1.15rem;
+    border-bottom: 1px solid var(--a-border-subtle);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .term-chevron {
+    color: var(--a-blue);
+    font-size: 0.9rem;
+    line-height: 1;
+  }
+
+  .term-cursor {
+    display: inline-block;
+    width: 7px;
+    height: 14px;
+    transform: translateY(2px);
+    background: var(--a-blue);
+    opacity: 0.85;
+  }
+
+  .term-placeholder {
+    color: var(--a-text-secondary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .term-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    padding: 0.7rem 1.15rem;
+    font-size: 0.72rem;
+    color: var(--a-text-muted);
+  }
+
+  .term-group {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .term-dot {
+    color: #3a3f4d;
+  }
+
+  .term-tier {
+    color: var(--a-blue);
+  }
+
+  .term-keys {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .term-keys kbd {
+    font-family: inherit;
+    font-size: 0.6875rem;
+    color: var(--a-text-secondary);
+    border: 1px solid var(--a-border);
+    border-radius: 3px;
+    padding: 1px 4px;
+    margin-inline-start: 0.35rem;
+  }
+
+  .hero-tip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    margin: 1.4rem 0 0;
+    font-family: var(--a-mono);
+    font-size: 0.75rem;
+    color: var(--a-text-secondary);
+  }
+
+  .tip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--a-orange);
+    margin-inline-end: 0.15rem;
+  }
+
+  .hero-tip strong {
+    color: var(--a-text);
+    font-weight: 500;
+  }
+
+  .hero-tip code {
+    font-family: var(--a-mono);
+    font-size: 0.95em;
+    color: var(--a-blue);
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 2.1rem;
+  }
+
+  .btn-primary,
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 1rem;
+    border-radius: 3px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  }
+
+  .btn-primary {
+    background: var(--a-blue);
+    border: 1px solid var(--a-blue);
+    color: #090a0d;
+  }
+
+  .btn-primary:hover {
+    background: var(--a-blue-bright);
+    border-color: var(--a-blue-bright);
+  }
+
+  .btn-ghost {
+    border: 1px solid var(--a-border-strong);
+    color: var(--a-text);
+    background: transparent;
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--a-blue-deep);
+    background: var(--a-bg-raised);
+  }
+
+  .hero-spec {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem 2rem;
+    margin: 2.6rem 0 0;
+    padding: 1rem 0 0;
+    border-top: 1px solid var(--a-border-subtle);
+    font-family: var(--a-mono);
+    font-size: 0.6563rem;
+    text-align: start;
+  }
+
+  .hero-spec div {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .hero-spec dt {
+    color: var(--a-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .hero-spec dd {
+    margin: 0;
+    color: var(--a-text-secondary);
+  }
+
+  @media (max-width: 40rem) {
+    .hero {
+      padding-top: 3.25rem;
+    }
+
+    .terminal {
+      margin-top: 2rem;
+    }
+
+    .term-prompt {
+      padding: 0.85rem 1rem;
+      font-size: 0.75rem;
+    }
+
+    .term-meta {
+      padding: 0.65rem 1rem;
+    }
+
+    .term-keys {
+      display: none;
+    }
+
+    .hero-spec {
+      display: grid;
+      grid-template-columns: repeat(2, auto);
+      justify-content: center;
+      gap: 0.5rem 1.75rem;
+    }
+  }
+</style>

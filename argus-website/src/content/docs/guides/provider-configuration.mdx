@@ -1,0 +1,138 @@
+---
+title: Provider Configuration
+description: Supported providers, credential precedence, and how to verify connectivity.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Argus never ships with a model. You configure an authorized provider, and every
+recovery uses that explicit configuration.
+
+## Supported presets
+
+| Preset | Default endpoint | Default model | Key |
+| --- | --- | --- | --- |
+| `antigravity` | Host CLI (`host://antigravity-cli`) | `gemini-2.5-flash` | Not required |
+| `ollama` | `http://localhost:11434/v1` | `qwen2.5-coder:7b` | Not required |
+| `lmstudio` | `http://localhost:1234/v1` | `local-model` | Not required |
+| `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | Required |
+| `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` | Required |
+| `gemini` | Google AI Studio OpenAI-compatible endpoint | `gemini-2.5-flash` | Required |
+| `openrouter` | `https://openrouter.ai/api/v1` | `anthropic/claude-3.5-sonnet` | Required |
+| `custom` | `http://localhost:8000/v1` | `custom-model` | Optional |
+
+<Aside type="danger" title="Groq is prohibited">
+Groq is rejected across the runtime, router, CLI, and configuration loaders. The
+CLI exits with an explicit refusal, and `ArgusConfig` raises at construction if
+the provider is `groq`. Do not configure `api.groq.com` or a `gsk_*` key.
+</Aside>
+
+## Add a provider
+
+```bash title="OpenAI"
+argus provider set --preset openai --model gpt-4o-mini
+```
+
+The command prompts for the API key with hidden input and stores it in the
+operating system keyring when available. To keep the key out of argv, omit
+`--api-key`.
+
+```bash title="Local Ollama"
+argus provider set --preset ollama --model qwen2.5-coder:7b
+argus provider test
+```
+
+```bash title="Custom OpenAI-compatible endpoint"
+argus provider set \
+  --name vllm-local \
+  --base-url http://127.0.0.1:8001/v1 \
+  --model qwen2.5-coder-32b
+```
+
+The `custom` preset does not require a key by default. Pass `--api-key` if your
+endpoint authenticates.
+
+## Manage providers
+
+```bash title="Shell"
+argus provider list
+argus provider select ollama
+argus provider test openai
+argus provider delete vllm-local
+```
+
+`provider list` shows configured providers and built-in presets. The active
+provider is marked with `*`. `provider test` performs a live request and reports
+latency or the failure reason.
+
+## Credential precedence
+
+When resolving a key, Argus checks, in order:
+
+1. the operating system keyring entry for the provider;
+2. the provider-specific environment variable;
+3. a workspace `.env` file, but only when explicitly enabled;
+4. the generic `ARGUS_API_KEY` fallback.
+
+Provider-specific variables currently recognized include `OPENAI_API_KEY`,
+`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, and `GOOGLE_API_KEY`. The generic
+`ARGUS_API_KEY` applies to custom providers.
+
+To load a workspace `.env`:
+
+```bash title="Shell"
+export ARGUS_LOAD_DOTENV=1
+# or point at a specific file
+export ARGUS_DOTENV_PATH=/secure/path/argus.env
+```
+
+`.env` loading is opt-in so that running a recovery in an untrusted repository
+does not silently import its secrets.
+
+<Aside type="caution" title="Never commit keys">
+Keep credentials in the keyring, your shell environment, or a git-ignored env
+file. Argus masks keys in diagnostics and scrubs subprocess environments, but it
+cannot protect a secret you commit to the repository.
+</Aside>
+
+## Selecting a provider per run
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py" --provider ollama
+argus run --test "pytest tests/test_calculator.py" --provider auto
+argus run --test "pytest tests/test_calculator.py" --provider antigravity
+```
+
+`auto` is an explicit discovery request: Argus prefers the stored active
+provider, then a detected Antigravity host CLI. It does not infer a provider from
+the presence of an API key. Without an explicit provider, a missing configuration
+is an error, not a silent fallback.
+
+## Reasoning effort
+
+Argus classifies the task and selects a reasoning effort (`low`, `medium`, or
+`high`) when the provider supports it. Override the decision:
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py" --effort high
+argus run --test "pytest tests/test_calculator.py" --no-adaptive
+```
+
+`--no-adaptive` disables classification and uses the configured default.
+
+## Verify
+
+```bash title="Shell"
+argus doctor
+```
+
+A healthy provider section looks like:
+
+```text
+✓ Provider        ollama (qwen2.5-coder:7b)
+✓ Credentials     host/local (key not required)
+✓ Connectivity    12.4ms (qwen2.5-coder:7b)
+```
+
+If connectivity fails, the problem is the endpoint, model name, key, or network
+path — not the recovery engine. See [Troubleshooting](/guides/troubleshooting/).

@@ -1,0 +1,116 @@
+---
+interface Props {
+  /** Include the optional TUI dependency bundle in the displayed command. */
+  tui?: boolean;
+}
+
+const { tui = false } = Astro.props;
+const spec = tui
+  ? 'argus-recovery[tui] @ git+https://github.com/hemang1404/Argus.git'
+  : 'argus-recovery @ git+https://github.com/hemang1404/Argus.git';
+
+const tabs = [
+  { id: 'uv', label: 'uv', command: `uv pip install "${spec}"` },
+  { id: 'pipx', label: 'pipx', command: 'pipx install "git+https://github.com/hemang1404/Argus.git"' },
+  { id: 'pip', label: 'pip', command: `pip install "${spec}"` },
+];
+---
+
+<div class="install-tabs" data-install-tabs>
+  <div class="install-tablist" role="tablist" aria-label="Installation method">
+    {
+      tabs.map((tab, index) => (
+        <button
+          class="install-tab"
+          type="button"
+          role="tab"
+          id={`install-tab-${tab.id}`}
+          aria-selected={index === 0 ? 'true' : 'false'}
+          aria-controls={`install-panel-${tab.id}`}
+          tabindex={index === 0 ? 0 : -1}
+          data-install-tab={tab.id}
+        >
+          {tab.label}
+        </button>
+      ))
+    }
+  </div>
+  {
+    tabs.map((tab, index) => (
+      <div
+        class="install-panel"
+        role="tabpanel"
+        id={`install-panel-${tab.id}`}
+        aria-labelledby={`install-tab-${tab.id}`}
+        hidden={index !== 0}
+        data-install-panel={tab.id}
+      >
+        <code class="install-command">
+          <span class="prompt" aria-hidden="true">$</span>
+          {tab.command}
+        </code>
+        <button class="install-copy" type="button" data-install-copy data-command={tab.command}>
+          Copy
+        </button>
+      </div>
+    ))
+  }
+  <p class="install-note">
+    Installs from the GitHub repository. Argus 0.2.0b1 is not yet published on PyPI.
+  </p>
+  <p class="sr-only" role="status" aria-live="polite" data-install-status></p>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-install-tabs]').forEach((root) => {
+    const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-install-tab]'));
+    const panels = Array.from(root.querySelectorAll<HTMLElement>('[data-install-panel]'));
+    const status = root.querySelector<HTMLElement>('[data-install-status]');
+
+    const select = (id: string, focus = false) => {
+      tabs.forEach((tab) => {
+        const active = tab.dataset.installTab === id;
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        tab.tabIndex = active ? 0 : -1;
+        if (active && focus) tab.focus();
+      });
+      panels.forEach((panel) => {
+        panel.hidden = panel.dataset.installPanel !== id;
+      });
+    };
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => select(tab.dataset.installTab || 'uv'));
+      tab.addEventListener('keydown', (event) => {
+        const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+        if (!keys.includes(event.key)) return;
+        event.preventDefault();
+        let next = index;
+        if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+        if (event.key === 'Home') next = 0;
+        if (event.key === 'End') next = tabs.length - 1;
+        select(tabs[next].dataset.installTab || 'uv', true);
+      });
+    });
+
+    root.querySelectorAll<HTMLButtonElement>('[data-install-copy]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const command = button.dataset.command || '';
+        try {
+          await navigator.clipboard.writeText(command);
+          const original = button.textContent;
+          button.textContent = 'Copied';
+          button.dataset.copied = 'true';
+          if (status) status.textContent = 'Installation command copied to clipboard.';
+          window.setTimeout(() => {
+            button.textContent = original;
+            delete button.dataset.copied;
+          }, 1600);
+        } catch {
+          if (status) status.textContent = 'Copy failed. Select the command and copy it manually.';
+        }
+      });
+    });
+  });
+</script>

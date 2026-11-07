@@ -1,0 +1,121 @@
+---
+title: Research and Benchmarks
+description: The evaluation approach, reported results, and the difference between evidence and guarantees.
+---
+
+Argus is an engineering and experimentation project. This page describes the
+evaluation methodology and separates maintainer-reported observations from
+properties the system actually guarantees.
+
+## What is being evaluated
+
+The research questions are narrow:
+
+1. Can formatting drift in LLM-generated patches be reconciled without applying
+   the wrong edit?
+2. Does full-file syntax validation catch malformed results that fragment-level
+   checks miss?
+3. Can recovery be bounded in turns, time, spend, and output without losing
+   verified candidates?
+4. Do workspace cleanup and process supervision behave correctly under
+   concurrency, timeouts, and output floods?
+
+These are reliability questions, not model-quality questions. Argus does not
+claim to improve a model's coding ability.
+
+## Methodology
+
+The repository keeps its evaluation material in-tree:
+
+| Artifact | Purpose |
+| --- | --- |
+| `tests/` | Offline regression, safety, and lifecycle suites |
+| `data/benchmark_manifest.json` | Benchmark task manifest |
+| `data/candidate_tasks.jsonl` | Candidate task corpus |
+| `data/swe_bench_verified_tasks.jsonl` | SWE-bench-derived task set |
+| `data/full_benchmark.json` | Aggregated benchmark data |
+| `configs/` | Experiment configuration |
+| `results/` | Recorded experiment outputs |
+
+Core quality gates used by contributors:
+
+```bash title="Shell"
+pytest tests/test_runtime_and_workspace_safety.py \
+       tests/test_gateway_security.py \
+       tests/test_wp6_deep_verification.py \
+       tests/test_wp7_deep_verification.py
+
+pytest -v tests/test_patch_adversarial_corpus.py
+pytest -q --ignore=tests/test_real_host_integration.py
+python -m compileall -q argus tests
+```
+
+## Reported results
+
+The following figures are **maintainer-reported for the 0.2.0b1 release** in the
+repository's README and changelog. They were not independently replicated for
+this documentation.
+
+| Observation | Reported figure | Scope |
+| --- | --- | --- |
+| Offline test suite | 471 passing tests | Full offline suite |
+| Expanded core gate | 121 passing tests across three consecutive runs | Safety and lifecycle |
+| Synthetic adversarial corpus | 500 cases, 0 incorrect applications | Patch reconciliation |
+| Output flood resistance | 4 MB bound held under a 1 GB logical stream | Subprocess supervision |
+| POSIX verification | Process groups and PID start-time checked under WSL2 | Cleanup safety |
+
+These support specific claims: the tested code paths behaved as asserted in those
+environments. They do not establish universal correctness, nor do they predict
+success on an arbitrary repository.
+
+## What the numbers do not mean
+
+- **A passing adversarial corpus is not a proof.** It is evidence that a fixed
+  set of cases was handled without incorrect application.
+- **Test passage is test-relative.** A verified candidate satisfies the supplied
+  assertions, not the program's full specification.
+- **Cost figures are provider-dependent.** Token pricing and model behaviour
+  change; recorded costs describe a specific run configuration.
+- **Results are environment-specific.** Python version, OS, provider, and model
+  affect outcomes. Reproduce with the recorded configuration before drawing
+  conclusions.
+
+## Experimental vs. guaranteed
+
+| Claim | Status |
+| --- | --- |
+| Ambiguous patches are refused | Design guarantee, enforced in the matching tier |
+| Applied patches parse as Python | Design guarantee for the supported scope |
+| Candidates require explicit approval | Design guarantee in the apply path |
+| Tier 4 anchor matching improves recovery | Experimental, disabled by default |
+| Container isolation is secure | Not claimed; optional, not independently audited here |
+| Multi-language recovery works | Not implemented; roadmap |
+
+## Reproducibility
+
+To reproduce a result:
+
+1. Check out the release commit (`0.2.0b1` for the reported figures).
+2. Install with the `dev` and `research` extras.
+3. Use a pinned model identifier and provider endpoint.
+4. Record temperature, attempt ceiling, timeouts, and budget.
+5. Keep `.argus/` artifacts for each run; they contain the scrubbed prompt,
+   response, parsed patch, and metadata.
+6. Run the offline suite before and after the experiment to confirm the baseline.
+
+Argus defaults to `temperature=0.0`, a three-turn ceiling, and a 30-second test
+timeout, which makes comparisons across runs less sensitive to sampling, though
+providers can still produce different outputs.
+
+## Roadmap
+
+Research directions that are not current capabilities:
+
+- syntax validation for TypeScript, JavaScript, Rust, and Go via Tree-sitter;
+- transactional multi-file patches;
+- microVM isolation (Firecracker, gVisor, Cloud Hypervisor);
+- static-analysis diagnostics during candidate validation;
+- broader, externally replicated adversarial evaluation.
+
+Do not cite the roadmap as implemented behaviour. The
+[changelog](/project/changelog/) is the record of what shipped.

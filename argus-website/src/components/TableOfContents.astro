@@ -1,0 +1,57 @@
+---
+import TocList from './TocList.astro';
+
+const { toc } = Astro.locals.starlightRoute;
+---
+
+{
+  toc && (
+    <nav class="argus-toc" aria-labelledby="argus-on-this-page">
+      <h2 id="argus-on-this-page">On this page</h2>
+      {toc.items.length > 0 ? (
+        <TocList items={toc.items} />
+      ) : (
+        <p class="toc-empty">This page has no subsections.</p>
+      )}
+    </nav>
+  )
+}
+
+<script>
+  const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('.argus-toc a[href^="#"]'));
+  if (links.length) {
+    const targets = links
+      .map((link) => {
+        const id = decodeURIComponent(link.hash.slice(1));
+        return { link, heading: document.getElementById(id) };
+      })
+      .filter((entry): entry is { link: HTMLAnchorElement; heading: HTMLElement } => Boolean(entry.heading));
+
+    let frame = 0;
+
+    const update = () => {
+      frame = 0;
+      if (!targets.length) return;
+      const offset = 104;
+      let active = targets[0];
+      for (const entry of targets) {
+        if (entry.heading.getBoundingClientRect().top - offset <= 0) active = entry;
+        else break;
+      }
+      const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 4;
+      if (atBottom) active = targets[targets.length - 1];
+      for (const entry of targets) {
+        if (entry === active) entry.link.setAttribute('aria-current', 'location');
+        else entry.link.removeAttribute('aria-current');
+      }
+    };
+
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    update();
+  }
+</script>

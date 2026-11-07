@@ -1,0 +1,135 @@
+---
+title: How Argus Works
+description: The subsystems, the data flow, and the invariants that keep recovery bounded and reviewable.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Argus is a pipeline with a hard stop at the end. Understanding the pieces makes
+the failure modes legible.
+
+## Subsystems
+
+| Component | Responsibility | Module |
+| --- | --- | --- |
+| Recovery controller | Owns the bounded loop, attempt history, and outcome | `argus/runtime/controller.py` |
+| Workspace manager | Creates and cleans ephemeral copies and Git worktrees | `argus/runtime/workspace.py` |
+| Test runner | Executes the reproduction command under strict limits | `argus/runtime/runner.py` |
+| Patch parser | Extracts search/replace blocks or unified diff hunks | `argus/patch/parser.py` |
+| Patch engine | Reconciles a block through tiers 1–5, then validates syntax | `argus/patch/fuzzy_engine.py` |
+| AST checker | Parses the complete patched file before acceptance | `argus/patch/ast_checker.py` |
+| Provider adapters | Generate the patch through an authorized model endpoint | `argus/providers/` |
+| Candidate store | Persists artifacts and approval state | `argus/runtime/candidate.py` |
+| Authoritative applier | Re-verifies integrity and writes atomically | `argus/runtime/candidate.py` |
+| Localizer | Maps traceback frames to a target file | `argus/localization/` |
+
+The same controller is used by the CLI, the TUI, the MCP server, and direct
+Python calls. Those surfaces are adapters, not alternative implementations.
+
+## Data flow
+
+```text title="Recovery data flow"
+your repository
+      │
+      │  copy / worktree
+      ▼
+ephemeral workspace ──► test command ──► failure + traceback
+                                              │
+                                              ▼
+                                   target file + failure context
+                                              │
+                                              ▼
+                                     provider adapter
+                                              │
+                                       proposed patch
+                                              │
+                                              ▼
+                     parser ──► tier ladder ──► AST gate
+                                              │
+                                        applied content
+                                              │
+                                              ▼
+                             test command rerun in workspace
+                                              │
+                                   pass ──────┴────── fail
+                                     │                 │
+                                     ▼                 ▼
+                            candidate artifact   next attempt
+                                     │           (max 3 turns)
+                                     ▼
+                          human review + approval
+                                     │
+                                     ▼
+                        atomic write to your file
+```
+
+## Bounded computation
+
+Every stage has a ceiling. These defaults come from `ArgusConfig`:
+
+| Bound | Default | Where it applies |
+| --- | --- | --- |
+| Recovery attempts | 3 | `max_attempts`; the CLI clamps values above 3 |
+| Test timeout | 30 s | `test_timeout_seconds` |
+| Repository test timeout | 180 s | `repo_test_timeout_seconds` |
+| Provider request timeout | 45 s | `provider_timeout_seconds` |
+| Task deadline | 300 s | `task_deadline_seconds` |
+| Captured output | 4 MB | `BoundedOutputCollector` |
+| Inference budget | $0.030 | `budget_limit_usd`; CLI default is `$0.05` |
+| Completion tokens | 2500 | `max_tokens` |
+
+Timeouts terminate the whole process tree — `taskkill /F /T` on Windows,
+`os.killpg` on POSIX — not just the parent process.
+
+## Reconciliation is not generation
+
+The model proposes a change. Argus decides whether that change can be located
+unambiguously in the current file and whether the result is syntactically valid.
+This separation is why a bad generation fails closed rather than corrupting a
+neighbouring function.
+
+The ladder is progressive:
+
+1. **Exact.** The search block occurs verbatim.
+2. **Normalized.** Leading indentation and trailing whitespace are normalized.
+3. **Fuzzy.** Character-level sliding-window similarity, with a best-versus-runner-up
+   margin.
+4. **Anchored.** Prefix and suffix anchors, only when explicitly enabled.
+5. **Refusal.** No modification.
+
+Every accepted result in tiers 1–4 must pass a full-file `ast.parse` before it is
+used. See [Patch reconciliation](/core-concepts/patch-reconciliation/) for the
+thresholds and refusal rules.
+
+## Verification is not approval
+
+A passing test proves that the candidate satisfies the test command you supplied.
+It does not prove the change is correct in a broader sense, and it does not
+authorize writing to your repository. Argus keeps those decisions separate:
+
+- **Verification** is automatic and test-gated.
+- **Approval** is an explicit human action recorded in metadata.
+- **Application** re-checks hashes, syntax, path containment, and approval
+  immediately before an atomic write.
+
+The MCP surface exposes recovery and inspection to agents, but approval remains a
+CLI action. See [Validation and approval](/core-concepts/validation-and-approval/).
+
+## Invariants
+
+These properties hold across the recovery loop:
+
+1. **Working-tree invariance.** Iterative attempts run outside the live tree.
+2. **Fail closed.** If requested isolation or authentication is unavailable,
+   execution stops instead of falling back to a weaker path.
+3. **Bounded work.** Turns, time, output, and spend all have ceilings.
+4. **Provenance.** A candidate records what file, test, model, attempts, and
+   hashes produced it.
+5. **No silent apply.** There is no code path that applies an unapproved
+   candidate during `argus run`.
+
+<Aside type="caution" title="Scope today">
+Reconciliation and AST verification are implemented for Python source files and
+single-file patches. Multi-file patch sets are rejected. Non-Python recovery is a
+roadmap item, not a current capability.
+</Aside>

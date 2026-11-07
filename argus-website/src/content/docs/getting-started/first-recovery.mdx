@@ -1,0 +1,132 @@
+---
+title: First Recovery
+description: A concrete recovery walkthrough, from a failing assertion to an applied patch.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page follows one recovery in detail and explains what each surface is doing.
+It is deliberately narrow: one Python file, one failing test, one candidate.
+
+## The starting point
+
+Assume a project with a failing test:
+
+```text title="tests/test_calculator.py"
+from calculator import add
+
+
+def test_adds_positive_integers():
+    assert add(2, 3) == 5
+```
+
+The test fails because `add` returns the difference:
+
+```python title="src/calculator.py"
+def add(a: int, b: int) -> int:
+    return a - b
+```
+
+The working tree is dirty with unrelated local changes. You do not want a tool
+writing into it.
+
+## Run the recovery
+
+```bash title="Shell"
+argus run \
+  --test "pytest tests/test_calculator.py" \
+  --file src/calculator.py \
+  --budget 0.03
+```
+
+What happens next:
+
+1. **Workspace creation.** Argus copies the project into a temporary directory,
+   excluding `.git`, virtual environments, `node_modules`, caches, build output,
+   and `.argus/`. Heavy data directories are excluded by name.
+2. **Reproduction.** It tokenizes the test command and executes it directly with
+   `shell=False`. The test fails; the exit code becomes the recovery trigger.
+3. **Localization.** With `--file` supplied, the target is already known.
+   Without it, Argus reads traceback frames and picks the project source file
+   involved in the failure.
+4. **Inference.** The configured provider receives the failure context and
+   returns a search/replace block. Temperature defaults to `0.0`.
+5. **Reconciliation.** The engine tries the tiers in order. Suppose the model
+   emitted the correct replacement but indented it with four spaces inside a
+   function body that uses eight: Tier 1 fails, Tier 2 normalizes indentation,
+   and the patch is accepted. The result must parse as Python.
+6. **Verification.** The patch is applied inside the workspace and the test
+   command runs again. This time it passes.
+7. **Artifact.** Argus records the baseline hash, candidate hash, diff, test
+   command, attempt count, cost, and duration.
+
+The CLI prints the candidate ID and a diff. The source file on disk — the one in
+your project — is still the original.
+
+## Inspect before deciding
+
+```bash title="Shell"
+argus candidates
+argus inspect run_20261106_142530_9f3a1c2d
+```
+
+The listing shows three independent states:
+
+| Column | Meaning |
+| --- | --- |
+| Status | The candidate passed its reproduction test |
+| Approval | A human has approved this candidate |
+| Applied | The patch has been written to the working tree |
+
+A candidate can be `PASS`, `PENDING`, `NO` and still be perfectly verified.
+Approval is not inferred from verification.
+
+## Approve
+
+```bash title="Shell"
+argus approve run_20261106_142530_9f3a1c2d
+```
+
+Argus prints the proposed diff and asks for confirmation. If you are reviewing
+non-interactively, `--yes` records the approval as automation rather than human
+review; `--force` allows approving an unverified candidate, which should be rare.
+
+## Apply
+
+```bash title="Shell"
+argus apply --run-id run_20261106_142530_9f3a1c2d
+```
+
+Immediately before writing, Argus recomputes the SHA-256 of the target file and
+compares it with the baseline captured at recovery time. If you edited the file
+after the run, it refuses with `STALE_TARGET_CONFLICT`. That refusal is the
+feature: a verified candidate is only valid against the file it was verified
+against.
+
+The write itself is atomic and preserves the existing file permissions where
+possible. A successful apply prints `[APPLIED]` and the target path.
+
+## What you have now
+
+- The working tree contains exactly one applied change.
+- `.argus/runs/<run_id>/` retains the metadata, diff, and candidate content for
+  audit.
+- The candidate is marked applied; it will not be applied again silently.
+
+If the change is wrong, revert it with your normal version-control workflow.
+Argus does not keep a backup of the original file after application; the
+baseline hash in the artifact identifies what was replaced, and the pre-change
+content is recoverable from Git if the file was tracked.
+
+<Aside type="note" title="Nothing was committed">
+Argus writes files. It does not create commits, branches, or pushes. The Git
+worktree remains yours to manage.
+</Aside>
+
+## When there is no candidate
+
+If all attempts fail, no candidate is written for an unverified patch. The CLI
+exits non-zero with a status such as `FAILED_MAX_ATTEMPTS` or
+`LOCALIZATION_FAILED`. Read [Recovery lifecycle](/core-concepts/recovery-lifecycle/)
+for what each status means, then try a larger budget, a different provider, or a
+more explicit `--file` and `--test` command.

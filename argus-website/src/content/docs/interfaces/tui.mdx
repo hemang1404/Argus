@@ -1,0 +1,138 @@
+---
+title: TUI
+description: The terminal cockpit, its screens, and the keyboard interactions implemented in the current release.
+---
+
+Argus ships an optional terminal interface for watching and steering a recovery.
+It is built with Textual and requires the `tui` extra.
+
+```bash title="Shell"
+pip install -e ".[tui]"
+argus tui
+```
+
+## Why use it
+
+The CLI is good for a single unambiguous run. The TUI is useful when you want to:
+
+- watch each attempt and its failure summary as it happens;
+- switch policy (budget, attempts, tier) before running;
+- review a diff and approve it without retyping a run ID;
+- keep session cost and attempt counts visible.
+
+## Screens
+
+| Screen | Purpose |
+| --- | --- |
+| Startup | Enter the test command, open policy, open the command palette |
+| Recovery | Show the workflow while attempts are prepared |
+| Execution | Live attempt timeline, cost, and failure output |
+| Diff review | Inspect the candidate diff and decide |
+
+The startup screen accepts a test command in the prompt. The placeholder text is:
+
+```text
+Run test command... "pytest tests/test_calculator.py" or "/" for commands...
+```
+
+## Keys
+
+Global bindings:
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+P` | Open command palette |
+| `Ctrl+K` | Open command palette |
+| `?` | Help |
+| `Ctrl+C` | Exit |
+
+Startup screen:
+
+| Key | Action |
+| --- | --- |
+| `Enter` | Submit the test command |
+| `Tab` | Open policy |
+| `q` | Quit |
+| `/` | Start a palette command in the prompt |
+
+Diff review:
+
+| Key | Action |
+| --- | --- |
+| `a` or `Enter` | Approve and apply |
+| `d` | Discard |
+| `Esc` | Back |
+
+Execution:
+
+| Key | Action |
+| --- | --- |
+| `z` | Toggle diff pane zoom |
+| `d` | Open diff review |
+| `Esc` | Back / cancel |
+| `Ctrl+C` | Cancel execution |
+
+Approval from the diff screen is a real approval: it writes the approval record
+and then applies the patch through the same authoritative applier used by the
+CLI. It is not a shortcut around the integrity checks.
+
+## Command palette
+
+The palette exposes commands with aliases. Relevant entries include `/connect`,
+which auto-detects local editors and agents such as Cursor, Claude Code, and
+Aider, and maps to the same discovery used by `argus setup`.
+
+Palette entries can also configure providers and policy, open diagnostics, and
+show usage. Commands are filtered as you type; `Esc` cancels.
+
+Policy editing uses:
+
+| Key | Action |
+| --- | --- |
+| `1` / `2` / `3` | Select recovery tier |
+| `a` | Select automatic tier |
+| `Enter` | Apply policy |
+| `Esc` | Cancel |
+
+Policy changes are persisted to `policy.json` in the Argus configuration
+directory and apply to subsequent TUI sessions.
+
+## Logo rendering
+
+The TUI renders the Argus wordmark using the best available terminal strategy.
+Force one explicitly:
+
+```bash title="Shell"
+argus tui --renderer braille
+argus tui --renderer halfblock
+argus tui --renderer sixel
+argus tui --renderer kitty
+argus tui --renderer text
+```
+
+`auto` is the default. The text renderer is the fallback for terminals without
+graphics support. Preview the renderers without opening the full interface:
+
+```bash title="Shell"
+argus logo-preview --mode all
+```
+
+## Dedicated window
+
+On Windows, Argus can launch a dedicated terminal window and install a desktop
+shortcut:
+
+```powershell title="PowerShell"
+argus app --workspace C:\path\to\project
+argus app --install-shortcut
+```
+
+`argus app` requires the `tui` extra, like `argus tui`.
+
+## Limits
+
+The TUI is an interface, not a separate recovery engine. It uses the same
+controller, bounds, provider configuration, and candidate store. If a run fails
+in the CLI, it will fail the same way here. Session usage shown in the interface
+is session-local; the durable record is the candidate metadata and the artifact
+directory.

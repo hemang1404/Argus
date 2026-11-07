@@ -1,0 +1,135 @@
+---
+title: Patch Reconciliation
+description: The five matching tiers, their thresholds, and why ambiguity results in refusal.
+---
+
+Patch reconciliation answers one question: given a proposed search block, where —
+if anywhere — does it belong in the current file? Argus escalates through five
+tiers and accepts a result only when it is unambiguous and syntactically valid.
+
+## The patch format
+
+Argus accepts search/replace blocks with three or more marker characters:
+
+```text title="Search/replace block"
+<<<<<<< SEARCH src/calculator.py
+def add(a, b):
+    return a - b
+=======
+def add(a, b):
+    return a + b
+>>>>>>> REPLACE
+```
+
+It also accepts unified diff hunks and converts each hunk into a search/replace
+pair. Multiple blocks may be parsed from one response, but the runtime applies a
+**single-file** patch; a multi-file patch set is refused rather than partially
+applied.
+
+## The ladder
+
+| Tier | Strategy | Accepts when | Default |
+| --- | --- | --- | --- |
+| 1 | Exact match | The search text occurs byte-for-byte | Active |
+| 2 | Whitespace normalization | Indentation and trailing whitespace differ, semantics align | Active |
+| 3 | Fuzzy sliding window | Character similarity ≥ 0.82 and the best match beats the runner-up by ≥ 0.10 | Active |
+| 4 | Anchor matching | Prefix/suffix anchors agree and the span similarity ≥ 0.85 | Disabled |
+| 5 | Safe refusal | No unambiguous match exists | Terminal |
+
+### Tier 1 — Exact matching
+
+The search block is compared verbatim against the normalized source. This is the
+safest and most common success case: the model reproduced the file accurately.
+
+### Tier 2 — Whitespace and indentation normalization
+
+Tier 2 reconciles leading indentation and trailing line whitespace. It preserves
+the semantic structure of the code: it does not collapse internal spacing inside
+expressions, and it does not reorder lines. A block that matches only after
+indentation normalization is accepted, then still has to pass the AST gate.
+
+This tier exists because indentation drift is the single most common reason a
+correct LLM edit is discarded by conventional patch tools.
+
+### Tier 3 — Fuzzy sliding-window matching
+
+Tier 3 slides a window across the source and computes character-level similarity.
+A match is accepted only if:
+
+- the best ratio is at least `0.82` (configurable in `ArgusConfig` as
+  `similarity_threshold`);
+- the best match exceeds the second-best by at least `0.10`
+  (`ambiguity_margin`).
+
+The margin is the important part. Two similarly good locations mean Argus cannot
+tell which function the model meant, so it refuses instead of choosing. An
+additional interior-similarity guard prevents a strong outer match from
+replacing a region whose middle has drifted below a safety floor.
+
+### Tier 4 — Anchor-based matching
+
+Tier 4 uses unchanged code before and after the drifted interior as anchors. It
+is implemented but **disabled by default** because its positive coverage is
+narrow and its failure modes need independent review. Enable it explicitly:
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py" --enable-tier4
+```
+
+The flag is also available as `--allow-tier4`. Even when enabled, acceptance
+requires the AST gate and the anchor similarity threshold.
+
+### Tier 5 — Safe refusal
+
+Tier 5 is not an algorithm. It is the outcome when no active tier produces a
+unique, valid result. The file is left unchanged and the attempt is recorded as a
+failure. The run may try again with new context; it will never apply a
+lower-confidence match just to make progress.
+
+## Syntax validation
+
+Every successful match is written into the full file and parsed with
+`ast.parse` before it can be used. The check is on the complete file, not only
+the replaced fragment, so an edit that closes a bracket in the wrong place is
+caught even if the fragment itself looks plausible.
+
+The gate is currently Python-only. Non-Python files are outside the supported
+scope for recovery, and a patch to them is not verified by this mechanism.
+
+## Why fuzzy matching is not "best effort"
+
+A permissive patcher can always produce a result; that is the failure mode Argus
+is built to avoid. The tier ladder is deliberately biased toward refusal:
+
+- exact before normalized;
+- normalized before fuzzy;
+- fuzzy only with a clear winner;
+- anchors only with an explicit opt-in;
+- never more than one file;
+- never without a syntax check.
+
+If a candidate is refused, the correct response is to improve the context or the
+model output — not to lower the thresholds until something applies.
+
+## Where the thresholds live
+
+`ResilientPatchEngine` is constructed with `similarity_threshold` (default
+`0.82`), `ambiguity_margin` (default `0.10`), and `enable_tier4` (default
+`false`). `ArgusConfig` exposes the first two as fields. The CLI exposes Tier 4
+through `--enable-tier4`; the tier thresholds are not currently read from
+`argus.yaml`, so do not expect a YAML value to change them.
+
+Programmatic callers can construct the engine directly:
+
+```python title="Using the engine"
+from argus.patch.fuzzy_engine import ResilientPatchEngine
+from argus.patch.parser import PatchBlock
+
+engine = ResilientPatchEngine(similarity_threshold=0.82, ambiguity_margin=0.10)
+blocks = PatchBlock(search_text="return a - b", replace_text="return a + b")
+result = engine.apply_patch("src/calculator.py", blocks)
+print(result.success, result.tier_used, result.message)
+```
+
+See the [Python API](/interfaces/python-api/) page for the larger recovery
+interface.

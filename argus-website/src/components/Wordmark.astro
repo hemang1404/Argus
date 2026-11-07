@@ -1,0 +1,55 @@
+---
+/**
+ * The Argus wordmark, rebuilt as stroke-based vector letterforms.
+ * Geometry follows the reference: 66-unit cap height, thin monoline strokes,
+ * generous tracking, and baseline ticks on the A and R.
+ *
+ * This component inlines the SVG so it can inherit `currentColor`; the same
+ * artwork is stored as a static asset in src/assets/argus-wordmark.svg.
+ */
+interface Props {
+  class?: string;
+  title?: string;
+}
+
+const { class: className, title = 'Argus' } = Astro.props;
+---
+
+<svg
+  class={className}
+  viewBox="0 0 608 90"
+  role="img"
+  aria-label={title}
+  xmlns="http://www.w3.org/2000/svg"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2.8"
+  stroke-linecap="butt"
+  stroke-linejoin="round"
+>
+  <g transform="translate(12, 12)">
+    <!-- A -->
+    <path d="M0 66V22Q0 0 22 0H50Q72 0 72 22V66" />
+    <path d="M0 38H72" />
+    <path d="M-7 66H7" />
+    <path d="M65 66H79" />
+    <!-- R -->
+    <g transform="translate(128, 0)">
+      <path d="M0 66V0H50Q72 0 72 20Q72 38 50 38H0" />
+      <path d="M44 38L72 66" />
+      <path d="M-7 66H7" />
+    </g>
+    <!-- G -->
+    <g transform="translate(256, 0)">
+      <path d="M72 0H22Q0 0 0 22V44Q0 66 22 66H50Q72 66 72 44V36H44" />
+    </g>
+    <!-- U -->
+    <g transform="translate(384, 0)">
+      <path d="M0 0V40Q0 66 24 66H48Q72 66 72 40V0" />
+    </g>
+    <!-- S -->
+    <g transform="translate(512, 0)">
+      <path d="M72 0H22Q0 0 0 18Q0 34 22 34H50Q72 34 72 50Q72 66 50 66H0" />
+    </g>
+  </g>
+</svg>

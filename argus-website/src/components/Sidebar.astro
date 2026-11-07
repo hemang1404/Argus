@@ -1,0 +1,74 @@
+---
+import { navGroups, topNav, normalizePath, repoUrl, version } from '../data/nav.mjs';
+
+const path = normalizePath(Astro.url.pathname);
+const isCurrent = (href) => normalizePath(href) === path;
+const repoLabel = repoUrl.replace('https://github.com/', '');
+---
+
+<nav class="argus-sidebar" aria-label="Documentation">
+  <div class="sb-mobile-nav">
+    <p class="sb-label">Sections</p>
+    <ul>
+      {topNav.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+      <li><a href={repoUrl}>GitHub</a></li>
+    </ul>
+  </div>
+
+  {
+    navGroups.map((group) => (
+      <details class="sb-group" open data-group={group.label}>
+        <summary>
+          <span>{group.label}</span>
+          <svg class="sb-chevron" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2">
+            <path d="m2 3.5 3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </summary>
+        <ul>
+          {group.items.map((item) => (
+            <li>
+              <a href={item.href} aria-current={isCurrent(item.href) ? 'page' : undefined}>
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </details>
+    ))
+  }
+
+  <div class="sb-foot">
+    <span>v{version}</span>
+    <a href={repoUrl} target="_blank" rel="noreferrer noopener">{repoLabel}</a>
+  </div>
+</nav>
+
+<script>
+  // Preserve collapsed groups between navigations without hiding the group
+  // that contains the current page.
+  const KEY = 'argus:sidebar:closed';
+  const groups = Array.from(document.querySelectorAll<HTMLDetailsElement>('.sb-group'));
+  if (groups.length) {
+    let closed: string[] = [];
+    try {
+      closed = JSON.parse(sessionStorage.getItem(KEY) || '[]');
+    } catch {
+      closed = [];
+    }
+
+    for (const group of groups) {
+      const hasCurrent = Boolean(group.querySelector('[aria-current="page"]'));
+      if (closed.includes(group.dataset.group || '') && !hasCurrent) {
+        group.open = false;
+      }
+      group.addEventListener('toggle', () => {
+        const next = groups.filter((g) => !g.open).map((g) => g.dataset.group || '');
+        try {
+          sessionStorage.setItem(KEY, JSON.stringify(next));
+        } catch {
+          /* storage can be unavailable in private contexts */
+        }
+      });
+    }
+  }
+</script>

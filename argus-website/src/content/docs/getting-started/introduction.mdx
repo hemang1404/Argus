@@ -1,0 +1,126 @@
+---
+title: Introduction
+description: What Argus is, the failure modes it addresses, and where it sits in an AI coding workflow.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Argus is a local, test-gated code recovery runtime for patches produced by large
+language models and coding agents. It runs beneath your editor, terminal, and
+agent workflow: it takes a failing test, recovers a candidate patch inside a
+disposable copy of the repository, verifies that patch against the same test,
+and writes a signed artifact that you can inspect before anything reaches your
+working tree.
+
+It is a recovery substrate, not a model. Argus does not generate code from a
+blank page and does not decide what your program should do. It reconciles an
+edit that already exists, proves it against executable tests, and stops.
+
+## The problem
+
+AI coding tools are useful precisely when they are allowed to modify a
+repository. That is also when they are most dangerous. Four failure modes recur:
+
+- **Search-block mismatch.** A model emits a replacement for a function but
+  changes leading indentation or trailing whitespace. `git apply` and `diff`
+  reject the entire edit, discarding a generation that was otherwise correct.
+- **Ambiguous replacement.** The search block matches a helper in three places.
+  A permissive patcher modifies the wrong one, and the failure surfaces much
+  later.
+- **Working-tree contamination.** An agent writes directly into the live
+  repository. If the edit is wrong, uncommitted work is mixed with generated
+  changes and cleanup becomes manual.
+- **Unbounded retries.** The edit fails, so the agent asks the model again, with
+  no turn ceiling, timeout, or spend limit. Failures become expensive.
+
+Argus treats each of these as an engineering constraint rather than a prompt
+problem.
+
+| Failure | Argus response |
+| --- | --- |
+| Formatting drift in a search block | Tiered reconciliation with syntax validation |
+| Multiple plausible match sites | Ambiguity margin check and safe refusal |
+| Live tree mutation | Ephemeral workspace copy or detached worktree |
+| Runaway recovery | Hard turn, timeout, output, and budget bounds |
+
+## What it does
+
+A recovery run has a fixed shape:
+
+1. Copy the project into a temporary workspace, excluding caches, virtual
+   environments, and other heavy directories.
+2. Execute your reproduction command with `shell=False`, a timeout, and a
+   bounded output buffer.
+3. Parse the failure and identify the target Python file when you did not name
+   one.
+4. Ask the configured provider for a search/replace patch.
+5. Reconcile that patch through the matching tiers, rejecting ambiguity and
+   anything that does not parse as Python.
+6. Apply it inside the workspace and rerun the test command.
+7. If the test passes, write a candidate artifact with SHA-256 digests into
+   `.argus/runs/<run_id>/`.
+8. Wait. The working tree changes only after explicit approval and
+   `argus apply`.
+
+## Where it fits
+
+Argus is useful at the point where an agent's edit has failed but its intent is
+still recoverable:
+
+```text
+coding agent ──► patch fails to apply, or tests fail
+                        │
+                        ▼
+                 argus run / argus_recover
+                        │
+              isolated workspace + provider
+                        │
+                        ▼
+              verified candidate artifact
+                        │
+             human review + approval
+                        │
+                        ▼
+            atomic apply to the working tree
+```
+
+The same runtime is exposed through four interfaces:
+
+- **CLI** — `argus run`, `argus candidates`, `argus approve`, `argus apply`.
+- **TUI** — a keyboard-driven terminal cockpit with a command palette, recovery
+  timeline, and diff review.
+- **MCP server** — four tools for compatible agents, with approval deliberately
+  left outside the model's reach.
+- **Python API** — `RecoveryController` and the candidate store, for scripted
+  evaluation and integration.
+
+## What Argus is not
+
+Argus is intentionally narrow. It is not:
+
+- an AI model or an inference provider;
+- an autonomous coding agent that decides which files to change;
+- a conversational interface;
+- a cloud service;
+- a security sandbox for arbitrary untrusted code.
+
+Two boundaries deserve emphasis. Patch reconciliation currently targets
+**single-file Python changes**, and successful application requires that the
+result parses as Python. Host subprocess execution runs with **your user
+privileges**; the ephemeral workspace prevents repository contamination, not
+process-level compromise. Both are covered in the [security model](/project/security-model/).
+
+## Project status
+
+Argus is pre-release. The current package version is `0.2.0b1` and it is not yet
+published on PyPI; installation is from the GitHub repository. Interfaces may
+change before a stable release. The [changelog](/project/changelog/) records the
+release history and the [research page](/project/research/) separates reported
+experimental results from guarantees.
+
+<Aside type="note" title="Distribution name">
+The Python distribution is `argus-recovery`. The installed command is `argus`.
+</Aside>
+
+Start with [Installation](/getting-started/installation/) and the
+[Quick Start](/getting-started/quick-start/).

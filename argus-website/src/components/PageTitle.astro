@@ -1,0 +1,19 @@
+---
+import { groupForHref, normalizePath } from '../data/nav.mjs';
+
+const { entry } = Astro.locals.starlightRoute;
+const path = normalizePath(Astro.url.pathname);
+const group = groupForHref(path);
+const description = entry.data.description;
+---
+
+{group && (
+  <div class="doc-eyebrow">
+    <a href="/getting-started/introduction/">Documentation</a>
+    <span class="sep">/</span>
+    <span>{group.label}</span>
+  </div>
+)}
+
+<h1 class="page-title" id="_top">{entry.data.title}</h1>
+{description && <p class="page-lede">{description}</p>}

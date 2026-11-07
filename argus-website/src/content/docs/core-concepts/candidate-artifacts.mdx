@@ -1,0 +1,120 @@
+---
+title: Candidate Artifacts
+description: What Argus persists for each recovery run, how integrity is recorded, and how to audit a candidate.
+---
+
+A candidate is the unit of review in Argus. It is a verified patch plus the
+evidence needed to decide whether applying it is safe.
+
+## Location
+
+Artifacts are written inside the project that was recovered:
+
+```text title="Artifact layout"
+<project>/
+└── .argus/
+    ├── last_run_id
+    ├── last_run.diff
+    └── runs/
+        └── run_20261106_142530_9f3a1c2d/
+            ├── metadata.json
+            ├── candidate.patched
+            ├── patch.diff
+            ├── prompt.txt
+            ├── raw_response.txt
+            └── context_window.json
+```
+
+`.argus/` is ignored by the repository's `.gitignore`. Keep it out of version
+control: forensic files can contain source context, even after secret scrubbing.
+
+## Files
+
+| File | Contents |
+| --- | --- |
+| `metadata.json` | Run identity, target, test command, hashes, status, verification, approval and application state |
+| `candidate.patched` | The complete patched source file as verified |
+| `patch.diff` | The unified diff shown during review |
+| `prompt.txt` | The scrubbed prompt sent to the provider |
+| `raw_response.txt` | The scrubbed raw model response |
+| `unapplied_patch.txt` | A parsed patch that produced no unified diff |
+| `context_window.json` | Scrubbed context supplied to the model |
+
+Not every run produces every file. A failed attempt may leave diagnostic files
+without a candidate. `last_run_id` points at the most recent run; `last_run.diff`
+is the CLI's convenience copy of the most recent diff.
+
+## Integrity fields
+
+The metadata records two SHA-256 digests:
+
+- **`baseline_hash`** — the digest of the target file before modification.
+- **`candidate_hash`** — the digest of the verified patched content.
+
+Both are computed over UTF-8 encoded text. Application compares the live file
+against `baseline_hash` and the stored candidate against `candidate_hash` before
+writing. A mismatch is a refusal, not a warning.
+
+The metadata also carries the run ID, target path, test command, status,
+verification flag, tier used, attempt count, cost, duration, creation time, and
+approval/application records. The candidate ID format is:
+
+```text title="Run ID"
+run_<UTC timestamp YYYYMMDD_HHMMSS>_<8 hex characters>
+```
+
+Treat the run ID as opaque. Use it verbatim with `inspect`, `approve`, and
+`apply`.
+
+## Approval and application state
+
+These are separate from verification:
+
+| Field | Meaning |
+| --- | --- |
+| `verified` | The reproduction test passed for the candidate content |
+| `approved` | A reviewer accepted this candidate |
+| `approved_at` | When approval was recorded |
+| `approved_by` | `interactive:cli`, `automation:--yes`, or an explicit value |
+| `approval_source` | The surface that recorded approval |
+| `applied` | The candidate has been written to the working tree |
+| `applied_at` | When application succeeded |
+
+An unverified candidate cannot be applied, even if approved. An approved
+candidate whose baseline no longer matches cannot be applied, even if its own
+hash is intact.
+
+## Secret handling
+
+Provider credentials are never intentionally written to artifacts. Prompts,
+model responses, and context windows pass through `scrub_secrets` before
+persistence. Environment scrubbing also applies when launching subprocesses.
+Scrubbing is a safety net, not a guarantee that arbitrary user content contains
+no sensitive data: avoid putting secrets in test fixtures or source files you ask
+Argus to process.
+
+## Reading a candidate without the CLI
+
+The artifacts are plain JSON and text, so they can be inspected with standard
+tools:
+
+```bash title="Shell"
+cat .argus/runs/<run_id>/metadata.json
+sed -n '1,120p' .argus/runs/<run_id>/patch.diff
+```
+
+The CLI and MCP surfaces are thin readers over the same store:
+
+```bash title="Shell"
+argus inspect <run_id>
+argus diff <run_id>
+```
+
+`argus_get_candidate` returns the metadata and diff as JSON for an agent.
+
+## Retention
+
+Argus does not garbage-collect run history. Artifacts remain until you remove the
+`.argus` directory or individual run folders. That makes audits possible, but it
+also means disk use grows with experimentation. Archive or delete old runs
+deliberately; do not assume a background process will do it.

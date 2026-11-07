@@ -1,0 +1,173 @@
+---
+title: Python API
+description: Drive the recovery controller, patch engine, and candidate store from Python.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Argus is a Python package first. The CLI, TUI, and MCP server are adapters over
+the same runtime. The public entry points below are suitable for scripted
+evaluation and integration.
+
+<Aside type="note" title="Stability">
+These are the current internal APIs of a pre-release project. Import paths and
+signatures may change before a stable release. Pin a commit if reproducibility
+matters for your evaluation.
+</Aside>
+
+## Run a recovery
+
+```python title="recover.py"
+from pathlib import Path
+
+from argus.config import ArgusConfig
+from argus.runtime.controller import RecoveryController
+
+config = ArgusConfig(
+    max_attempts=3,
+    budget_limit_usd=0.05,
+    test_timeout_seconds=30,
+)
+
+controller = RecoveryController(config=config)
+outcome = controller.run(
+    test_command="pytest tests/test_calculator.py",
+    target_file="src/calculator.py",  # omit to auto-localize
+    workspace_root=Path.cwd(),
+)
+
+print(outcome.status)
+print(outcome.run_id)
+print(outcome.verified)
+print(outcome.unified_diff)
+```
+
+`RecoveryController.run()` accepts:
+
+| Argument | Meaning |
+| --- | --- |
+| `target_file` | Source file to repair; optional |
+| `test_command` | Reproduction command; required in practice |
+| `test_file` | Optional test file to copy into the workspace |
+| `workspace_root` | Project root; defaults to the current directory |
+| `on_attempt_start` | Callback `(attempt, max_attempts)` |
+| `on_attempt_end` | Callback receiving an `AttemptRecord` |
+| `event_emitter` | JSON Lines emitter for machine-readable progress |
+| `cancel_event` | Cooperative cancellation handle |
+
+## Outcome
+
+`RecoveryOutcome` carries the result of the run. The fields most consumers need:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `status` | `str` | `SUCCESS`, `ALREADY_PASSING`, `FAILED_MAX_ATTEMPTS`, and so on |
+| `verified` | `bool` | The reproduction passed for the candidate |
+| `run_id` | `str \| None` | Candidate identifier, when one was created |
+| `target_file` | `str \| None` | Localized or explicit target |
+| `unified_diff` | `str \| None` | Reviewable diff |
+| `total_attempts` | `int` | Attempts consumed |
+| `total_cost_usd` | `float` | Measured inference spend |
+| `total_duration_ms` | `float` | Wall-clock duration |
+| `diagnostics` | `str` | Failure output for unsuccessful runs |
+| `message` | `str \| None` | Human-readable summary |
+| `changed_files` | `list[str]` | Files modified inside the workspace |
+| `effort_used` | `str \| None` | Adaptive routing decision |
+| `routing_reasons` | `list[str]` | Why that effort was chosen |
+
+A `SUCCESS` outcome is the only state that produces an applyable candidate. Do
+not infer applicability from `verified` alone; approval is still required.
+
+## Configuration
+
+`ArgusConfig` is a dataclass. Commonly adjusted fields:
+
+```python title="Bounds and policy"
+config = ArgusConfig(
+    provider="ollama",             # or pass provider_config
+    model="qwen2.5-coder:7b",
+    max_attempts=3,
+    test_timeout_seconds=30,
+    provider_timeout_seconds=45.0,
+    task_deadline_seconds=300.0,
+    budget_limit_usd=0.03,
+    similarity_threshold=0.82,
+    ambiguity_margin=0.10,
+    enable_tier4=False,
+    temperature=0.0,
+)
+```
+
+When `provider_config` is supplied, its name and model take precedence. When
+neither is supplied, the stored active provider is used, then `ARGUS_PROVIDER`.
+A credential alone never selects a provider. Groq is rejected at construction
+time.
+
+## Candidate store and applier
+
+```python title="Review and apply"
+from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
+
+metadata, path = CandidateArtifactStore.load_candidate(
+    run_id=outcome.run_id,
+    workspace_root=Path.cwd(),
+)
+diff = CandidateArtifactStore.get_candidate_diff(
+    run_id=outcome.run_id,
+    workspace_root=Path.cwd(),
+)
+
+CandidateArtifactStore.set_approval(
+    run_id=outcome.run_id,
+    approved=True,
+    workspace_root=Path.cwd(),
+    approved_by="interactive:script",
+    approval_source="python-api",
+)
+
+result = AuthoritativePatchApplier.apply(
+    run_id=outcome.run_id,
+    workspace_root=Path.cwd(),
+    require_approval=True,
+)
+print(result.success, result.error_code, result.message)
+```
+
+The applier returns a result object rather than raising for ordinary refusals:
+`success`, `message`, `error_code`, `run_id`, `target_file`, and `applied_at`.
+Handle `success == False` explicitly.
+
+## Patch engine directly
+
+For experiments that separate reconciliation from execution:
+
+```python title="Reconcile one file"
+from argus.patch.fuzzy_engine import ResilientPatchEngine
+from argus.patch.parser import PatchBlock
+
+engine = ResilientPatchEngine(
+    similarity_threshold=0.82,
+    ambiguity_margin=0.10,
+    enable_tier4=False,
+)
+result = engine.apply_patch(
+    "src/calculator.py",
+    PatchBlock(search_text="return a - b", replace_text="return a + b"),
+)
+print(result.success, result.tier_used, result.message)
+```
+
+The engine validates the full file with `ast.parse` before returning success.
+It refuses non-Python targets.
+
+## Evaluation harnesses
+
+The `research` extra installs the legacy analysis dependencies:
+
+```bash title="Shell"
+pip install -e ".[research]"
+```
+
+Use the controller rather than shelling out to the CLI when measuring latency,
+cost, or attempts. The CLI adds formatting and process startup overhead that does
+not belong in an experiment. See [Research and benchmarks](/project/research/).

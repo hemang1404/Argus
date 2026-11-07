@@ -1,0 +1,109 @@
+---
+title: CLI
+description: The command-line surface, its mental model, and the workflows it supports.
+---
+
+The `argus` command is the primary interface to the runtime. It is designed for
+two modes of use: interactive recovery at a terminal, and scripted recovery in
+CI or an agent harness.
+
+The CLI never requires the TUI extra, the gateway extra, or a network service
+other than the provider you configure.
+
+## Shape of the interface
+
+```text title="Command groups"
+argus
+├── run / recover        run the bounded recovery loop
+├── candidates / status  list verified and pending candidates
+├── inspect              show candidate metadata and diff
+├── diff                 print a unified diff
+├── approve              record explicit approval
+├── reject               revoke approval
+├── apply                write an approved candidate
+├── doctor               environment and provider diagnostics
+├── provider             list, set, select, test, delete providers
+├── mcp                  run, install, or verify the MCP server
+├── tui / app            terminal cockpit and dedicated window
+├── setup / init         detect and configure local coding tools
+├── gateway / serve      experimental inference proxy
+└── logo-preview         terminal logo renderer previews
+```
+
+`run` is also available as `recover`, `candidates` as `status`, and `apply` as
+`apply-candidate`.
+
+## A recovery in three commands
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py" --file src/calculator.py
+argus approve <run_id>
+argus apply --run-id <run_id>
+```
+
+`argus run` is non-destructive by default. The second and third commands are
+separate because verification and authorization are separate. Read
+[Applying candidates](/guides/applying-candidates/) before automating them.
+
+## Global options
+
+```text title="Global"
+argus --version
+argus --workspace /path/to/project <command>
+```
+
+Most commands also accept `--workspace` / `-w`. Run IDs are positional for
+`approve`, `reject`, `inspect`, and optional for `diff`; `apply` takes
+`--run-id`.
+
+## Diagnostics first
+
+```bash title="Shell"
+argus doctor
+```
+
+`doctor` is the fastest way to distinguish an installation problem from a
+recovery problem. It reports Python, Git, pytest, the Antigravity CLI, a local
+Ollama endpoint, the active provider, credential availability, and a live
+connectivity check. It prints a masked key, never the secret.
+
+## Failing loudly
+
+Recovery commands return a non-zero exit status when they do not produce a
+verified candidate, and when an apply is refused. Scripted callers should treat
+any non-zero status as a failed operation rather than parsing human-readable
+output.
+
+For machine-readable progress, use:
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py" --json-events
+```
+
+This emits versioned JSON Lines events to stdout. Diagnostics stay on stderr.
+
+## Applying inside a run
+
+`argus run --apply` is intentionally incomplete. It refuses unless
+`--yes-reviewed` is also present, and the resulting approval is recorded as
+automation. The preferred path remains inspect, approve, apply.
+
+```bash title="Explicit automation"
+argus run \
+  --test "pytest tests/test_calculator.py" \
+  --apply --yes-reviewed
+```
+
+Only use this when the automation itself has established a review boundary you
+trust.
+
+## What the CLI will not do
+
+- It will not run a recovery without a test command.
+- It will not exceed three attempts (`--attempts` is clamped).
+- It will not execute shell syntax in the test command.
+- It will not apply an unapproved candidate during `run`.
+- It will not silently switch providers when none is configured.
+- It will not accept Groq as a provider.
+
+The complete flag reference lives in [CLI commands](/reference/cli-commands/).

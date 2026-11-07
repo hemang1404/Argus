@@ -1,0 +1,204 @@
+---
+title: CLI Commands
+description: Every command and flag exposed by the installed Argus CLI.
+---
+
+This reference reflects the `argus` command in version `0.2.0b1`. Run
+`argus <command> --help` for the authoritative text in your installed version.
+
+## Global
+
+| Form | Description |
+| --- | --- |
+| `argus` | Print help and the TUI hint |
+| `argus --version` | Print the package version |
+| `argus --workspace PATH <command>` | Set the active workspace for commands that accept it |
+
+With no subcommand, Argus prints help rather than starting a run.
+
+## Recovery
+
+### `argus run`
+
+Alias: `argus recover`.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--test`, `-t` | required | Test command to execute |
+| `--file`, `-f`, `--target` | auto | Target source file |
+| `--test-file` | — | Test file to copy into the workspace |
+| `--provider`, `-p` | active | Provider name, `auto`, or `antigravity` |
+| `--model`, `-m` | provider default | Model override |
+| `--effort`, `-e` | adaptive | `low`, `medium`, or `high` |
+| `--no-adaptive` | off | Disable adaptive effort routing |
+| `--attempts`, `-a` | `3` | Attempts; clamped to 3 |
+| `--budget`, `-b` | `0.05` | Maximum spend in USD |
+| `--workspace`, `-w` | cwd | Workspace root |
+| `--enable-tier4`, `--allow-tier4` | off | Enable experimental anchor matching |
+| `--apply` | off | Apply after verification; requires `--yes-reviewed` |
+| `--yes-reviewed` | off | Record automation approval for `--apply` |
+| `--json-events` | off | Emit JSON Lines events on stdout |
+
+Exit status is non-zero when the run does not end in `SUCCESS` or
+`ALREADY_PASSING`, and when an in-run apply is refused.
+
+### `argus exec`
+
+Runs a single task prompt through the provider, with the same effort routing as
+recovery. It defaults to the Antigravity host runtime unless `--provider` is
+set. This is a direct inference helper, not part of the recovery loop.
+
+| Option | Description |
+| --- | --- |
+| `TASK_PROMPT` | Positional prompt |
+| `--prompt`, `-p` | Prompt alternative |
+| `--file`, `-f` | File to include as context |
+| `--effort`, `-e` | `low`, `medium`, `high` |
+| `--no-adaptive` | Disable routing |
+| `--provider` | Provider name |
+| `--model`, `-m` | Model override |
+
+## Candidates
+
+### `argus candidates`
+
+Alias: `argus status`.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--limit`, `-n` | `10` | Maximum rows |
+| `--all`, `-a` | off | Show all runs |
+| `--workspace`, `-w` | cwd | Workspace root |
+
+### `argus inspect RUN_ID`
+
+Prints metadata and the unified diff. Accepts `--workspace`.
+
+### `argus diff [RUN_ID]`
+
+Prints the diff for a run, or for the last run when the argument is omitted.
+Accepts `--workspace`.
+
+### `argus approve RUN_ID`
+
+| Option | Description |
+| --- | --- |
+| `--workspace`, `-w` | Workspace root |
+| `--yes`, `-y` | Non-interactive approval, recorded as automation |
+| `--force` | Allow approving an unverified candidate |
+
+### `argus reject RUN_ID`
+
+Revokes approval. Accepts `--workspace`.
+
+### `argus apply`
+
+Alias: `argus apply-candidate`.
+
+| Option | Description |
+| --- | --- |
+| `--run-id`, `-r` | Candidate to apply; last run if omitted |
+| `--workspace`, `-w` | Workspace root |
+| `--file`, `-f` | Assert the expected target file |
+| `--force` | Bypass only the approval gate |
+
+`--force` does not bypass verification, hashes, syntax validation, or path
+containment.
+
+## Providers
+
+| Command | Description |
+| --- | --- |
+| `argus provider list` | Configured providers and built-in presets |
+| `argus provider set` | Add or update a provider |
+| `argus provider select NAME` | Set the active provider |
+| `argus provider test [NAME]` | Test connectivity |
+| `argus provider delete NAME` | Remove a provider and its stored key |
+
+`provider set` options:
+
+| Option | Description |
+| --- | --- |
+| `--name`, `-n` | Provider name |
+| `--preset`, `-p` | Preset key |
+| `--base-url`, `-u` | OpenAI-compatible base URL |
+| `--model`, `-m` | Model identifier |
+| `--api-key`, `-k` | Key (prefer the hidden prompt) |
+| `--timeout`, `-t` | Request timeout, default `60.0` |
+| `--active` | Set active (enabled by default) |
+
+Presets: `antigravity`, `ollama`, `lmstudio`, `openai`, `deepseek`, `gemini`,
+`openrouter`, `custom`.
+
+## MCP
+
+| Command | Description |
+| --- | --- |
+| `argus mcp run` | Start the stdio MCP server |
+| `argus mcp install [TARGET]` | Install host configuration |
+| `argus mcp verify` | Verify startup, handshake, and tools |
+
+`mcp install` targets: `antigravity`, `opencode`, `gemini`, `all` (default).
+Options: `--global` (default) or `--workspace`, and `--workspace-path`.
+
+## Integrations
+
+| Command | Description |
+| --- | --- |
+| `argus setup` | Detect local tools and connect them |
+| `argus init [CLIENT]` | Generate a tool integration preset |
+| `argus doctor` | Environment and provider diagnostics |
+
+`setup` options: `--workspace`, `--all`.
+`init` options: `--list`, `--print`, `--overwrite`, `--dir`.
+Preset clients include Aider, Claude, OpenCode, Continue, and Cursor.
+
+## Maintenance
+
+### `argus update`
+
+Checks PyPI for a newer `argus-recovery` release.
+
+| Option | Description |
+| --- | --- |
+| `--check` | Report without installing |
+| `--method`, `-m` | `uv`, `pipx`, or `pip` |
+| `--pre` | Include pre-releases |
+| `--yes`, `-y` | Non-interactive confirmation |
+
+This release is installed from the GitHub repository and is not published on
+PyPI. The update manager queries PyPI, so it cannot update a source checkout;
+use `git pull` and reinstall instead.
+
+## Terminal interfaces
+
+| Command | Description |
+| --- | --- |
+| `argus tui` | Launch the terminal cockpit |
+| `argus app` | Launch a dedicated terminal window |
+| `argus logo-preview` | Preview logo renderers |
+| `argus test-graphics` | Test terminal graphics protocols |
+
+`tui` options: `--workspace`, `--renderer`, `-r`
+(`auto`, `braille`, `halfblock`, `sixel`, `kitty`, `text`).
+`app` options: `--workspace`, `--install-shortcut`.
+`logo-preview` options: `--mode`, `-m` (`all`, `box`, `halfblock`, `text`, `braille`).
+`test-graphics` options: `--protocol`, `-p` (`auto`, `sixel`, `kitty`, `iterm2`,
+`all`) and `--wordmark-only`.
+
+`tui` and `app` require the `tui` extra.
+
+## Gateway (experimental)
+
+`argus gateway` and `argus serve` share the same options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--host`, `-h` | `127.0.0.1` | Bind address |
+| `--port`, `-p` | `8000` | Bind port |
+| `--workspace`, `-w` | cwd | Workspace for streaming patch healing |
+| `--config`, `-c` | — | Gateway configuration file |
+| `--allow-remote` | off | Allow non-loopback binding |
+
+Startup requires `ARGUS_GATEWAY_API_KEY` and the `gateway` extra. Binding to a
+non-loopback host without `--allow-remote` is refused.

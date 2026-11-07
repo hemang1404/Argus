@@ -1,0 +1,119 @@
+---
+title: Applying Candidates
+description: The approval gate, integrity checks, and what happens to your file during an apply.
+---
+
+Applying is the only operation in Argus that modifies your working tree. It is
+therefore the most constrained.
+
+## Prerequisites
+
+A candidate can be applied only when:
+
+1. it is verified (`verified == true`);
+2. it is approved (`approved == true`), unless `--force` is used;
+3. the target file still matches the recorded baseline hash;
+4. the stored candidate content still matches its recorded hash;
+5. the patched content parses as Python;
+6. the target path resolves inside the workspace and is a regular file.
+
+## Apply
+
+```bash title="Shell"
+argus apply --run-id <run_id>
+```
+
+If `--run-id` is omitted, the most recent run is used. Prefer the explicit form in
+scripts.
+
+A successful apply prints:
+
+```text
+✓ [APPLIED] Applied candidate run_20261106_142530_9f3a1c2d to src/calculator.py
+```
+
+## The approval gate
+
+If the candidate is verified but not approved:
+
+```text
+✗ [REJECTED: CANDIDATE_NOT_APPROVED] Candidate has not received explicit human approval.
+  Run 'argus approve <run_id>' or pass '--force' to apply directly.
+```
+
+`--force` bypasses the approval gate only. It does **not** bypass verification,
+hash checks, path containment, or syntax validation. Use it when an external
+process has already reviewed the change and you are applying from a script.
+
+For reviewed non-interactive automation inside `argus run`, use
+`--apply --yes-reviewed`; both flags are required.
+
+## What happens during the write
+
+1. Metadata is loaded and validated.
+2. The candidate content and patched file are hashed.
+3. The live target is read and compared with `baseline_hash`.
+4. A temporary sibling file is created with the candidate content.
+5. The live target is re-checked to detect concurrent modification.
+6. The temporary file replaces the target with `os.replace`.
+7. Original permissions are preserved where possible.
+8. The candidate is marked applied with a timestamp.
+
+If any step fails, the original target is left in place. A failure after step 6
+is reported as `APPLY_IO_ERROR` or `PERMISSION_PRESERVATION_FAILED` depending on
+the cause; inspect the file before retrying.
+
+## Stale targets
+
+This is the most common refusal:
+
+```text
+✗ [REJECTED: STALE_TARGET_CONFLICT] Target file has changed on disk since baseline was captured.
+```
+
+It means the file you are about to overwrite is not the file that was verified.
+Do not work around it. Rerun the recovery so verification and application refer
+to the same content. This is exactly the time-of-check to time-of-use race that
+cryptographic candidate artifacts are meant to prevent.
+
+## After applying
+
+- The source file contains the candidate content.
+- The candidate is marked applied; applying it again is refused.
+- `.argus/runs/<run_id>/` retains the diff and metadata.
+- No commit is created.
+
+Review the file, run the broader test suite, and commit through your normal
+workflow. If the change is wrong, revert it with Git. Argus does not retain a
+separate backup after application.
+
+## Applying over MCP
+
+`argus_apply_candidate` performs the same checks. An agent cannot approve a
+candidate; the human approval must already exist. This is the intended division
+of responsibility.
+
+## Applying in the TUI
+
+The diff review screen applies on `a` or `Enter` after recording approval. There
+is no separate "apply without approval" action in the interface.
+
+## Failure codes
+
+| Code | Meaning |
+| --- | --- |
+| `CANDIDATE_NOT_VERIFIED` | The candidate never passed its test |
+| `CANDIDATE_NOT_APPROVED` | Approval is missing |
+| `CANDIDATE_CONTENT_MISSING` | The stored patched content is absent |
+| `CONTENT_HASH_MISMATCH` | Candidate content changed since verification |
+| `SYNTAX_VALIDATION_FAILED` | Patched content no longer parses |
+| `PATH_TRAVERSAL_REJECTED` | Target escapes the workspace |
+| `TARGET_FILE_MISMATCH` | Candidate targets a different file |
+| `TARGET_NOT_FOUND` | The target file is gone |
+| `UNSAFE_TARGET_TYPE` | The target is not a regular file |
+| `STALE_TARGET_CONFLICT` | The live file no longer matches baseline |
+| `CONCURRENT_MODIFICATION_DETECTED` | The file changed during apply |
+| `PERMISSION_PRESERVATION_FAILED` | File mode could not be preserved |
+| `READ_ERROR` / `APPLY_IO_ERROR` | Filesystem failure |
+
+The full error reference is in [Error codes](/reference/error-codes/).

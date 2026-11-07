@@ -1,0 +1,123 @@
+---
+title: Contributing
+description: Development setup, quality gates, coding standards, and review expectations for Argus.
+---
+
+Argus is an engineering project. Contributions are judged on correctness,
+reliability, security, reproducibility, and testability before style.
+
+## Set up
+
+```bash title="Shell"
+git clone https://github.com/hemang1404/Argus.git
+cd Argus
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+pip install -e ".[dev,tui]"
+```
+
+Docker or Podman is optional, for the container evaluation harness. Git is
+required for worktree isolation.
+
+## Quality gates
+
+Run the offline suite before opening a pull request:
+
+```bash title="Shell"
+# Core safety, isolation, and lifecycle gates
+pytest tests/test_runtime_and_workspace_safety.py \
+       tests/test_gateway_security.py \
+       tests/test_wp6_deep_verification.py \
+       tests/test_wp7_deep_verification.py
+
+# Synthetic adversarial patch corpus
+pytest -v tests/test_patch_adversarial_corpus.py
+
+# Full offline suite
+pytest -q --ignore=tests/test_real_host_integration.py
+
+# Syntax / bytecode compilation
+python -m compileall -q argus tests
+```
+
+Live-provider and real-host tests are opt-in through their markers and
+environment variables; they are not part of the default offline gate.
+
+## Engineering standards
+
+- Prefer small, focused functions with explicit error handling.
+- Avoid broad `except Exception` blocks; catch specific exceptions or propagate
+  the failure truthfully.
+- Do not silently fall back to a less secure execution path. A requested
+  container that is unavailable must fail, not run on the host.
+- Use type hints and module docstrings that explain architectural
+  responsibility.
+- Keep the live working tree untouched during recovery.
+- Never write credentials, tokens, or private keys to disk or logs.
+- Scrub secret-bearing environments before launching subprocesses.
+- Do not add a dependency when the standard library or an existing dependency is
+  sufficient.
+
+## Tests for behaviour
+
+New recovery behaviour should include tests for the decision boundaries, not only
+the happy path:
+
+- exact, normalized, fuzzy, and anchor matches;
+- ambiguous multi-site matches and refusal;
+- provider failure and timeout;
+- malformed or empty model output;
+- missing target files and path traversal;
+- stale baselines and concurrent modification;
+- process-tree failure and bounded output;
+- approval and application gates.
+
+Experiment code should validate metric calculations against known examples and
+avoid leakage between runs.
+
+## Branches and commits
+
+- `main` is stable; `dev` is the integration branch.
+- Feature branches: `feat/<name>`, `fix/<name>`, `docs/<name>`, `test/<name>`.
+- Use Conventional Commits, for example:
+
+```text
+feat(patch): add whitespace normalization for Tier 2 matching
+fix(workspace): resolve PID reuse with start-time verification
+test(gateway): cover multi-client rate limit isolation
+docs(readme): clarify host execution privilege boundaries
+```
+
+## Pull request review
+
+Every pull request is evaluated against:
+
+1. Does the change do what it claims?
+2. Can it fail in realistic edge cases?
+3. Does it regress existing recovery behaviour?
+4. Is failure and recovery handled correctly and fail-closed?
+5. Are relevant automated tests present?
+6. Does it affect host security or credential confidentiality?
+7. Does it alter matching tier definitions or experimental baselines?
+
+Review comments focus on concrete mechanisms that can cause a problem, not
+personal preference. A review with zero findings is valid when the code has no
+meaningful issues.
+
+## Documentation changes
+
+The documentation site lives in `argus-website/` and is intentionally isolated
+from the Python package. Changes to documented commands or configuration must be
+verified against the implementation, not inferred from older README examples.
+
+## Security reports
+
+Do not open a public issue for a vulnerability. Use GitHub Security Advisories or
+`security@argus-recovery.org` with reproduction steps, affected components, and
+versions. See the [security model](/project/security-model/).
+
+## Community
+
+All participants are expected to follow the project's Code of Conduct. Be
+precise, assume good faith, and keep discussion focused on the engineering
+problem.

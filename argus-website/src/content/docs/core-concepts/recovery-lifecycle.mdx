@@ -1,0 +1,116 @@
+---
+title: Recovery Lifecycle
+description: Every stage of a run, the failure states it can produce, and how retries are bounded.
+---
+
+A recovery run moves through eight stages. The controller owns the sequence; each
+stage either advances, retries within the bound, or terminates with a status.
+
+## 1. Validation
+
+Before doing any work, Argus checks the target path, the test file, and the test
+command. Targets must resolve inside the workspace. Absolute paths, `..`
+traversal, null bytes, and non-canonical paths are rejected. A request that fails
+this stage returns `INVALID_TARGET` without creating a workspace.
+
+## 2. Workspace creation
+
+`WorkspaceManager` creates an ephemeral copy of the repository, excluding heavy
+and generated directories. The copy preserves the file layout needed to run the
+tests. If a Git worktree is used instead, uncommitted changes and untracked files
+are overlaid so the reproduction sees the same working state.
+
+## 3. Reproduction
+
+The test command is tokenized and executed directly. Shell chaining, backgrounding,
+and redirection are refused. Output is drained concurrently into a bounded
+collector. If the command passes immediately, the run ends as `ALREADY_PASSING`;
+there is nothing to recover.
+
+If the command cannot be started or the test harness is misconfigured, the run
+ends as `TEST_SETUP_ERROR`. This is distinct from a test failure.
+
+## 4. Localization
+
+When `--file` is absent, Argus parses the traceback and identifies the project
+source file involved in the failure. If no file can be identified with
+confidence, the run ends as `LOCALIZATION_FAILED`.
+
+Localization is deterministic. It does not ask the model which file to edit.
+
+## 5. Patch generation
+
+The provider adapter receives the failure context and the target file content and
+returns a patch in one of two accepted formats:
+
+- a `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` block;
+- a unified diff hunk, whose `-` and `+` lines are converted into a search/replace
+  pair.
+
+The generated patch is parsed into structured blocks before any matching occurs.
+A response with no parsable block counts as a failed attempt.
+
+## 6. Reconciliation and validation
+
+Each block is matched through the tier ladder. A match is only a candidate; the
+patched file must then parse as Python. Ambiguity, low similarity, a missing
+match, or a syntax error all reject the attempt. Tier 5 is a refusal, not a
+fallback that modifies something else.
+
+## 7. Verification
+
+Argus writes the patched content into the ephemeral workspace and reruns the test
+command. Only a passing run produces a verified candidate. The candidate records
+the baseline hash of the target file, the hash of the patched content, the
+unified diff, the test command, the tier used, the attempt count, the cost, and
+the duration.
+
+## 8. Handoff
+
+The run ends in one of two ways:
+
+- **`SUCCESS`** — a verified candidate exists and is waiting for review.
+- **Failure** — no candidate is offered for application.
+
+The working tree is unchanged in both cases.
+
+## Failure states
+
+| Status | Meaning | Typical next step |
+| --- | --- | --- |
+| `ALREADY_PASSING` | The test passed before any edit | Nothing to recover |
+| `TEST_SETUP_ERROR` | The test command could not run correctly | Fix the command or environment |
+| `LOCALIZATION_FAILED` | No target file could be identified | Pass `--file` explicitly |
+| `INVALID_TARGET` | The target failed path validation | Use a path inside the workspace |
+| `CONFIG_ERROR` | No provider, or an invalid provider configuration | Configure a provider |
+| `BUDGET_EXCEEDED` | The run hit its spend ceiling | Raise `--budget` deliberately |
+| `DEADLINE_EXCEEDED` | The task deadline elapsed | Reduce scope or raise the bound |
+| `PROVIDER_RATE_LIMITED` | The provider refused due to rate limits | Wait or switch providers |
+| `CONTAINER_SETUP_ERROR` | Requested container isolation is unavailable | Install a working engine or use host mode explicitly |
+| `FAILED_MAX_ATTEMPTS` | Every attempt failed | Inspect artifacts; change model or context |
+| `CANCELLED` | The run was cancelled by the caller | Retry when ready |
+
+A failed recovery does not produce an applyable artifact. Forensic files may
+still be written for diagnosis.
+
+## Retry behaviour
+
+Retries are driven by test outcomes, not by a fixed schedule. Each turn receives
+the latest failure context. The loop stops at `max_attempts` (three by default,
+and the CLI clamps larger values). Provider rate limits are handled within the
+run when allowed, with a bounded backoff ceiling; exhausting the allowance ends
+the run as `PROVIDER_RATE_LIMITED` rather than looping indefinitely.
+
+There is no automatic retry after a successful verification. Applying the same
+candidate twice is prevented by the candidate state and by the baseline hash
+check.
+
+## What the loop does not do
+
+- It does not edit additional files to make the test pass.
+- It does not weaken or skip tests.
+- It does not install dependencies.
+- It does not commit, push, or rebase.
+- It does not apply a verified candidate without approval.
+
+These are boundaries, not missing features to work around.

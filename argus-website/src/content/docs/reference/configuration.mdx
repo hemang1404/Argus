@@ -1,0 +1,135 @@
+---
+title: Configuration
+description: Policy files, recognized keys, runtime defaults, and how provider selection is resolved.
+---
+
+Argus has three configuration layers: per-run CLI flags, a project policy file,
+and the stored provider record. There is no global mutable config service.
+
+## Policy discovery
+
+`ArgusConfig` looks in the current working directory for the first existing file
+among:
+
+```text
+argus.yaml
+argus.yml
+.argus.yaml
+.argus.yml
+```
+
+If none exists, it reads `[tool.argus]` from `pyproject.toml`.
+
+```yaml title="argus.yaml"
+max_attempts: 3
+budget_limit_usd: 0.05
+test_timeout_seconds: 45
+model: qwen2.5-coder:7b
+reasoning_effort: medium
+```
+
+```toml title="pyproject.toml"
+[tool.argus]
+max_attempts = 3
+budget_limit_usd = 0.05
+test_timeout_seconds = 45
+model = "qwen2.5-coder:7b"
+```
+
+### Recognized keys
+
+| Key | Type | Effect |
+| --- | --- | --- |
+| `max_attempts` | integer | Recovery turns |
+| `budget_limit_usd` | float | Spend ceiling in USD |
+| `test_timeout_seconds` | integer | Reproduction timeout |
+| `model` | string | Model, if not already set |
+| `small_model` | string | Escalation ladder small model |
+| `large_model` | string | Escalation ladder large model |
+| `escalation_enabled` | boolean | Enable model escalation |
+| `reasoning_effort` | string | Default reasoning effort |
+
+The loader reads exactly these keys. Other fields on `ArgusConfig` — including
+`similarity_threshold`, `ambiguity_margin`, and `enable_tier4` — are not
+populated from YAML in this release. Set thresholds through the Python API; use
+`--enable-tier4` on the CLI for Tier 4. Older examples that place provider or
+gateway settings in `argus.yaml` do not reflect the current loader.
+
+## Runtime defaults
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `max_attempts` | `3` | Recovery turns |
+| `test_timeout_seconds` | `30` | Reproduction timeout |
+| `repo_test_timeout_seconds` | `180` | Repository-scale test timeout |
+| `provider_timeout_seconds` | `45.0` | Provider request timeout |
+| `rate_limit_backoff_max_seconds` | `60.0` | Maximum backoff |
+| `task_deadline_seconds` | `300.0` | Whole-run deadline |
+| `max_tokens` | `2500` | Completion ceiling |
+| `temperature` | `0.0` | Sampling temperature |
+| `budget_limit_usd` | `0.030` | API default (CLI `run` uses `0.05`) |
+| `similarity_threshold` | `0.82` | Tier 3 acceptance |
+| `ambiguity_margin` | `0.10` | Tier 3 best-vs-runner-up margin |
+| `enable_tier4` | `false` | Experimental anchor matching |
+| `use_container_runner` | `false` | Container evaluation harness |
+| `require_container_isolation` | `false` | Fail closed if containment is unavailable |
+
+## Provider selection
+
+The runtime resolves a provider in this order:
+
+1. an explicit `provider_config` passed to `ArgusConfig`;
+2. the stored active provider;
+3. `ARGUS_PROVIDER`.
+
+A credential alone never selects a provider. When `--provider auto` is requested,
+Argus prefers the stored active provider and then a detected Antigravity host CLI.
+When no provider resolves, the run ends with `CONFIG_ERROR`.
+
+Provider credentials are stored separately from policy. See
+[Provider configuration](/guides/provider-configuration/).
+
+## TUI policy
+
+The TUI has a policy modal (`Tab` on the startup screen) with tier, budget,
+attempt, and model controls. It persists a `policy.json` in the Argus
+configuration directory, and subsequent TUI sessions load it at startup. The CLI
+does not read `policy.json`; its flags and `argus.yaml` remain authoritative.
+
+## Configuration directory
+
+Provider records and TUI policy live in the platform configuration directory:
+
+| Platform | Location |
+| --- | --- |
+| Windows | `%APPDATA%\argus` |
+| macOS / Linux | `$XDG_CONFIG_HOME/argus` or `~/.config/argus` |
+
+Set `ARGUS_CONFIG_DIR` to override it. Keys are held in the OS keyring when
+available, with a restricted-permission fallback file.
+
+## Precedence summary
+
+For most settings:
+
+```text
+explicit CLI flag → ArgusConfig field / policy file → dataclass default
+```
+
+For providers:
+
+```text
+explicit provider_config → stored active provider → ARGUS_PROVIDER
+```
+
+For keys:
+
+```text
+OS keyring → provider environment variable → opt-in .env → ARGUS_API_KEY
+```
+
+## Validation
+
+`ArgusConfig.validate()` reports missing credentials for key-requiring
+providers. `argus doctor` exposes the practical version of this check, including
+a live connectivity request. Groq configuration raises at construction time.

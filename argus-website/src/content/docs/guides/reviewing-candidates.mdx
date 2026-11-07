@@ -1,0 +1,117 @@
+---
+title: Reviewing Candidates
+description: How to inspect a candidate, what to look for, and how to reject one cleanly.
+---
+
+Review is the point where Argus stops being automated. A verified candidate is a
+proposal, not a decision.
+
+## List recent candidates
+
+```bash title="Shell"
+argus candidates
+argus candidates --all
+argus candidates --limit 25
+```
+
+The table shows the run ID, target, verification, approval, application state,
+cost, and creation time. `status` is an alias for `candidates`.
+
+A listing might look like:
+
+```text
+Run ID                            Target              Status  Approval  Applied  Cost
+run_20261106_142530_9f3a1c2d      src/calculator.py   PASS    PENDING   NO       $0.0031
+```
+
+`PASS` and `PENDING` together mean: the patch was verified, but no human has
+authorized it.
+
+## Inspect one candidate
+
+```bash title="Shell"
+argus inspect <run_id>
+argus diff <run_id>
+```
+
+`inspect` prints:
+
+- target file and test command;
+- verification and approval state;
+- whether it has been applied;
+- attempts and measured cost;
+- creation timestamp;
+- the unified diff.
+
+`diff` prints only the diff, and with no argument uses the last run recorded in
+the workspace.
+
+## What to look for
+
+A good candidate is boring:
+
+- **Scope.** One file, and the file you expected.
+- **Intent.** The change addresses the failure, not a symptom in the test.
+- **Blast radius.** No unrelated refactoring, renames, or formatting sweeps.
+- **Test coupling.** The reproduction actually exercises the changed behaviour.
+- **Syntax.** It parses, but also reads like the surrounding code.
+- **Hidden state.** No new global state, environment reads, or network calls
+  introduced merely to satisfy an assertion.
+
+The diff is authoritative. A passing test does not excuse a surprising diff.
+
+## Verify the evidence
+
+The candidate metadata records the baseline and candidate hashes. You can confirm
+that the diff was produced against the file you are looking at:
+
+```bash title="Shell"
+python - <<'PY'
+import hashlib, json, pathlib
+meta = json.loads(pathlib.Path(".argus/runs/<run_id>/metadata.json").read_text())
+target = pathlib.Path(meta["target_file"])
+print("recorded baseline:", meta["baseline_hash"])
+print("current file:     ", hashlib.sha256(target.read_bytes()).hexdigest())
+PY
+```
+
+If the digests differ, the target has changed since the run. Do not approve and
+apply; rerun the recovery against the current file.
+
+## Reject
+
+```bash title="Shell"
+argus reject <run_id>
+```
+
+Rejection revokes approval in the metadata. It does not delete the artifact and
+does not modify the source file. Use rejection when you want an explicit record
+that a candidate was considered and declined.
+
+## Review in the TUI
+
+Open the diff review screen and press:
+
+- `a` or `Enter` — approve and apply;
+- `d` — discard;
+- `Esc` — back.
+
+The TUI uses the same approval and application code as the CLI. It is a
+convenience surface, not a second policy.
+
+## Review over MCP
+
+`argus_get_candidate` returns metadata and the diff. An agent can present it to
+you, but cannot approve it. Approval must happen in the CLI or TUI.
+
+## When to rerun instead of approve
+
+Rerun when:
+
+- the target file changed after the candidate was produced;
+- the diff includes changes outside the failing behaviour;
+- the test command was too narrow to establish confidence;
+- the model used a provider or model you did not intend;
+- the candidate is verified but you cannot explain the change.
+
+Rerunning is cheap compared with debugging a confidently wrong patch.

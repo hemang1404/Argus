@@ -1,0 +1,129 @@
+---
+title: Architecture
+description: How the recovery runtime, interfaces, and artifact layer fit together.
+---
+
+Argus is organized as a core runtime with thin interface adapters. The separation
+keeps recovery semantics identical whether a run starts from a shell, a terminal
+cockpit, an agent, or a Python script.
+
+## Component map
+
+```text title="Runtime components"
+┌──────────────────────── interfaces ────────────────────────┐
+│  CLI          TUI           MCP server        Python API    │
+│  argus/cli.py argus/tui/    argus/mcp/        argus/runtime │
+└───────────────┬───────────────┬───────────────────┬─────────┘
+                │               │                   │
+                ▼               ▼                   ▼
+        ┌──────────────────────────────────────────────┐
+        │            RecoveryController                │
+        │   bounded loop · attempt history · outcome    │
+        └───┬──────────┬───────────┬───────────┬───────┘
+            │          │           │           │
+            ▼          ▼           ▼           ▼
+      Workspace   TestRunner   PatchEngine  Provider
+      Manager                  (tiers 1–5)  adapter
+            │          │           │           │
+            │          │           ▼           ▼
+            │          │        AST check   model endpoint
+            │          │           │
+            └──────────┴───────────┴──► candidate artifact
+                                            │
+                                   approval + applier
+                                            │
+                                      working tree
+```
+
+## Module responsibilities
+
+| Module | Responsibility |
+| --- | --- |
+| `argus/runtime/controller.py` | Recovery loop, localization integration, attempts, outcome |
+| `argus/runtime/workspace.py` | Ephemeral copy and worktree lifecycle, cleanup |
+| `argus/runtime/runner.py` | Bounded subprocess execution and output capture |
+| `argus/runtime/candidate.py` | Artifact persistence, approval, authoritative apply |
+| `argus/runtime/budget.py` | Spend accounting and reservations |
+| `argus/runtime/container.py` | Optional Docker/Podman evaluation harness |
+| `argus/runtime/events.py` | JSON Lines progress events |
+| `argus/patch/fuzzy_engine.py` | Reconciliation tiers and AST gate integration |
+| `argus/patch/parser.py` | Search/replace and unified-diff parsing |
+| `argus/patch/ast_checker.py` | Full-file Python syntax validation |
+| `argus/patch/paths.py` | Target path validation |
+| `argus/providers/adapter.py` | OpenAI-compatible HTTP adapter |
+| `argus/providers/antigravity.py` | Host CLI adapter |
+| `argus/providers/models.py` | Provider presets and configuration types |
+| `argus/providers/storage.py` | Provider records and keyring-backed secrets |
+| `argus/routing/difficulty.py` | Adaptive reasoning-effort classification |
+| `argus/localization/` | Traceback-to-target localization |
+| `argus/mcp/server.py` | FastMCP stdio surface |
+| `argus/tui/` | Textual screens, widgets, and renderers |
+| `argus/gateway/` | Experimental inference proxy |
+
+## Request flow
+
+1. An interface constructs `ArgusConfig` and a `RecoveryController`.
+2. The controller validates the target and creates a workspace.
+3. The runner executes the reproduction with bounded output.
+4. Localization resolves a target when one was not supplied.
+5. The provider adapter returns text; the parser extracts patch blocks.
+6. The patch engine reconciles each block and checks the resulting file.
+7. The runner verifies the patched workspace.
+8. The candidate store writes a run artifact with digests.
+9. The interface reports the outcome. Nothing is applied.
+
+Application is a second, separate flow initiated by an explicit approval and
+`AuthoritativePatchApplier.apply()`.
+
+## Interface boundaries
+
+The CLI, TUI, and MCP server do not reimplement recovery logic. They differ in
+presentation and in the operations they expose:
+
+| Capability | CLI | TUI | MCP | Python |
+| --- | --- | --- | --- | --- |
+| Start recovery | yes | yes | yes | yes |
+| Stream attempt progress | yes | yes | no | callbacks |
+| Inspect candidate | yes | yes | yes | yes |
+| Approve candidate | yes | yes | no | yes (explicit call) |
+| Apply candidate | yes | yes | yes, if approved | yes |
+| Configure provider | yes | palette | no | via config |
+
+The absence of approval over MCP is an architectural boundary, not an unfinished
+handler.
+
+## Data ownership
+
+- **Policy** belongs to the project (`argus.yaml`, `pyproject.toml`) and to
+  `ArgusConfig` for a run.
+- **Provider records and keys** belong to the user, in the config directory and
+  OS keyring.
+- **Candidates** belong to the workspace, under `.argus/runs/`.
+- **Workspaces** are temporary and owned by the run that created them.
+
+No component writes provider secrets into a candidate artifact. Forensic files
+are scrubbed before persistence.
+
+## Invariants enforced in code
+
+1. The CLI clamps attempts to three.
+2. Test commands execute with `shell=False` after tokenization.
+3. Output collection is bounded in memory.
+4. Process trees are terminated on timeout.
+5. Every accepted patch passes a full-file AST parse.
+6. A candidate is written only after a passing verification.
+7. Application re-checks approval, hashes, syntax, and path containment.
+8. A requested container path fails closed rather than falling back to host.
+
+## Deferred architecture
+
+The roadmap extends the same design rather than replacing it:
+
+- Tree-sitter parsers for multi-language syntax validation;
+- transactional multi-file patches with a two-phase commit;
+- microVM isolation for untrusted execution;
+- static-analysis diagnostics during candidate validation.
+
+None of these are available in `0.2.0b1`; see
+[Research and benchmarks](/project/research/) for the boundary between current
+capability and planned work.

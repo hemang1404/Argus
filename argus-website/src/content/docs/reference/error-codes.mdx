@@ -1,0 +1,72 @@
+---
+title: Error Codes
+description: Recovery statuses and candidate application error codes, with their causes and remedies.
+---
+
+Argus reports two kinds of failure: a **run status** for the recovery loop, and
+an **apply error code** for candidate application. They are not interchangeable.
+
+## Recovery statuses
+
+| Status | Cause | Remedy |
+| --- | --- | --- |
+| `SUCCESS` | A verified candidate was produced | Review, approve, apply |
+| `ALREADY_PASSING` | The reproduction passed before editing | No recovery needed |
+| `FAILED_MAX_ATTEMPTS` | No attempt verified within the turn limit | Improve context, model, or test scope |
+| `LOCALIZATION_FAILED` | No target file identified from the traceback | Pass `--file` |
+| `INVALID_TARGET` | Target failed path or relationship validation | Use a workspace-relative regular file |
+| `TEST_SETUP_ERROR` | The test command could not run correctly | Fix the command or environment |
+| `CONFIG_ERROR` | No provider, or invalid provider configuration | Configure a provider |
+| `BUDGET_EXCEEDED` | Spend ceiling reached | Raise the budget deliberately |
+| `DEADLINE_EXCEEDED` | Task deadline elapsed | Reduce scope or raise the deadline |
+| `PROVIDER_RATE_LIMITED` | Provider refused after bounded backoff | Wait or switch provider |
+| `CONTAINER_SETUP_ERROR` | Container isolation requested but unavailable | Install an engine or avoid container mode |
+| `CANCELLED` | Caller cancelled the run | Retry when ready |
+
+A failed status never produces an applyable candidate.
+
+## Apply error codes
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `CANDIDATE_NOT_FOUND` | No artifact exists for that run ID | Check `argus candidates` |
+| `CANDIDATE_NOT_VERIFIED` | Verification flag is false | Rerun recovery |
+| `CANDIDATE_NOT_APPROVED` | Approval is missing | `argus approve <run_id>` |
+| `CANDIDATE_CONTENT_MISSING` | Stored patched content is absent | Rerun; artifact is incomplete |
+| `CONTENT_HASH_MISMATCH` | Candidate content changed after verification | Rerun; never edit artifacts |
+| `SYNTAX_VALIDATION_FAILED` | Patched file does not parse as Python | Rerun |
+| `PATH_TRAVERSAL_REJECTED` | Target escapes the workspace or is non-canonical | Use an in-workspace path |
+| `TARGET_FILE_MISMATCH` | Candidate targets a different file | Apply the correct candidate |
+| `TARGET_NOT_FOUND` | Target file no longer exists | Restore the file or rerun |
+| `UNSAFE_TARGET_TYPE` | Target is not a regular file | Choose a regular source file |
+| `STALE_TARGET_CONFLICT` | Live file differs from the recorded baseline | Rerun recovery |
+| `CONCURRENT_MODIFICATION_DETECTED` | File changed during the apply sequence | Inspect the file, then rerun |
+| `PERMISSION_PRESERVATION_FAILED` | File mode could not be preserved | Fix permissions |
+| `READ_ERROR` | Target could not be read | Fix permissions or path |
+| `APPLY_IO_ERROR` | Filesystem error during replacement | Inspect the file before retrying |
+
+## Reading a refusal
+
+Application failures are returned as a result object with `success: false`,
+`error_code`, and `message`. The CLI prints both and exits non-zero. Treat the
+code as stable enough for routing, and the message as human-oriented.
+
+```text
+✗ [REJECTED: STALE_TARGET_CONFLICT] Target file has changed on disk since baseline was captured.
+```
+
+## Retry guidance
+
+- `STALE_TARGET_CONFLICT` and `CONCURRENT_MODIFICATION_DETECTED` require a new
+  recovery; do not force.
+- `CANDIDATE_NOT_APPROVED` requires a human decision, not a code change.
+- `CANDIDATE_NOT_VERIFIED` is a failed experiment; adjust inputs.
+- `CONFIG_ERROR` is environmental; run `argus doctor`.
+- `PROVIDER_RATE_LIMITED` is temporary; backoff or change provider.
+
+## Exit status
+
+The CLI exits non-zero when a recovery does not end in `SUCCESS` or
+`ALREADY_PASSING`, when an approval is refused, and when an apply is rejected.
+Scripts should not parse localized human output for control flow; use
+`--json-events` for recovery progress and check the process status.

@@ -1,0 +1,135 @@
+---
+title: Running Recoveries
+description: Practical guidance for scoping a recovery, choosing flags, and interpreting the result.
+---
+
+A good recovery starts with a good reproduction. Argus cannot compensate for a
+test command that passes, fails for environmental reasons, or exercises the wrong
+behaviour.
+
+## Before the first run
+
+1. Confirm the test fails for the reason you think it does.
+2. Confirm it can run inside a copy of the project.
+3. Confirm it does not require network access, credentials, or interactive input.
+4. Configure and test a provider.
+5. Check the run from a clean shell with `argus doctor`.
+
+## Basic form
+
+```bash title="Auto-localize the target"
+argus run --test "pytest tests/test_calculator.py"
+```
+
+```bash title="Name the target explicitly"
+argus run \
+  --test "pytest tests/test_calculator.py" \
+  --file src/calculator.py
+```
+
+Auto-localization parses traceback frames. It is convenient but not infallible,
+especially when a failure originates in a dependency or a conftest. Passing
+`--file` removes ambiguity and is the recommended form for CI.
+
+## Scope the test
+
+A narrow test keeps verification fast and reduces the chance that the candidate
+is shaped by unrelated failures.
+
+```bash title="Narrow pytest selection"
+argus run \
+  --test "pytest tests/test_calculator.py::test_adds_positive_integers" \
+  --file src/calculator.py \
+  --attempts 3 \
+  --budget 0.03
+```
+
+The default test timeout is 30 seconds. If your reproduction legitimately needs
+longer, adjust `test_timeout_seconds` in `ArgusConfig` through the Python API or
+policy file; do not wrap the command in a shell pipeline, which is rejected.
+
+## Bounds
+
+| Flag | Default | Notes |
+| --- | --- | --- |
+| `--attempts` | `3` | Values above 3 are clamped to 3 |
+| `--budget` | `0.05` | USD ceiling for the run |
+| `--enable-tier4` | off | Experimental anchor matching |
+| `--effort` | adaptive | `low`, `medium`, or `high` |
+| `--no-adaptive` | off | Disable effort classification |
+
+The provider's own request timeout and the task deadline are separate bounds
+configured in `ArgusConfig`. A recovery can therefore end with
+`DEADLINE_EXCEEDED` even when attempts remain.
+
+## Applying in one command
+
+```bash title="Non-interactive reviewed automation"
+argus run \
+  --test "pytest tests/test_calculator.py" \
+  --apply --yes-reviewed
+```
+
+`--apply` alone is refused. `--yes-reviewed` records approval as automation and
+then applies. This option exists for harnesses that have their own review gate;
+it is not a substitute for reviewing the diff.
+
+## Machine-readable events
+
+```bash title="JSON Lines"
+argus run --test "pytest tests/test_calculator.py" --json-events
+```
+
+Events are emitted as JSON Lines on stdout, leaving stderr for diagnostics. The
+process exits non-zero if the run does not end in `SUCCESS` or
+`ALREADY_PASSING`.
+
+## Interpreting outcomes
+
+| You see | What it means |
+| --- | --- |
+| Verified candidate + diff | Review it, then approve and apply |
+| `ALREADY_PASSING` | The test passed without changes; nothing to recover |
+| `FAILED_MAX_ATTEMPTS` | The model did not produce a verified patch in three turns |
+| `LOCALIZATION_FAILED` | Pass `--file` explicitly |
+| `TEST_SETUP_ERROR` | The command could not run; fix the harness first |
+| `BUDGET_EXCEEDED` | The run hit its spend ceiling |
+| `PROVIDER_RATE_LIMITED` | Wait, or select another configured provider |
+
+## Failure diagnosis
+
+The artifact directory contains the scrubbed prompt, raw response, parsed patch,
+and context. Start there:
+
+```bash title="Shell"
+ls .argus/runs/<run_id>/
+sed -n '1,160p' .argus/runs/<run_id>/raw_response.txt
+```
+
+Common causes:
+
+- the model returns prose instead of a parsable block;
+- the search block describes a version of the file that no longer exists;
+- the edit is syntactically valid but does not fix the assertion;
+- the test requires a dependency missing from the isolated copy;
+- the provider is returning truncated output because the token ceiling is low.
+
+The response is not to disable the AST gate or lower the similarity threshold.
+Improve the context: pass `--file`, narrow the test, switch to a model better at
+code, or fix the underlying test harness.
+
+## Parallel runs
+
+Recovery artifacts are per workspace and per run ID, and workspaces are separate
+directories. You can run recoveries in parallel in different projects. In the
+same project, concurrent applies can race by design; the baseline hash check
+makes the second write fail with `STALE_TARGET_CONFLICT` rather than overwrite.
+Serialise applies when you need a deterministic order.
+
+## What not to do
+
+- Do not run recovery on an untrusted repository expecting a sandbox.
+- Do not point `--test` at a command that mutates the repository outside the
+  workspace.
+- Do not raise attempts to compensate for a fundamentally wrong edit.
+- Do not apply a candidate after modifying the target file.

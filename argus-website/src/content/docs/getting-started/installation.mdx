@@ -1,0 +1,168 @@
+---
+title: Installation
+description: Requirements, source installation, optional extras, verification, and removal.
+---
+
+import InstallTabs from '../../../components/InstallTabs.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+## Requirements
+
+| Requirement | Detail |
+| --- | --- |
+| Python | 3.11, 3.12, 3.13, or 3.14 |
+| Package manager | any PEP 517 compatible installer (`pip`, `uv`, `pipx`) |
+| Git | recommended; required for worktree isolation and repository detection |
+| Operating system | Windows, Linux, macOS, or WSL2 |
+| Test runner | whatever your project already uses (for example `pytest`) |
+
+The core install includes the CLI, recovery controller, patch engine, workspace
+manager, provider adapters, and the MCP server. The terminal UI and the
+experimental gateway are optional extras.
+
+<Aside type="caution" title="Not on PyPI yet">
+Argus `0.2.0b1` is pre-release and is not published to a public package index.
+The commands below install directly from
+`https://github.com/hemang1404/Argus.git`. Do not install an unrelated package
+with a similar name from PyPI.
+</Aside>
+
+## Install from the repository
+
+<InstallTabs />
+
+The commands above install the core runtime. The terminal cockpit is an optional
+extra; the editable commands below include it so that `argus tui` and
+`argus app` work. To add it to a non-editable install:
+
+```bash title="Shell"
+pip install "argus-recovery[tui] @ git+https://github.com/hemang1404/Argus.git"
+```
+
+To manage the installation yourself:
+
+```bash title="Shell"
+git clone https://github.com/hemang1404/Argus.git
+cd Argus
+python -m venv .venv
+
+# POSIX
+source .venv/bin/activate
+
+# Windows PowerShell
+# .venv\Scripts\Activate.ps1
+
+pip install -e ".[tui]"
+```
+
+Editable mode (`-e`) is recommended when you are also reading or modifying the
+runtime. For a pinned, reproducible installation, check out a specific commit
+before installing:
+
+```bash title="Shell"
+git clone https://github.com/hemang1404/Argus.git
+cd Argus
+git checkout <commit-sha>
+pip install ".[tui]"
+```
+
+## Optional extras
+
+| Extra | Adds | Use when |
+| --- | --- | --- |
+| `tui` | `textual`, `Pillow` | You want `argus tui` or `argus app` |
+| `gateway` | `fastapi`, `uvicorn` | You are evaluating the experimental inference proxy |
+| `research` | `tiktoken`, `scipy`, `numpy` | You are reproducing legacy research studies |
+| `dev` | `pytest`, `pytest-asyncio`, `pytest-cov`, `psutil`, `build` | You are contributing to Argus |
+| `all` | Currently the `tui` bundle | Convenience install for supported surfaces |
+
+```bash title="Shell"
+# Development environment
+pip install -e ".[dev,tui]"
+
+# Terminal UI only
+pip install -e ".[tui]"
+
+# Experimental gateway (not installed by default)
+pip install -e ".[gateway]"
+```
+
+The gateway is intentionally excluded from `all`. It is an auxiliary,
+experimental surface, separate from the offline recovery loop.
+
+## Verify the installation
+
+```bash title="Shell"
+argus --version
+argus doctor
+```
+
+`argus --version` prints the package version. `argus doctor` checks Python,
+Git, pytest, the Antigravity host CLI, a local Ollama endpoint, and the active
+provider configuration. A healthy installation ends with a connectivity check
+only after a provider has been configured; before that, it reports:
+
+```text
+! Provider        none configured (run 'argus provider set')
+```
+
+That is expected on a fresh install. Continue with
+[provider configuration](/guides/provider-configuration/).
+
+To verify the MCP surface without connecting an editor:
+
+```bash title="Shell"
+argus mcp verify
+```
+
+This starts the stdio server, performs the initialization handshake, lists the
+four tools, and reports the active provider.
+
+## First run
+
+Run Argus from the root of the repository you want it to operate on. The CLI
+also accepts `--workspace <path>` on most commands.
+
+```bash title="Shell"
+cd /path/to/your/project
+argus run --test "pytest tests/test_calculator.py" --file src/calculator.py
+```
+
+The [Quick Start](/getting-started/quick-start/) walks through the complete
+recovery, review, and application flow.
+
+## Configuration location
+
+Provider records are stored in the platform configuration directory, and API
+keys are stored in the operating system keyring when available. The runtime
+falls back to a restricted-permission file if no keyring backend is available.
+Override the directory with `ARGUS_CONFIG_DIR`.
+
+Per-workspace recovery artifacts live in `.argus/` inside the repository. Add
+`.argus/` to version control ignore rules; the repository's own `.gitignore`
+already does this.
+
+## Uninstall
+
+```bash title="Shell"
+pip uninstall argus-recovery
+```
+
+If you installed the project in editable mode, remove the checkout as well.
+Stored provider credentials can be removed first:
+
+```bash title="Shell"
+argus provider list
+argus provider delete <name>
+```
+
+Recovery artifacts are ordinary files under each project's `.argus/` directory.
+Remove them per project when they are no longer needed; Argus does not delete
+run history automatically.
+
+## Troubleshooting
+
+Installation failures are usually one of: an unsupported Python version, a
+missing `textual` dependency for the TUI, or a network restriction preventing a
+Git clone. See [Troubleshooting](/guides/troubleshooting/) for the concrete error
+messages and fixes.

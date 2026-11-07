@@ -1,0 +1,135 @@
+---
+title: MCP Server
+description: Connect Argus to compatible coding agents, with the four tools it exposes and its approval boundary.
+---
+
+Argus implements a local Model Context Protocol server over stdio. It lets a
+host agent request a recovery, inspect candidates, and apply an approved
+candidate without leaving its own interface.
+
+The server does not expose a tool for approving a candidate. That omission is
+deliberate.
+
+## Start or install
+
+```bash title="Shell"
+# Run the server directly over stdio
+argus mcp run
+
+# Write MCP configuration for supported hosts
+argus mcp install opencode
+argus mcp install all
+
+# Verify the handshake and tool list
+argus mcp verify
+```
+
+`argus mcp install` supports `antigravity`, `opencode`, and `gemini`, or `all`.
+It writes a timestamped backup before modifying an existing configuration file.
+Use `--workspace` instead of `--global` to write workspace-local configuration.
+
+A manual entry for a host that reads `mcpServers` looks like this:
+
+```json title="MCP configuration"
+{
+  "mcpServers": {
+    "argus": {
+      "command": "python",
+      "args": ["-m", "argus.mcp"]
+    }
+  }
+}
+```
+
+Use the Python interpreter from the environment where Argus is installed. If
+`argus` is on `PATH`, `{"command": "argus", "args": ["mcp", "run"]}` is an
+equivalent alternative.
+
+## Tools
+
+### `argus_status`
+
+Reports runtime readiness without exposing credentials.
+
+Parameters: none.
+
+The response includes provider configuration (name, base URL, model, key
+configured, masked key), Python version, Git and pytest availability, Antigravity
+CLI availability, and candidate counts for the workspace.
+
+### `argus_recover`
+
+Runs a non-destructive recovery and returns the candidate metadata and diff.
+
+| Parameter | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `test_command` | yes | — | Command that reproduces the failure |
+| `target_file` | no | auto-localize | Project-relative or absolute path |
+| `test_file` | no | — | Copy this test file into the workspace |
+| `workspace` | no | current directory | Project root |
+| `max_attempts` | no | `3` | Clamped to a maximum of 3 |
+| `budget` | no | `0.05` | Spend ceiling in USD |
+| `model` | no | provider default | Model override |
+| `provider` | no | active provider | Provider name, `auto`, or `antigravity` |
+
+The response contains `run_id`, `status`, `verified`, attempts, cost, duration,
+target, diff, diagnostics, and a `next_step` instruction. A verified patch is not
+applied by this call.
+
+### `argus_get_candidate`
+
+Returns metadata and the unified diff for a run.
+
+| Parameter | Required |
+| --- | --- |
+| `run_id` | yes |
+| `workspace` | no |
+
+Use it to review a candidate before deciding whether to ask for application.
+
+### `argus_apply_candidate`
+
+Applies a verified candidate that has already been approved.
+
+| Parameter | Required |
+| --- | --- |
+| `run_id` | yes |
+| `workspace` | no |
+
+The call enforces `verified == true`, `approved == true`, and the baseline hash
+check. If approval has not been recorded, it returns
+`CANDIDATE_NOT_APPROVED`.
+
+## The approval boundary
+
+An agent can produce a candidate, read it, and request application. It cannot
+approve it. The intended sequence is:
+
+```text
+agent: argus_recover(...)        → candidate run_...
+agent: argus_get_candidate(...)  → diff + metadata
+human: argus approve run_...     → approval recorded in the terminal
+agent: argus_apply_candidate(...) → applied
+```
+
+This prevents a model from both proposing and authorizing a modification to your
+repository. Do not build automation that removes the human step unless you have a
+stronger review process outside Argus.
+
+## Output hygiene
+
+The server reserves stdout for JSON-RPC traffic. Logs and diagnostics go to
+stderr, prefixed `[argus-mcp]`, so a host that captures stdout is not corrupted by
+human-readable output.
+
+## Security notes
+
+- Status responses mask keys. They never return the secret value.
+- `workspace` scopes candidate lookup and application, but does not override path
+  containment checks.
+- The MCP surface does not expose the gateway, provider mutation, or arbitrary
+  command execution.
+- The server is a local stdio process. It does not listen on a network socket.
+
+For the full execution-boundary discussion, read the
+[security model](/project/security-model/).

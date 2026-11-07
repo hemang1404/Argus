@@ -1,0 +1,115 @@
+---
+title: Validation and Approval
+description: The difference between a verified patch and an authorized one, and every check performed before writing.
+---
+
+Argus separates three questions that are easy to conflate:
+
+1. **Does the patch parse?** Syntax validation.
+2. **Does the patch pass the test?** Verification.
+3. **May this patch be written to the repository?** Approval and application.
+
+Only the first two are automated. The third belongs to a human, except for
+explicitly marked automation.
+
+## Syntax validation
+
+Every successful reconciliation writes the replacement into the full target file
+and runs `ast.parse` over the result. The check catches:
+
+- unmatched brackets or quotes introduced by the patch;
+- malformed indentation that produces invalid Python;
+- replacements that delete a required block and leave an incomplete statement;
+- edits that are individually plausible but invalid in file context.
+
+The AST gate is mandatory for tiers 1–4. It is currently implemented for Python
+source only.
+
+## Test verification
+
+After the syntax check, the patched file is written into the ephemeral workspace
+and the reproduction command is rerun. A passing exit code makes the candidate
+`verified`. A non-zero exit records a failed attempt and feeds the new failure
+back into the next turn.
+
+Passing tests are evidence about the assertions that ran. They are not a proof of
+semantic correctness. This distinction matters when reviewing a candidate: a
+patch can satisfy a narrow test while changing unrelated behaviour.
+
+## Approval
+
+Approval is recorded in the candidate metadata and is independent of
+verification. The normal path is interactive:
+
+```bash title="Shell"
+argus approve <run_id>
+```
+
+Argus prints the candidate summary and the unified diff, then asks for
+confirmation. In a non-interactive environment the command refuses unless `--yes`
+is supplied. `--yes` is a trusted-automation bypass; it is recorded as
+`automation:--yes`, not as human review.
+
+`--force` allows approving an unverified candidate. It does not bypass integrity
+checks at application time. Neither flag changes the candidate content.
+
+The TUI records approval when you press `a` or `Enter` on the diff review screen.
+The MCP surface has no approval tool; an agent cannot approve its own candidate.
+
+## Application checks
+
+`AuthoritativePatchApplier.apply()` performs the following checks in order
+before a write:
+
+| Check | Failure code |
+| --- | --- |
+| Candidate artifact loads | `CANDIDATE_NOT_FOUND` |
+| Candidate is verified | `CANDIDATE_NOT_VERIFIED` |
+| Candidate is approved (unless forced) | `CANDIDATE_NOT_APPROVED` |
+| Candidate content exists | `CANDIDATE_CONTENT_MISSING` |
+| Candidate content matches `candidate_hash` | `CONTENT_HASH_MISMATCH` |
+| Patched content parses as Python | `SYNTAX_VALIDATION_FAILED` |
+| Target path stays inside the workspace | `PATH_TRAVERSAL_REJECTED` |
+| Target matches recorded target path | `TARGET_FILE_MISMATCH` |
+| Target is a regular file | `UNSAFE_TARGET_TYPE` |
+| Live file matches `baseline_hash` | `STALE_TARGET_CONFLICT` |
+| No concurrent modification between checks | `CONCURRENT_MODIFICATION_DETECTED` |
+| File permissions can be preserved | `PERMISSION_PRESERVATION_FAILED` |
+
+The apply path is deliberately repetitive: hashes are re-read immediately before
+the write, and the target is re-checked after preparing the replacement. This is
+time-of-check to time-of-use defence, not merely bookkeeping.
+
+## Atomic writes
+
+Content is written to a temporary sibling file and committed with `os.replace`.
+A crash or permission error cannot leave a partially written source file at the
+target path. Existing file permissions are captured and restored where the
+platform permits it. If the temporary file cannot be prepared, the original file
+remains untouched.
+
+## What approval cannot do
+
+Approval is not a blanket authorization for later changes:
+
+- it does not permit a patch against a different file;
+- it does not survive a change to the baseline file;
+- it does not authorize applying a candidate whose content hash changed;
+- it does not bypass syntax validation;
+- it is recorded per candidate, not per workspace.
+
+If any of those conditions change, apply fails closed and the candidate must be
+reviewed again.
+
+## Recommended review discipline
+
+For a high-confidence workflow:
+
+1. Read the diff, not only the test result.
+2. Confirm the change is limited to the target file.
+3. Check that the test command exercises the changed behaviour.
+4. Approve interactively.
+5. Apply while the working tree is still in the state you reviewed.
+6. Run the broader suite yourself before committing.
+
+Argus makes this cheap; it does not make the review optional.

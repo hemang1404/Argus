@@ -1,0 +1,591 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import InstallTabs from '../components/InstallTabs.astro';
+import { navGroups } from '../data/nav.mjs';
+
+const description =
+  'Argus is a local, test-gated code recovery runtime for LLM-generated patches. Isolated workspaces, tiered patch reconciliation, SHA-256 candidates, and explicit human approval.';
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'Argus',
+    description,
+    template: 'splash',
+    head: [{ tag: 'title', content: 'Argus — test-gated recovery for AI-generated code' }],
+    hero: {
+      title: 'Argus',
+      tagline: 'Test-gated recovery for AI-generated code.',
+    },
+  }}
+>
+  <div class="home">
+    <section class="home-section">
+      <header class="section-head">
+        <span class="section-index">01</span>
+        <h2>Recovery as an engineering process</h2>
+        <p>
+          A coding agent produces a plausible patch. It fails to apply, or applies
+          and breaks the test suite. Argus takes over from there — inside a
+          disposable workspace, with a bounded loop and a verifiable result.
+        </p>
+      </header>
+
+      <div class="capabilities">
+        <article>
+          <span class="cap-index">01</span>
+          <h3>Isolated by default</h3>
+          <p>
+            Every attempt runs in a temporary project copy or a detached Git
+            worktree. Reproduction commands never execute against your live tree.
+          </p>
+        </article>
+        <article>
+          <span class="cap-index">02</span>
+          <h3>Reconciled, not guessed</h3>
+          <p>
+            Five matching tiers escalate from exact matching to safe refusal.
+            Every accepted Python patch must pass a full-file AST parse.
+          </p>
+        </article>
+        <article>
+          <span class="cap-index">03</span>
+          <h3>Verified, then signed</h3>
+          <p>
+            A candidate exists only when your test command passes. Baseline and
+            result digests pin the artifact before you decide to apply it.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="home-section">
+      <header class="section-head">
+        <span class="section-index">02</span>
+        <h2>The recovery loop</h2>
+        <p>
+          Bounded at three turns by default. Each turn narrows the failure before
+          spending another inference request.
+        </p>
+      </header>
+
+      <ol class="lifecycle">
+        <li>
+          <span class="step-index">01</span>
+          <h3>Isolate</h3>
+          <p>Copy the project or attach a detached worktree.</p>
+        </li>
+        <li>
+          <span class="step-index">02</span>
+          <h3>Reproduce</h3>
+          <p>Run the test command with a timeout and output ceiling.</p>
+        </li>
+        <li>
+          <span class="step-index">03</span>
+          <h3>Localize</h3>
+          <p>Read traceback frames to identify the target file.</p>
+        </li>
+        <li>
+          <span class="step-index">04</span>
+          <h3>Reconcile</h3>
+          <p>Match the proposed search block through the tier ladder.</p>
+        </li>
+        <li>
+          <span class="step-index">05</span>
+          <h3>Verify</h3>
+          <p>Apply inside the workspace and rerun the reproduction.</p>
+        </li>
+        <li>
+          <span class="step-index">06</span>
+          <h3>Approve</h3>
+          <p>Inspect the diff, approve, then apply atomically.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="home-section">
+      <header class="section-head">
+        <span class="section-index">03</span>
+        <h2>The matching ladder</h2>
+        <p>
+          Progressively permissive, never silently ambiguous. Tier 4 is
+          experimental and stays off unless you opt in.
+        </p>
+      </header>
+
+      <table class="tier-table">
+        <thead>
+          <tr>
+            <th>Tier</th>
+            <th>Strategy</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">01</td>
+            <td><strong>Exact match</strong><span>Byte-for-byte search block equality.</span></td>
+            <td><span class="badge badge-active">Active</span></td>
+          </tr>
+          <tr>
+            <td class="mono">02</td>
+            <td><strong>Whitespace normalization</strong><span>Leading indentation and trailing whitespace drift.</span></td>
+            <td><span class="badge badge-active">Active</span></td>
+          </tr>
+          <tr>
+            <td class="mono">03</td>
+            <td><strong>Fuzzy sliding window</strong><span>0.82 similarity threshold with a 0.10 ambiguity margin.</span></td>
+            <td><span class="badge badge-active">Active</span></td>
+          </tr>
+          <tr>
+            <td class="mono">04</td>
+            <td><strong>Anchor matching</strong><span>Prefix and suffix anchors across drifted interior lines.</span></td>
+            <td><span class="badge badge-experimental">Opt-in</span></td>
+          </tr>
+          <tr>
+            <td class="mono">05</td>
+            <td><strong>Safe refusal</strong><span>Ambiguous or below-threshold matches are not applied.</span></td>
+            <td><span class="badge badge-refusal">Terminal</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="home-section">
+      <div class="install">
+        <div class="install-copy">
+          <span class="section-index">04</span>
+          <h2>Install from source</h2>
+          <p>
+            Argus requires Python 3.11–3.14 and Git. The core runtime installs
+            without the terminal cockpit; add the <code>tui</code> extra for
+            <code>argus tui</code>.
+          </p>
+          <p class="install-status">
+            <span class="status-dot"></span>
+            Version 0.2.0b1 · not yet published on PyPI
+          </p>
+          <a class="text-link" href="/getting-started/installation/">Full installation guide →</a>
+        </div>
+        <div class="install-widget">
+          <InstallTabs />
+        </div>
+      </div>
+    </section>
+
+    <section class="home-section">
+      <header class="section-head">
+        <span class="section-index">05</span>
+        <h2>Documentation</h2>
+        <p>From first recovery to the security model and the current release history.</p>
+      </header>
+
+      <div class="docs-map">
+        {
+          navGroups.map((group) => (
+            <div class="docs-group">
+              <h3>{group.label}</h3>
+              <ul>
+                {group.items.map((item) => (
+                  <li><a href={item.href}>{item.label}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="home-boundary">
+      <p>
+        <strong>Boundary.</strong> Argus verifies syntax and test outcomes. It is not
+        a security sandbox: host subprocess execution runs with your user
+        privileges. Read the <a href="/project/security-model/">security model</a>
+        before running untrusted repositories.
+      </p>
+    </section>
+  </div>
+</StarlightPage>
+
+<style>
+  .home {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 1.5rem 4rem;
+  }
+
+  .home-section {
+    padding: 3.75rem 0;
+    border-top: 1px solid var(--a-border-subtle);
+  }
+
+  .section-head {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    column-gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .section-index {
+    font-family: var(--a-mono);
+    font-size: 0.6563rem;
+    letter-spacing: 0.1em;
+    color: var(--a-text-muted);
+    padding-top: 0.45rem;
+  }
+
+  .section-head h2 {
+    grid-column: 2;
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 560;
+    letter-spacing: -0.02em;
+    color: var(--a-text-heading);
+  }
+
+  .section-head p {
+    grid-column: 2;
+    max-width: 38rem;
+    margin: 0.6rem 0 0;
+    color: var(--a-text-secondary);
+    font-size: 0.9375rem;
+    line-height: 1.7;
+  }
+
+  .capabilities {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2rem;
+    margin-inline-start: 3.5rem;
+  }
+
+  .capabilities article {
+    border-top: 1px solid var(--a-border);
+    padding-top: 1rem;
+  }
+
+  .cap-index {
+    font-family: var(--a-mono);
+    font-size: 0.625rem;
+    color: var(--a-text-muted);
+  }
+
+  .capabilities h3 {
+    margin: 0.55rem 0 0.4rem;
+    font-size: 0.9375rem;
+    font-weight: 550;
+    color: var(--a-text);
+    letter-spacing: -0.005em;
+  }
+
+  .capabilities p {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: var(--a-text-secondary);
+  }
+
+  .lifecycle {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    margin: 0 0 0 3.5rem;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--a-border-subtle);
+    border-left: 1px solid var(--a-border-subtle);
+  }
+
+  .lifecycle li {
+    padding: 1.1rem 1.1rem 1.25rem;
+    border-right: 1px solid var(--a-border-subtle);
+    border-bottom: 1px solid var(--a-border-subtle);
+  }
+
+  .step-index {
+    font-family: var(--a-mono);
+    font-size: 0.625rem;
+    color: var(--a-blue-deep);
+  }
+
+  .lifecycle h3 {
+    margin: 0.5rem 0 0.25rem;
+    font-size: 0.9rem;
+    font-weight: 550;
+    color: var(--a-text);
+  }
+
+  .lifecycle p {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--a-text-secondary);
+  }
+
+  .tier-table {
+    width: 100%;
+    margin-inline-start: 3.5rem;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .tier-table th {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid var(--a-border);
+    text-align: start;
+    font-family: var(--a-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--a-text-muted);
+  }
+
+  .tier-table td {
+    padding: 0.8rem 0.75rem;
+    border-bottom: 1px solid var(--a-border-subtle);
+    vertical-align: top;
+  }
+
+  .tier-table tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .tier-table td.mono {
+    width: 3.5rem;
+    font-family: var(--a-mono);
+    color: var(--a-text-muted);
+    font-size: 0.75rem;
+  }
+
+  .tier-table td strong {
+    display: block;
+    color: var(--a-text);
+    font-weight: 500;
+  }
+
+  .tier-table td span:not(.badge) {
+    display: block;
+    margin-top: 0.15rem;
+    color: var(--a-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.55;
+  }
+
+  .badge {
+    display: inline-block;
+    border: 1px solid var(--a-border);
+    border-radius: 2px;
+    padding: 1px 6px;
+    font-family: var(--a-mono);
+    font-size: 0.5938rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .badge-active {
+    color: var(--a-text-secondary);
+  }
+
+  .badge-experimental {
+    color: var(--a-orange);
+    border-color: rgba(232, 138, 19, 0.35);
+  }
+
+  .badge-refusal {
+    color: var(--a-text-muted);
+  }
+
+  .install {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.1fr);
+    gap: 3rem;
+    align-items: start;
+    margin-inline-start: 3.5rem;
+  }
+
+  .install-copy h2 {
+    margin: 0.4rem 0 0.6rem;
+    font-size: 1.5rem;
+    font-weight: 560;
+    letter-spacing: -0.02em;
+    color: var(--a-text-heading);
+  }
+
+  .install-copy p {
+    margin: 0 0 0.9rem;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: var(--a-text-secondary);
+  }
+
+  .install-copy code {
+    font-family: var(--a-mono);
+    font-size: 0.85em;
+    color: var(--a-text);
+    background: var(--a-bg-elevated);
+    border: 1px solid var(--a-border);
+    border-radius: 3px;
+    padding: 0.05em 0.3em;
+  }
+
+  .install-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--a-mono);
+    font-size: 0.6875rem;
+    color: var(--a-text-muted);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--a-orange);
+  }
+
+  .text-link {
+    display: inline-block;
+    margin-top: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--a-blue);
+    text-decoration: none;
+  }
+
+  .text-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .install-widget :global(.install-tabs) {
+    margin-top: 0;
+  }
+
+  .docs-map {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2rem 2.5rem;
+    margin-inline-start: 3.5rem;
+  }
+
+  .docs-group h3 {
+    margin: 0 0 0.6rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--a-border-subtle);
+    font-family: var(--a-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--a-text-muted);
+  }
+
+  .docs-group ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .docs-group li {
+    margin: 0;
+  }
+
+  .docs-group a {
+    display: inline-block;
+    padding: 0.2rem 0;
+    font-size: 0.85rem;
+    color: var(--a-text-secondary);
+    text-decoration: none;
+    transition: color 120ms ease;
+  }
+
+  .docs-group a:hover {
+    color: var(--a-blue);
+  }
+
+  .home-boundary {
+    margin-inline-start: 3.5rem;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--a-border-subtle);
+    border-radius: 4px;
+    background: var(--a-bg-raised);
+  }
+
+  .home-boundary p {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: var(--a-text-secondary);
+  }
+
+  .home-boundary strong {
+    color: var(--a-text);
+    font-weight: 500;
+  }
+
+  .home-boundary a {
+    color: var(--a-blue);
+    text-decoration: none;
+  }
+
+  .home-boundary a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  @media (max-width: 64rem) {
+    .capabilities,
+    .lifecycle,
+    .tier-table,
+    .install,
+    .docs-map,
+    .home-boundary {
+      margin-inline-start: 0;
+    }
+  }
+
+  @media (max-width: 52rem) {
+    .capabilities {
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+
+    .lifecycle {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .install {
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    .docs-map {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 34rem) {
+    .home {
+      padding-inline: 1.1rem;
+    }
+
+    .section-head {
+      grid-template-columns: 1.75rem minmax(0, 1fr);
+      column-gap: 0.75rem;
+    }
+
+    .lifecycle {
+      grid-template-columns: 1fr;
+    }
+
+    .docs-map {
+      grid-template-columns: 1fr;
+    }
+
+    .tier-table td span:not(.badge) {
+      display: none;
+    }
+  }
+</style>

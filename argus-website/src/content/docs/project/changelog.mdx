@@ -1,0 +1,107 @@
+---
+title: Changelog
+description: Release history for Argus, beginning with the 0.2.0b1 pre-release.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Argus follows [Semantic Versioning](https://semver.org/) and records changes in
+the repository's `CHANGELOG.md`. This page mirrors the published release notes.
+
+## 0.2.0b1 — 2026-11-06
+
+Pre-release. Distribution name `argus-recovery`; command `argus`.
+
+### Added
+
+**Multi-tier resilient patch engine**
+
+- Tier 1: byte-for-byte exact matching.
+- Tier 2: whitespace and leading-indentation normalization.
+- Tier 3: character-level sliding-window similarity with an ambiguity margin.
+- Tier 4: experimental anchor-based prefix/suffix matching, disabled by default
+  and enabled with `--enable-tier4`.
+- Tier 5: safe refusal when a patch is ambiguous or below the similarity
+  threshold.
+- Python `ast.parse` validation gating every successful candidate.
+
+**Session-aware workspace management**
+
+- Ephemeral project copy with heavy-directory exclusion (`.git`, `node_modules`,
+  virtual environments, build output, caches, and research data).
+- Git worktree mode using `git worktree add --detach` with an uncommitted-change
+  overlay.
+- Process start-time identity tracking (`kernel32.GetProcessTimes` on Windows,
+  `/proc/<pid>/stat` on POSIX) to prevent false retention after PID reuse.
+- Atomic rename directory claiming to prevent concurrent garbage-collection
+  collisions.
+
+**Bounded subprocess supervision**
+
+- `BoundedOutputCollector` draining stdout and stderr concurrently with a 4 MB
+  memory bound, verified under a 1 GB logical stream flood.
+- Hard process-tree termination on timeout (`taskkill /F /T` on Windows,
+  `os.killpg` on POSIX), verified down to child and grandchild workers.
+- Direct execution with `shell=False` and strict tokenization rejecting shell
+  chaining and redirection.
+
+**Authoritative candidate application**
+
+- Candidate artifacts under `.argus/runs/<run_id>/` recording baseline and
+  candidate SHA-256 digests.
+- `AuthoritativePatchApplier` verifying file integrity before application and
+  committing atomically with `os.replace`.
+- TOCTOU checks, path containment, and syntax validation before writing.
+
+**Developer interfaces**
+
+- Command-line interface: `run`, `recover`, `candidates`, `inspect`, `diff`,
+  `approve`, `reject`, `apply`, `doctor`, `provider`, `mcp`, `setup`, `init`,
+  `tui`, `app`, `gateway`.
+- Interactive Textual cockpit with command palette, policy editing, timeline, and
+  diff review.
+- FastMCP stdio server exposing `argus_status`, `argus_recover`,
+  `argus_get_candidate`, and `argus_apply_candidate`.
+- Provider presets for Antigravity, Ollama, LM Studio, OpenAI, DeepSeek, Gemini,
+  OpenRouter, and custom OpenAI-compatible endpoints.
+
+**Experimental gateway proxy**
+
+- OpenAI- and Anthropic-compatible reverse proxy with two-phase budget
+  reservation in integer micro-dollars.
+- Loopback Host and Origin validation against DNS rebinding.
+- Identity-based rate limiting for local clients.
+- Mandatory constant-time bearer authentication via `ARGUS_GATEWAY_API_KEY`.
+- Strict loopback binding; non-loopback exposure requires `--allow-remote`.
+
+**Quality gates**
+
+- 471 passing tests in the offline suite.
+- 121 passing tests in the expanded core gate across three consecutive runs.
+- 500-case synthetic adversarial patch corpus with zero incorrect applications.
+- POSIX process-group and PID start-time verification under WSL2.
+
+### Security
+
+- Complete Groq prohibition across components, configuration, and gateway
+  routing.
+- Subprocess environment and traceback secret scrubbing.
+- Fail-closed container isolation: no silent fallback to host execution.
+- Gateway `/health` suppresses internal telemetry for unauthenticated callers;
+  `/v1/models` requires a valid bearer token.
+
+### Distribution
+
+- Not published on PyPI as of this release. Install from the GitHub repository.
+- `tui` and `gateway` are optional extras; the gateway is excluded from `all`.
+
+## Earlier history
+
+This documentation begins with the first publicly documented pre-release. Consult
+the repository's `CHANGELOG.md` and release tags for any commits newer than
+`0.2.0b1`.
+
+<Aside type="note" title="Pre-release">
+Breaking changes are possible before a stable release. Pin a commit for
+reproducible installations.
+</Aside>

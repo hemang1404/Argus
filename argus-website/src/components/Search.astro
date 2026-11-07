@@ -1,0 +1,332 @@
+---
+/**
+ * Documentation search.
+ *
+ * The index is generated at build time (`/search-index.json`) and fetched
+ * lazily on first open. Search runs entirely in the browser: no request per
+ * keystroke, no external service. Cmd/Ctrl+K opens it on every page.
+ */
+---
+
+<button
+  class="search-trigger"
+  type="button"
+  data-search-open
+  aria-label="Search documentation"
+  aria-haspopup="dialog"
+  aria-controls="argus-search"
+>
+  <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4">
+    <circle cx="7" cy="7" r="4.6" />
+    <path d="m10.5 10.5 3 3" stroke-linecap="round" />
+  </svg>
+  <span class="search-label">Search</span>
+  <kbd class="search-kbd"><span data-search-mod>⌘</span>K</kbd>
+</button>
+
+<div class="search-overlay" id="argus-search" data-search-overlay hidden>
+  <div class="search-panel" role="dialog" aria-modal="true" aria-labelledby="argus-search-title">
+    <h2 id="argus-search-title" class="sr-only">Search documentation</h2>
+    <div class="search-field">
+      <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4">
+        <circle cx="7" cy="7" r="4.6" />
+        <path d="m10.5 10.5 3 3" stroke-linecap="round" />
+      </svg>
+      <input
+        type="search"
+        placeholder="Search documentation…"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        data-search-input
+        aria-controls="argus-search-results"
+        aria-describedby="argus-search-help"
+      />
+      <span class="search-esc" aria-hidden="true">Esc</span>
+    </div>
+    <div class="search-results" id="argus-search-results" data-search-results></div>
+    <div class="search-footer" id="argus-search-help">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span class="search-status" data-search-status aria-live="polite"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  interface SearchEntry {
+    title: string;
+    group: string;
+    description: string;
+    body: string;
+    href: string;
+  }
+
+  const overlay = document.querySelector<HTMLElement>('[data-search-overlay]');
+  const input = overlay?.querySelector<HTMLInputElement>('[data-search-input]');
+  const resultsEl = overlay?.querySelector<HTMLElement>('[data-search-results]');
+  const statusEl = overlay?.querySelector<HTMLElement>('[data-search-status]');
+
+  if (overlay && input && resultsEl) {
+    let entries: SearchEntry[] | null = null;
+    let loadError = false;
+    let activeIndex = -1;
+    let lastFocus: HTMLElement | null = null;
+
+    const escapeHtml = (value: string) =>
+      value.replace(/[&<>"']/g, (character) => {
+        const map: Record<string, string> = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        };
+        return map[character];
+      });
+
+    const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const termsFor = (query: string) =>
+      Array.from(new Set(query.toLowerCase().split(/\s+/).filter((term) => term.length > 0)));
+
+    const highlight = (text: string, terms: string[]) => {
+      if (!terms.length) return escapeHtml(text);
+      const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
+      return text
+        .split(pattern)
+        .map((part, index) =>
+          index % 2 === 1 ? `<mark>${escapeHtml(part)}</mark>` : escapeHtml(part)
+        )
+        .join('');
+    };
+
+    const excerptFor = (entry: SearchEntry, terms: string[]) => {
+      const body = entry.body.replace(/\s+/g, ' ').trim();
+      const lower = body.toLowerCase();
+      let position = -1;
+      for (const term of terms) {
+        const found = lower.indexOf(term);
+        if (found !== -1 && (position === -1 || found < position)) position = found;
+      }
+      const start = Math.max(0, position - 80);
+      const end = Math.min(body.length, start + 230);
+      const text =
+        (start > 0 ? '…' : '') + body.slice(start, end).trim() + (end < body.length ? '…' : '');
+      return highlight(text, terms);
+    };
+
+    const quickLinks = () => `
+      <div class="search-empty">
+        <strong>Search the Argus documentation</strong>
+        Titles, concepts, commands, flags and configuration keys.
+        <div class="search-quick">
+          <a href="/getting-started/installation/" data-result>Installation</a>
+          <a href="/core-concepts/patch-reconciliation/" data-result>Patch reconciliation</a>
+          <a href="/reference/cli-commands/" data-result>CLI commands</a>
+          <a href="/project/security-model/" data-result>Security model</a>
+        </div>
+      </div>`;
+
+    const renderEmptyState = () => {
+      resultsEl.innerHTML = quickLinks();
+      activeIndex = -1;
+      if (statusEl) statusEl.textContent = '';
+    };
+
+    const renderNoResults = (query: string) => {
+      resultsEl.innerHTML = `
+        <div class="search-empty">
+          <strong>No results for “${escapeHtml(query)}”</strong>
+          Try a shorter phrase, a command such as <code>argus recover</code>, or a concept such as “fuzzy matching”.
+        </div>`;
+      if (statusEl) statusEl.textContent = 'No results';
+      activeIndex = -1;
+    };
+
+    const scoreEntry = (entry: SearchEntry, terms: string[]) => {
+      const title = entry.title.toLowerCase();
+      const description = entry.description.toLowerCase();
+      const body = entry.body.toLowerCase();
+      let score = 0;
+
+      for (const term of terms) {
+        const inTitle = title.includes(term);
+        const inDescription = description.includes(term);
+        const inBody = body.includes(term);
+        if (!inTitle && !inDescription && !inBody) return 0;
+
+        if (title === term) score += 160;
+        else if (title.startsWith(term)) score += 90;
+        else if (inTitle) score += 55;
+
+        if (inDescription) score += 24;
+        if (inBody) {
+          const occurrences = body.split(term).length - 1;
+          score += Math.min(occurrences, 8) * 7;
+        }
+      }
+      return score;
+    };
+
+    const runSearch = (query: string) => {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        renderEmptyState();
+        return;
+      }
+      if (!entries) {
+        resultsEl.innerHTML = `<div class="search-empty">Loading index…</div>`;
+        return;
+      }
+
+      const terms = termsFor(trimmed);
+      const matches = entries
+        .map((entry) => ({ entry, score: scoreEntry(entry, terms) }))
+        .filter((match) => match.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 9);
+
+      if (!matches.length) {
+        renderNoResults(trimmed);
+        return;
+      }
+
+      resultsEl.innerHTML = matches
+        .map(
+          ({ entry }) => `
+          <a class="search-result" href="${entry.href}" data-result>
+            <span class="search-result-meta">${escapeHtml(entry.group)}</span>
+            <span class="search-result-title">${highlight(entry.title, terms)}</span>
+            <span class="search-result-excerpt">${excerptFor(entry, terms)}</span>
+          </a>`
+        )
+        .join('');
+
+      activeIndex = -1;
+      if (statusEl) statusEl.textContent = `${matches.length} result${matches.length === 1 ? '' : 's'}`;
+    };
+
+    const resultItems = () => Array.from(resultsEl.querySelectorAll<HTMLAnchorElement>('[data-result]'));
+
+    const setActive = (index: number) => {
+      const items = resultItems();
+      if (!items.length) return;
+      activeIndex = (index + items.length) % items.length;
+      items.forEach((item, itemIndex) => {
+        if (itemIndex === activeIndex) {
+          item.dataset.active = 'true';
+          item.setAttribute('aria-selected', 'true');
+          item.scrollIntoView({ block: 'nearest' });
+        } else {
+          delete item.dataset.active;
+          item.removeAttribute('aria-selected');
+        }
+      });
+    };
+
+    const loadIndex = async () => {
+      try {
+        const response = await fetch('/search-index.json');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        entries = (await response.json()) as SearchEntry[];
+      } catch {
+        loadError = true;
+        resultsEl.innerHTML = `
+          <div class="search-empty">
+            <strong>Search index unavailable</strong>
+            The static index could not be loaded. Ensure the site was built before previewing.
+          </div>`;
+      }
+    };
+
+    const open = async () => {
+      lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      overlay.hidden = false;
+      document.body.classList.add('argus-search-open');
+      input.value = '';
+      activeIndex = -1;
+      renderEmptyState();
+      input.focus();
+
+      if (!entries && !loadError) {
+        if (statusEl) statusEl.textContent = 'Loading…';
+        await loadIndex();
+        if (!overlay.hidden) runSearch(input.value);
+      }
+    };
+
+    const close = () => {
+      overlay.hidden = true;
+      document.body.classList.remove('argus-search-open');
+      if (statusEl) statusEl.textContent = '';
+      lastFocus?.focus();
+    };
+
+    document.querySelectorAll<HTMLElement>('[data-search-open]').forEach((trigger) => {
+      trigger.addEventListener('click', () => {
+        void open();
+      });
+    });
+
+    input.addEventListener('input', () => runSearch(input.value));
+
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) close();
+    });
+
+    overlay.addEventListener('mousedown', (event) => {
+      if (event.target === overlay) event.preventDefault();
+    });
+
+    overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+        return;
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActive(activeIndex + 1);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActive(activeIndex <= 0 ? resultItems().length - 1 : activeIndex - 1);
+        return;
+      }
+      if (event.key === 'Enter') {
+        const items = resultItems();
+        const target = items[activeIndex >= 0 ? activeIndex : 0];
+        if (target) {
+          event.preventDefault();
+          window.location.href = target.getAttribute('href') || '/';
+        }
+        return;
+      }
+      if (event.key === 'Tab') {
+        const focusable = Array.from(
+          overlay.querySelectorAll<HTMLElement>('input, a[href], button:not([disabled])')
+        ).filter((element) => element.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        if (overlay.hidden) void open();
+        else close();
+      }
+    });
+  }
+</script>

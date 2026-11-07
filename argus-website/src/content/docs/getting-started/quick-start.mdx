@@ -1,0 +1,131 @@
+---
+title: Quick Start
+description: "A minimal end-to-end recovery: run a failing test, inspect a candidate, approve it, and apply it."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This walkthrough assumes Argus is [installed](/getting-started/installation/) and
+you are in the root of a Python project with a failing test.
+
+## 1. Configure a provider
+
+Any authorized provider works. A local Ollama endpoint requires no API key:
+
+```bash title="Shell"
+argus provider set --preset ollama --model qwen2.5-coder:7b
+argus provider test
+```
+
+For a hosted provider, `argus provider set` prompts for the key with hidden
+input and stores it in the operating system keyring:
+
+```bash title="Shell"
+argus provider set --preset openai --model gpt-4o-mini
+```
+
+See [Provider configuration](/guides/provider-configuration/) for presets and
+credential precedence.
+
+## 2. Start a recovery
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py"
+```
+
+`--test` is required. When `--file` is omitted, Argus parses the test failure
+traceback to locate the target source file. You can name it explicitly:
+
+```bash title="Shell"
+argus run \
+  --test "pytest tests/test_calculator.py" \
+  --file src/calculator.py \
+  --attempts 3 \
+  --budget 0.05
+```
+
+The command runs entirely in an ephemeral workspace. Your working tree is not
+modified. On success, the CLI prints the candidate ID:
+
+```text
+✓ Verified passing (2 attempts, 18422ms, $0.0031)
+  Candidate: run_20261106_142530_9f3a1c2d
+  Target:    src/calculator.py
+```
+
+Run IDs use the form `run_<UTC timestamp>_<8 hex characters>`. The rest of this
+guide uses `<run_id>` as a placeholder.
+
+## 3. Inspect the candidate
+
+```bash title="Shell"
+argus candidates
+argus inspect <run_id>
+```
+
+`argus candidates` lists recent runs with verification, approval, and application
+state. `argus inspect` prints the target file, test command, attempt count, cost,
+and the unified diff. `argus diff <run_id>` shows only the diff.
+
+A verified candidate is not yet approved. Approval is a separate decision.
+
+## 4. Review and approve
+
+```bash title="Shell"
+argus approve <run_id>
+```
+
+The command displays the diff and asks for confirmation. With no TTY, it refuses
+unless `--yes` is passed. Approval is recorded with a timestamp and source in the
+candidate metadata.
+
+## 5. Apply
+
+```bash title="Shell"
+argus apply --run-id <run_id>
+```
+
+Before writing, Argus re-checks that:
+
+- the candidate is verified;
+- the candidate is approved;
+- the target file still matches the recorded baseline SHA-256;
+- the candidate content still matches its recorded SHA-256;
+- the patched content parses as Python;
+- the target resolves inside the workspace.
+
+The write is atomic: content goes to a temporary sibling file and is committed
+with `os.replace`. If any check fails, the file is untouched and the command
+exits non-zero.
+
+## The same flow in the TUI
+
+```bash title="Shell"
+argus tui
+```
+
+Enter the test command, press `Enter`, and watch the recovery timeline. When a
+candidate is ready, the diff review screen opens; press `a` or `Enter` to approve
+and apply, or `d` to discard. See the [TUI guide](/interfaces/tui/) for the full
+key map.
+
+## The same flow over MCP
+
+An MCP-compatible agent can call `argus_recover` to produce the candidate and
+`argus_get_candidate` to read it. It cannot approve the candidate. A human must
+run `argus approve <run_id>` in a terminal before `argus_apply_candidate` will
+succeed. This is deliberate; see [MCP server](/interfaces/mcp-server/).
+
+## If recovery fails
+
+The command exits non-zero and reports a status such as `FAILED_MAX_ATTEMPTS`,
+`LOCALIZATION_FAILED`, `TEST_SETUP_ERROR`, or `BUDGET_EXCEEDED`. No candidate is
+created for an unverified patch. Use [Troubleshooting](/guides/troubleshooting/)
+or inspect the artifacts under `.argus/runs/<run_id>/` for the scrubbed prompt,
+raw response, and parse output.
+
+<Aside type="tip" title="Cheap first pass">
+Start with `--budget 0.05` and a small local model. If reconciliation or tests
+fail because the edit is wrong rather than because the format drifted, a more
+capable model is a better next step than more attempts.
+</Aside>

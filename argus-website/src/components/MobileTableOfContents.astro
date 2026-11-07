@@ -1,0 +1,60 @@
+---
+import TocList from './TocList.astro';
+
+const { toc } = Astro.locals.starlightRoute;
+---
+
+{
+  toc && (
+    <details class="argus-mobile-toc">
+      <summary>
+        <span>On this page</span>
+        <span class="mobile-current" data-mobile-current />
+      </summary>
+      <div class="dropdown">
+        {toc.items.length > 0 ? <TocList items={toc.items} /> : <p class="toc-empty">No subsections.</p>}
+      </div>
+    </details>
+  )
+}
+
+<script>
+  const root = document.querySelector<HTMLDetailsElement>('.argus-mobile-toc');
+  if (root) {
+    root.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', () => {
+        root.open = false;
+      });
+    });
+
+    const current = root.querySelector<HTMLElement>('[data-mobile-current]');
+    const links = Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
+    let frame = 0;
+
+    const update = () => {
+      frame = 0;
+      const offset = 112;
+      let active: HTMLAnchorElement | null = null;
+      for (const link of links) {
+        const id = decodeURIComponent(link.hash.slice(1));
+        const heading = document.getElementById(id);
+        if (!heading) continue;
+        if (heading.getBoundingClientRect().top - offset <= 0) active = link;
+        else break;
+      }
+      links.forEach((link) => {
+        if (link === active) link.setAttribute('aria-current', 'location');
+        else link.removeAttribute('aria-current');
+      });
+      if (current && active) current.textContent = active.textContent || '';
+    };
+
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    update();
+  }
+</script>

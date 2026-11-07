@@ -1,0 +1,10 @@
+<script is:inline>
+  // Argus is a dark-only interface. Pin the theme before first paint and
+  // ignore any stale Starlight preference from another site on this origin.
+  document.documentElement.dataset.theme = 'dark';
+  try {
+    localStorage.removeItem('starlight-theme');
+  } catch (error) {
+    /* storage may be unavailable */
+  }
+</script>

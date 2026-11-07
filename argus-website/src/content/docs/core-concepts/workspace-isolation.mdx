@@ -1,0 +1,116 @@
+---
+title: Workspace Isolation
+description: How Argus separates recovery attempts from your working tree, and where that isolation ends.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Iterative repair is only safe if it cannot damage the repository being repaired.
+Argus therefore performs every attempt outside the live working tree, in storage
+that is disposable by construction.
+
+## Two workspace modes
+
+`WorkspaceManager` supports two ways to materialize a project:
+
+| Mode | Mechanism | Best for |
+| --- | --- | --- |
+| Ephemeral copy | Copy the project into a temporary directory | Repositories of any size, non-Git directories |
+| Git worktree | `git worktree add --detach` at `HEAD` plus an overlay | Git repositories where copying is expensive |
+
+The ephemeral copy is the default path for a recovery run. The worktree mode
+requires Git and is selected by callers that request it.
+
+## What the copy excludes
+
+A full snapshot would be wasteful and could copy secrets or build state that the
+tests do not need. The runtime skips these directory names:
+
+```text title="Excluded from snapshots"
+.git        .venv       venv         env
+node_modules  __pycache__  .pytest_cache  .mypy_cache
+.ruff_cache  .tox        .argus       dist
+build       logs         scratch      data
+packages    experiments_archive  results  figures
+```
+
+The target file and its package layout are preserved. If your test suite depends
+on a directory in that list, the reproduction may fail for environmental
+reasons; pass a narrower test command or run the recovery from a layout that
+does not depend on excluded data.
+
+## Uncommitted work
+
+In worktree mode, a detached worktree at `HEAD` would not contain uncommitted
+edits. Argus overlays dirty tracked files and untracked files into the worktree
+so the reproduction runs against the same state you see locally. This is
+important: verification against a clean `HEAD` would not prove anything about
+the code you are actually fixing.
+
+Copy mode naturally contains the current files, so no overlay step is needed.
+
+## Lifecycle and cleanup
+
+Each workspace is created for a run and removed when the run ends, including
+failure paths. Two details make cleanup safe when multiple runs execute
+concurrently:
+
+- **Process identity.** Cached workspace ownership records the PID together with
+  the process start time, read from `kernel32.GetProcessTimes` on Windows and
+  `/proc/<pid>/stat` on POSIX. A recycled PID cannot keep a dead workspace alive.
+- **Atomic claiming.** Garbage collection claims a workspace by atomically
+  renaming its directory before deleting it, preventing two collectors from
+  removing the same directory concurrently.
+
+Stale Git worktrees are pruned through `git worktree prune`, with administrative
+removal attempted for worktrees that are no longer needed. The goal is that a
+crashed run leaves at most temporary directories, not a corrupted repository
+metadata state.
+
+## What isolation does not cover
+
+<Aside type="caution" title="Not an OS sandbox">
+Workspace copying isolates *files*. It does not isolate processes. Test commands
+run on the host with your current user privileges. A malicious test suite can
+read your home directory, reach the network, or delete files you can delete.
+For untrusted repositories, use an operating-system or container boundary you
+control. Argus fails closed when container isolation is requested and no working
+engine is available, but this documentation does not claim that the container
+path has been verified against a live daemon.
+</Aside>
+
+The isolation boundary is about repository integrity:
+
+- the live working tree is not modified during attempts;
+- generated patches do not leak into neighbouring projects;
+- a failed attempt cannot leave a half-written source file;
+- cleanup cannot remove an active workspace belonging to another process.
+
+Those properties are enforced by the workspace manager and the authoritative
+applier, not by the operating system.
+
+## Choosing a test command
+
+The reproduction command runs inside the workspace, with paths relative to the
+workspace root. Prefer a command that is:
+
+- fast enough to run within the test timeout (30 seconds by default);
+- scoped to the failing behaviour rather than the entire suite;
+- deterministic and free of network dependencies;
+- runnable without shell features, since `shell=True` is never used.
+
+```bash title="Good reproduction commands"
+argus run --test "pytest tests/test_calculator.py::test_adds_positive_integers"
+argus run --test "python -m pytest tests/test_models.py -q"
+```
+
+Shell chaining (`&&`, `||`, `;`, `|`), redirection, and backgrounding are
+rejected by the tokenizer. If you need a compound command, put it in a script and
+invoke the script as a single command.
+
+## Relationship to the candidate store
+
+The workspace is temporary; the candidate artifact is durable. After a successful
+verification, Argus writes the result into `.argus/runs/<run_id>/` in the real
+project. The workspace can then be destroyed without losing the evidence needed
+for review. See [Candidate artifacts](/core-concepts/candidate-artifacts/).

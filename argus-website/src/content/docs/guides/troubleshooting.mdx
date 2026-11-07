@@ -1,0 +1,240 @@
+---
+title: Troubleshooting
+description: Concrete failures you can encounter installing, configuring, and running Argus.
+---
+
+Start with diagnostics. Most problems are environmental and become obvious in one
+command:
+
+```bash title="Shell"
+argus doctor
+argus --version
+```
+
+## Installation
+
+### `argus: command not found`
+
+The console script was not installed into the active environment, or the
+environment is not activated.
+
+```bash title="Shell"
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+pip install -e ".[tui]"
+which argus                      # Windows: Get-Command argus
+```
+
+If you installed with `pipx`, run `pipx ensurepath` and open a new shell.
+
+### `ERROR: Package 'argus-recovery' requires a different Python`
+
+Argus requires Python 3.11 or newer, up to 3.14. Check `python --version` inside
+the environment. A system Python older than 3.11 will fail before installation
+completes.
+
+### `Could not find a version that satisfies the requirement argus-recovery`
+
+Argus `0.2.0b1` is not published on PyPI. Install from the GitHub repository with
+the commands on the [installation page](/getting-started/installation/). Do not
+substitute a similarly named package from an index.
+
+### TUI exits with a missing dependency message
+
+```text
+The Argus Terminal UI requires the optional 'tui' dependencies.
+Please install them with: pip install "argus-recovery[tui]"
+```
+
+Install the extra into the same environment:
+
+```bash title="Shell"
+pip install -e ".[tui]"
+```
+
+## Provider and credentials
+
+### `No LLM provider configured.`
+
+Configure one explicitly. A key in your environment does not select a provider.
+
+```bash title="Shell"
+argus provider set --preset ollama
+# or
+argus provider set --preset openai
+```
+
+### `Groq is strictly prohibited as an inference provider in Argus.`
+
+This is a deliberate refusal, not a missing feature. Choose another preset.
+Configurations containing Groq are rejected.
+
+### Connection refused to Ollama or LM Studio
+
+Start the local server and confirm the endpoint:
+
+```bash title="Shell"
+curl http://localhost:11434/api/tags
+argus provider test ollama
+```
+
+The Ollama preset uses `http://localhost:11434/v1`. LM Studio uses
+`http://localhost:1234/v1`. For a remote custom endpoint, pass `--base-url`.
+
+### Authentication failures from a hosted provider
+
+- Confirm the key in `argus provider list` is the one you expect (masked).
+- Re-set it with `argus provider set --preset <name>`; hidden input avoids shell
+  history.
+- Check `argus doctor` for the connectivity message.
+- If the key is only in a `.env`, remember that loading is opt-in via
+  `ARGUS_LOAD_DOTENV=1` or `ARGUS_DOTENV_PATH`.
+
+### Antigravity is not detected
+
+`argus doctor` reports the host CLI path. Set `ARGUS_AGY_BIN` to an explicit
+binary if it is installed outside `PATH`. The `antigravity` preset uses the host
+CLI rather than an HTTP key.
+
+## Recovery
+
+### `LOCALIZATION_FAILED`
+
+Argus could not identify a project source file from the traceback. Pass the
+target explicitly:
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py" --file src/calculator.py
+```
+
+### `TEST_SETUP_ERROR`
+
+The test command could not be executed properly. Common causes: a missing
+dependency in the isolated copy, a working-directory assumption, or a command
+that requires a shell feature.
+
+Argus rejects `&&`, `||`, `;`, `|`, redirection, and backgrounding. Put compound
+commands in a script and invoke the script.
+
+### `FAILED_MAX_ATTEMPTS`
+
+No attempt produced a verified patch. Inspect:
+
+```bash title="Shell"
+ls .argus/runs/<run_id>/
+sed -n '1,160p' .argus/runs/<run_id>/raw_response.txt
+sed -n '1,160p' .argus/runs/<run_id>/unapplied_patch.txt
+```
+
+Typical causes are a non-parsable model response, a stale search block, or a
+model that edits the test instead of the source. Narrow the test, pass `--file`,
+or choose a stronger code model. Raising attempts rarely fixes a wrong edit.
+
+### `BUDGET_EXCEEDED`
+
+The run reached its USD ceiling. The default CLI budget is `0.05`. Raise it
+deliberately:
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py" --budget 0.10
+```
+
+Check `argus candidates` for the cost of previous attempts before raising the
+limit.
+
+### `DEADLINE_EXCEEDED`
+
+The task deadline (300 seconds by default) elapsed. The usual causes are a slow
+provider or a test suite that exceeds its timeout. Scope the test command.
+
+### `PROVIDER_RATE_LIMITED`
+
+The provider refused requests after the bounded backoff allowance. Wait, or
+select another configured provider:
+
+```bash title="Shell"
+argus run --test "pytest tests/test_calculator.py" --provider openai
+```
+
+### A patch is "refused" instead of applied
+
+Read the diff and the refusal message. If the search block is ambiguous, Argus
+will not guess. Improve the target context; do not enable Tier 4 as a first
+response. Tier 4 is experimental and off by default.
+
+## Approval and application
+
+### `CANDIDATE_NOT_APPROVED`
+
+A human approval is missing. Run:
+
+```bash title="Shell"
+argus approve <run_id>
+```
+
+An agent calling `argus_apply_candidate` cannot approve on your behalf.
+
+### `STALE_TARGET_CONFLICT`
+
+The live file changed after the candidate was produced. Rerun the recovery. Do
+not bypass this check; the verified content no longer corresponds to your file.
+
+### `SYNTAX_VALIDATION_FAILED`
+
+The stored candidate no longer parses as Python. Rerun the recovery. This can
+happen if artifacts were edited manually after verification.
+
+### Apply fails on permissions
+
+Argus attempts to preserve the target's mode. On restricted filesystems this can
+fail with `PERMISSION_PRESERVATION_FAILED`. Check ownership and write
+permissions on the file and its directory. The original file is left intact.
+
+## Platform issues
+
+### Windows console encoding errors
+
+The CLI reconfigures stdout and stderr to UTF-8 on Windows. If you embed Argus in
+another process, set `PYTHONIOENCODING=utf-8` and use a UTF-8 capable terminal.
+
+### Git worktree operations fail
+
+Worktree isolation requires Git and a writable repository. Run `git status`
+first. Stale worktrees are pruned, but an interrupted Git process can leave
+metadata that needs `git worktree prune` manually.
+
+### Container mode refuses to start
+
+A request for container isolation fails closed when Docker or Podman is not
+responsive. Argus will not silently fall back to host execution. Install a
+working engine or run the host path explicitly, and remember that host execution
+is not a sandbox.
+
+## MCP
+
+### `argus mcp verify` fails
+
+Run the server manually to see the error:
+
+```bash title="Shell"
+argus mcp run
+```
+
+Configuration files installed by `argus mcp install` are backed up before
+modification. Verify that the host is launching the same Python environment where
+`argus` is installed. A hand-written entry can use:
+
+```json
+{ "mcpServers": { "argus": { "command": "python", "args": ["-m", "argus.mcp"] } } }
+```
+
+### Tools appear but `argus_recover` returns `CONFIG_ERROR`
+
+The MCP server has no provider configured for that environment. Run
+`argus provider set` in the same user context, then `argus mcp verify` again.
+
+## Still stuck
+
+Include the output of `argus --version`, `argus doctor`, the exact command, and
+the relevant artifact metadata when reporting an issue. Never paste API keys or
+unredacted provider responses.

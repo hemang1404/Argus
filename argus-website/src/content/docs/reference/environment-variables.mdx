@@ -1,0 +1,91 @@
+---
+title: Environment Variables
+description: Environment variables read by Argus, their precedence, and the ones reserved for internal use.
+---
+
+Environment variables are an override layer for credentials, paths, and terminal
+rendering. They do not replace explicit provider selection.
+
+## Runtime and provider
+
+| Variable | Purpose |
+| --- | --- |
+| `ARGUS_PROVIDER` | Provider name used when none is stored as active |
+| `ARGUS_API_KEY` | Generic key fallback, primarily for custom providers |
+| `OPENAI_API_KEY` | Key for the `openai` provider |
+| `DEEPSEEK_API_KEY` | Key for the `deepseek` provider |
+| `GEMINI_API_KEY` | Key for the `gemini` provider |
+| `GOOGLE_API_KEY` | Alternative Gemini key |
+| `ARGUS_DISABLE_ADAPTIVE_ROUTING` | Disable effort classification |
+| `ARGUS_AGY_BIN` | Explicit Antigravity host CLI path |
+
+Keys resolve in this order: OS keyring, provider-specific environment variable,
+an explicitly enabled `.env`, then `ARGUS_API_KEY`.
+
+## Paths and dotenv
+
+| Variable | Purpose |
+| --- | --- |
+| `ARGUS_CONFIG_DIR` | Override the configuration directory |
+| `ARGUS_LOAD_DOTENV` | Set to `1`/`true`/`yes` to load a workspace `.env` |
+| `ARGUS_DOTENV_PATH` | Load a specific dotenv file |
+| `XDG_CONFIG_HOME` | Base for the config directory on POSIX |
+| `APPDATA` | Base for the config directory on Windows |
+| `LOCALAPPDATA` | Used by desktop launcher and shortcut paths |
+
+`.env` loading is opt-in. Without one of the two Argus dotenv variables, a
+workspace `.env` is not imported.
+
+## Terminal rendering
+
+| Variable | Purpose |
+| --- | --- |
+| `ARGUS_LOGO_RENDERER` | Force a logo renderer (`auto`, `braille`, `halfblock`, `sixel`, `kitty`, `text`) |
+| `ARGUS_LOGO_LAYOUT` | Logo layout (`wordmark`, `inline`, `stacked`) |
+| `TERM`, `TERM_PROGRAM`, `WT_SESSION`, `KITTY_WINDOW_ID`, `LC_TERMINAL` | Read to detect terminal graphics support |
+
+These affect presentation only. They do not change recovery behaviour.
+
+## Gateway
+
+| Variable | Purpose |
+| --- | --- |
+| `ARGUS_GATEWAY_API_KEY` | Required bearer key for the experimental gateway |
+
+The gateway refuses to start without it, including on loopback. Binding to a
+non-loopback address additionally requires `--allow-remote`. The gateway also
+requires the `gateway` extra.
+
+## Prohibited and internal
+
+| Variable | Status |
+| --- | --- |
+| `GROQ_API_KEY` | Groq is prohibited; do not configure it |
+| `ARGUS_TEST_MODE` | Internal test-mode switch; not for production |
+| `ARGUS_SESSION_TOKEN` | Internal desktop/session token; managed by the launcher |
+| `PYTEST_CURRENT_TEST` | Read incidentally by library behaviour; not an Argus setting |
+
+Do not set internal variables to work around a failure. They exist for the test
+suite and the desktop launcher and may change without notice.
+
+## Precedence
+
+When a key exists in more than one place:
+
+```text
+OS keyring
+  → provider-specific environment variable
+    → opt-in dotenv file
+      → ARGUS_API_KEY
+```
+
+For provider selection, `ARGUS_PROVIDER` applies only when no active provider is
+stored, and a key alone never selects a provider.
+
+## Security
+
+- Prefer the keyring over environment variables for persistent use.
+- Environment variables are visible to child processes; Argus scrubs known
+  secret variables before launching test commands, but other tools may not.
+- Never commit a `.env` file. The repository ignore rules exclude `.env*`.
+- `argus doctor` prints masked keys only.

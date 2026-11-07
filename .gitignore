@@ -1,6 +1,15 @@
 # === SECRETS � NEVER COMMIT ===
 .env
+.env.*
+*.env
 *.env.local
+
+# === RUNTIME & CACHES ===
+.argus/
+data/repos/
+*.docx
+test_pred.jsonl
+argus_agentic_flash.test_pilot1.json
 
 # === PYTHON ===
 __pycache__/
@@ -64,3 +73,67 @@ system_deep_dive.md
 rp2.pdf
 rp3.pdf
 implementation_plan*.md
+
+# === NODE / JS ===
+node_modules/
+*.tgz
+
+
+# === ARTIFACTS / LOCAL USER DOWNLOADS ===
+ChatGPT Installer.exe
+Freebuff-*.exe
+QoderIDEUserSetup-*.exe
+Microsoft.Services.Store.winmd
+*.winmd
+temp_*.svg
+assets/.cache/
+
+# === NODE / JS & WEBSITE ===
+argus-website/node_modules/
+argus-website/dist/
+argus-website/.astro/
+
+# === LOCAL AGENT & DEV TOOLS ===
+.agents/
+.gemini/
+.impeccable/
+.coverage
+.cursorrules
+technical-deep-research-SKILL.md
+CONTEXT_HANDOVER.md
+ARGUS_END_TO_END_PRODUCT_AND_ARCHITECTURE_SPECIFICATION.md
+dist_test/
+install.ps1
+install.sh
+opencode.json
+
+# === RESEARCH & INTERNAL ARTIFACTS (Preserved in Argus-research-archive) ===
+/bin/
+/configs/
+/data/
+/docker/
+/experiments_archive/
+/figures/
+/packages/
+/results/
+/scripts/
+/src/
+/tools/
+/requirements.txt
+/package.json
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+/tsconfig.json
+/uv.lock
+/.pr_agent.toml
+
+# === INTERNAL DOCS DIRECTORIES (Preserved in Argus-research-archive) ===
+docs/audit/
+docs/engineering/
+docs/figures_verified_report/
+docs/planning/
+docs/presentations_and_guides/
+docs/product/
+docs/project-mentor/
+docs/reports/
+docs/synopsis/

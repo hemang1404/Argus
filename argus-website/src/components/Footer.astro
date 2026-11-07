@@ -1,0 +1,23 @@
+---
+import Pagination from '@astrojs/starlight/components/Pagination.astro';
+import Mark from './Mark.astro';
+import { repoUrl, issuesUrl, version } from '../data/nav.mjs';
+---
+
+<div class="argus-footer-wrap">
+  <Pagination />
+  <footer class="argus-footer">
+    <span class="footer-brand">
+      <Mark />
+      <span>Argus · Local code recovery runtime</span>
+    </span>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/getting-started/introduction/">Docs</a>
+      <a href="/project/security-model/">Security</a>
+      <a href="/project/changelog/">Changelog</a>
+      <a href={issuesUrl} target="_blank" rel="noreferrer noopener">Issues</a>
+      <a href={repoUrl} target="_blank" rel="noreferrer noopener">GitHub</a>
+    </nav>
+    <span class="footer-meta">MIT · v{version}</span>
+  </footer>
+</div>

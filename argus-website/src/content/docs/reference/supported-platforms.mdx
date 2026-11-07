@@ -1,0 +1,99 @@
+---
+title: Supported Platforms
+description: Verified runtime, operating-system, and execution boundaries for this release.
+---
+
+## Runtime
+
+| Requirement | Support |
+| --- | --- |
+| Python 3.11 | Supported |
+| Python 3.12 | Supported |
+| Python 3.13 | Supported |
+| Python 3.14 | Supported |
+| Python 3.10 and older | Not supported |
+| Node.js | Not required for the Python runtime |
+
+`pyproject.toml` declares `requires-python = ">=3.11"` and classifiers through
+3.14. `argus doctor` checks the interpreter version explicitly.
+
+## Operating systems
+
+| Platform | Status | Notes |
+| --- | --- | --- |
+| Windows 10/11 | Supported | Process-tree termination uses `taskkill /F /T`; UTF-8 output is enabled |
+| Linux (glibc) | Supported | Process groups terminated with `os.killpg` |
+| macOS | Supported | POSIX process-group termination |
+| WSL2 | Verified | POSIX process-group and PID start-time verification reported in the 0.2.0b1 changelog |
+| Other POSIX systems | Expected to work | Not independently verified for this documentation |
+
+The TUI requires a terminal with the capabilities Textual expects. Dedicated
+window mode is Windows-oriented.
+
+## Optional dependencies
+
+| Capability | Requirement |
+| --- | --- |
+| Terminal cockpit (`argus tui`) | `tui` extra (`textual`, `Pillow`) |
+| Dedicated terminal window (`argus app`) | `tui` extra |
+| Experimental gateway | `gateway` extra (`fastapi`, `uvicorn`) and `ARGUS_GATEWAY_API_KEY` |
+| Container evaluation harness | Docker or Podman; fails closed when unavailable |
+| Git worktree isolation | Git |
+| Local providers | Ollama or LM Studio running locally |
+
+## Source language scope
+
+| Scope | Status |
+| --- | --- |
+| Python (`.py`) single-file patches | Supported, AST-validated |
+| Non-Python source patches | Not supported |
+| Multi-file patch sets | Refused by design |
+| File creation or deletion patches | Refused |
+| Paths outside the workspace | Refused |
+
+The AST gate uses Python's `ast.parse`. It cannot validate TypeScript, Rust, Go,
+or any other language, so those files are outside the recovery scope in this
+release.
+
+## Test commands and shells
+
+Argus executes the reproduction command directly with `shell=False`. It accepts a
+tokenized command such as:
+
+```text
+pytest tests/test_calculator.py
+python -m pytest -q
+```
+
+It rejects shell operators (`&&`, `||`, `;`, `|`), redirection (`>`, `<`), and
+backgrounding (`&`). Windows batch syntax is not interpreted by a shell. Use an
+executable and arguments that the operating system can launch directly.
+
+## Provider connectivity
+
+Any OpenAI-compatible HTTP endpoint that the adapter can reach is supported in
+principle. The shipped presets cover Antigravity host inference, Ollama, LM
+Studio, OpenAI, DeepSeek, Gemini, OpenRouter, and custom endpoints. Groq is
+prohibited.
+
+Network access is required only for remote providers. The recovery engine,
+patch reconciliation, artifact store, and candidate review work offline.
+
+## Security boundaries by platform
+
+On every platform, host execution runs with your user privileges. Workspace
+copying and Git worktrees isolate files, not processes. Container isolation is an
+optional capability and is not presented here as verified against a live daemon.
+For untrusted code, use your own container or VM boundary.
+
+## Unsupported configurations
+
+- Unauthenticated non-loopback gateway binding.
+- Groq as an inference provider.
+- Applying an unapproved candidate through the CLI without `--force`.
+- Applying a candidate after the target file changes.
+- Multi-file recovery.
+- Windows package managers for the Python package (use pip/uv/pipx).
+
+See [Error codes](/reference/error-codes/) for the failures produced by these
+boundaries.

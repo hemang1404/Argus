@@ -1,0 +1,144 @@
+---
+title: Security Model
+description: Trust boundaries, execution privileges, candidate integrity, and the limits of syntax validation.
+---
+
+Argus protects three assets: the developer workstation, the source repository and
+Git state, and provider credentials. Its guarantees are narrower than a sandbox
+and should be read literally.
+
+## Trust boundaries
+
+```text title="Boundaries"
+untrusted: model output, repositories, test suites
+        │
+        ▼
+1. sanitization and AST validation
+        │
+        ▼
+2. ephemeral workspace
+        │
+        ▼
+3. subprocess supervision
+        │  tests pass
+        ▼
+4. SHA-256 candidate artifacts
+        │  explicit approval
+        ▼
+developer repository
+```
+
+## What is and is not guaranteed
+
+| Property | Guarantee |
+| --- | --- |
+| Live working tree unchanged during attempts | Yes |
+| Patch applied only after passing tests | Yes |
+| Patch applied only after approval | Yes, unless `--force` is used explicitly |
+| Ambiguous or low-similarity patch applied | No; refusal is the default |
+| Invalid Python syntax applied | No; full-file AST parse gates acceptance |
+| Host subprocess isolated from your account | **No** |
+| Workspace copy is an OS sandbox | **No** |
+| Candidate is semantically correct | **No**; only test-relative evidence |
+| Non-Python syntax validated | **No** |
+| Multi-file changes verified atomically | **No** |
+
+## Syntax validation is not semantic validation
+
+`ast.parse` proves that the patched file is syntactically valid Python. It does
+not prove that the change is correct, safe, or consistent with the program's
+intent. A syntactically perfect patch can delete a security check, introduce a
+resource leak, or satisfy a test by special-casing the assertion.
+
+Treat the AST gate as a floor. Review the diff, then run the broader suite.
+
+## Host execution is not a sandbox
+
+Test commands run as your user. They can read files you can read, use the
+network, spawn processes, and delete files you own. Workspace isolation protects
+the repository from accidental contamination; it does not protect the machine
+from malicious code.
+
+- Do not run recovery on an untrusted repository and assume containment.
+- Do not assume a test suite is benign because it is local.
+- Do not expose the runtime to a multi-tenant environment without an external
+  isolation boundary.
+
+For untrusted code, use a container, VM, or dedicated machine you control.
+Argus's optional `ContainerEvaluator` is not a substitute for a security review,
+and this documentation does not claim that path has been validated against a
+live container daemon.
+
+## Subprocess supervision
+
+The runner reduces common abuse:
+
+| Risk | Mitigation |
+| --- | --- |
+| Shell injection | Direct execution with `shell=False`; operators rejected |
+| Output flood | Concurrent draining with a 4 MB memory bound |
+| Runaway children | Process-tree termination on timeout |
+| Secret leakage to children | Known secret environment variables scrubbed |
+| Target escape | Canonical path checks and workspace containment |
+
+These mitigate accidental damage and naive injection. They are not a
+capability-confining sandbox.
+
+## Candidate integrity
+
+Each verified candidate records:
+
+- `baseline_hash` — SHA-256 of the target before modification;
+- `candidate_hash` — SHA-256 of the verified patched content;
+- the target path, test command, run ID, attempts, cost, and duration.
+
+Application verifies both hashes, the approval flag, path containment, and syntax
+before replacing the file. The replacement is atomic. If the file changed after
+verification, apply fails with `STALE_TARGET_CONFLICT`.
+
+Approval is recorded separately from verification. `--yes` records automation,
+not human review. `--force` bypasses only the approval gate, never the integrity
+checks.
+
+## Credentials
+
+- Keys are stored in the OS keyring when a backend is available, with a
+  restricted-permission fallback file otherwise.
+- Environment variables are supported but are visible to child processes; Argus
+  scrubs known secret names before launching tests.
+- Diagnostic output masks keys.
+- Prompts, responses, and context files are passed through `scrub_secrets`
+  before being written to `.argus/`.
+- The MCP server exposes provider state but never secret values.
+- Groq is prohibited and rejected at configuration and runtime boundaries.
+
+None of this protects a secret committed to the repository. Secret hygiene remains
+your responsibility.
+
+## Experimental gateway
+
+The gateway proxy (`argus gateway`) is a separate, experimental surface. It
+requires `ARGUS_GATEWAY_API_KEY`, binds to loopback by default, validates Host and
+Origin for loopback requests, and requires `--allow-remote` for non-loopback
+binding. These controls are implemented, but the gateway is not part of the
+default offline recovery loop and should be treated as experimental.
+
+## Known limitations
+
+1. Python-only AST validation.
+2. Single-file patches only.
+3. Host execution with user privileges.
+4. Container execution shares the host kernel and is optional.
+5. Client-identifier rotation can fragment gateway rate-limit buckets within a
+   valid token allocation.
+6. Test passage proves only that the supplied assertions passed.
+
+## Reporting a vulnerability
+
+Do not open a public issue for a security vulnerability. Contact the maintainers
+privately via GitHub Security Advisories or `security@argus-recovery.org`,
+including reproduction steps, affected components, and versions. The project
+aims to acknowledge reports within 48 hours.
+
+This page describes the implementation's intended boundaries; it is not an
+independent security audit.
