@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Optional
@@ -102,7 +103,16 @@ def validate_path_within_workspace(
         HTTPException(403): If the path attempts directory traversal outside the workspace.
     """
     root = Path(workspace_root).resolve()
-    target = Path(target_path)
+    norm_str = str(target_path).replace("\\", "/")
+
+    # Check for Windows drive letter on non-Windows platforms (e.g. C:/Windows/...)
+    if os.name != "nt" and re.match(r"^[a-zA-Z]:", norm_str):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Path traversal detected: Path with drive specification '{target_path}' is outside workspace root '{root}'.",
+        )
+
+    target = Path(norm_str)
     
     # If target is relative, resolve relative to root
     resolved = (root / target).resolve() if not target.is_absolute() else target.resolve()

@@ -165,6 +165,8 @@ def test_cli_run_json_events_mode(tmp_path: Path):
             main,
             [
                 "run",
+                "--provider",
+                "antigravity",
                 "-f",
                 str(target),
                 "-t",

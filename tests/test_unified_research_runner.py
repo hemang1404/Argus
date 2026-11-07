@@ -187,7 +187,8 @@ class MockRunnerAdapter(ProviderAdapter):
 def test_runner_load_task_single_file_validation():
     """Verify loading from SWE-bench pilot dataset and extracting single-file target."""
     pilot_file = Path("data/swe_bench_verified_50_pilot.jsonl")
-    assert pilot_file.is_file(), "Pilot dataset data/swe_bench_verified_50_pilot.jsonl must exist"
+    if not pilot_file.is_file():
+        pytest.skip("Pilot dataset data/swe_bench_verified_50_pilot.jsonl not present in release repository")
 
     tasks = []
     with open(pilot_file, "r", encoding="utf-8") as f:

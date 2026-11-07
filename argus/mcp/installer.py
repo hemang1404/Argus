@@ -230,15 +230,28 @@ def verify_mcp_handshake(timeout_seconds: float = 8.0) -> Dict[str, Any]:
 
         status_text = content_items[0].get("text", "")
         parsed_status = json.loads(status_text)
-        if not parsed_status.get("runtime_ready"):
-            return {"success": False, "stage": "tools_call", "error": "argus_status reported runtime_ready=False"}
+        if not isinstance(parsed_status, dict) or "environment" not in parsed_status:
+            return {"success": False, "stage": "tools_call", "error": f"Invalid status payload: {status_text}"}
+
+        ready = parsed_status.get("runtime_ready", False)
+        provider_name = (
+            parsed_status.get("active_provider", {}).get("name")
+            if isinstance(parsed_status.get("active_provider"), dict)
+            else None
+        )
+        status_msg = (
+            "MCP handshake, tool discovery, and tool call verified successfully."
+            if ready
+            else "MCP handshake and tool discovery verified (no active LLM provider configured yet)."
+        )
 
         return {
             "success": True,
             "server_name": server_name,
             "tools_found": tools,
-            "active_provider": parsed_status.get("active_provider", {}).get("name"),
-            "message": "MCP handshake, tool discovery, and tool call verified successfully.",
+            "runtime_ready": ready,
+            "active_provider": provider_name,
+            "message": status_msg,
         }
 
     except Exception as ex:

@@ -254,6 +254,9 @@ def test_part_a_rate_limit_and_settlement_transitions():
 def test_part_b_real_local_docker_conformance():
     """Execute end-to-end conformance validation against the live local Docker daemon."""
     fixture_image = "argus-fixture:latest"
+    res = subprocess.run(["docker", "image", "inspect", fixture_image], capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        pytest.skip(f"Docker fixture image '{fixture_image}' not found locally")
     known_base_commit = "ce6efbb8a8475aa4f7833f82f3ac353ea265b97a"
 
     cfg = ContainerConfig(
@@ -565,6 +568,9 @@ def test_part_c_six_run_smoke_test_pipeline():
         pytest.skip("Docker is required for repository smoke tests")
 
     fixture_image = "argus-fixture:latest"
+    res = subprocess.run(["docker", "image", "inspect", fixture_image], capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        pytest.skip(f"Docker fixture image '{fixture_image}' not found locally")
     known_base_commit = "ce6efbb8a8475aa4f7833f82f3ac353ea265b97a"
 
     repo_conditions = [("repo_task_1", "direct", 1), ("repo_task_2", "self_repair", 2), ("repo_task_3", "escalate", 3)]

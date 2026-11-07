@@ -13,7 +13,7 @@ from rich.cells import cell_len
 from textual.widgets import Button, Input, Static
 
 from argus.config import ArgusConfig
-from argus.runtime.candidate import ApplyResult, CandidateMetadata
+from argus.runtime.candidate import ApplyResult, CandidateArtifactStore, CandidateMetadata
 from argus.runtime.controller import RecoveryOutcome
 from argus.tui.app import ArgusTUIApp
 from argus.tui.screens.diff_review import DiffReviewScreen
@@ -232,19 +232,38 @@ async def test_diff_apply_refuses_unverified_candidate(tmp_path):
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not meaningful on Windows")
 async def test_direct_apply_preserves_file_mode(tmp_path):
-    """The no-artifact fallback must not downgrade the target's permission bits."""
+    """The authoritative applier must not downgrade the target's permission bits."""
     target = tmp_path / "calc.py"
     target.write_text("original = 1\n")
     os.chmod(target, 0o640)
     baseline = hashlib.sha256(target.read_bytes()).hexdigest()
 
+    run_id = "run_mode_test"
+    diff_text = "--- a/calc.py\n+++ b/calc.py\n@@ -1 +1 @@\n-original = 1\n+original = 2\n"
+    CandidateArtifactStore.save_run_artifact(
+        run_id=run_id,
+        target_file=str(target),
+        test_command="pytest",
+        baseline_hash=baseline,
+        status="SUCCESS",
+        verified=True,
+        tier_used=1,
+        attempts=1,
+        cost_usd=0.01,
+        duration_ms=100.0,
+        patched_content="original = 2\n",
+        unified_diff=diff_text,
+        workspace_root=tmp_path,
+    )
+
     screen = DiffReviewScreen(
         workspace=str(tmp_path),
         target_file=str(target),
-        diff_text="--- a\n+++ b\n@@ -1 +1 @@\n-original = 1\n+original = 2\n",
+        diff_text=diff_text,
         patched_content="original = 2\n",
         verified=True,
         baseline_hash=baseline,
+        run_id=run_id,
     )
     app = ArgusTUIApp(workspace=str(tmp_path))
 
