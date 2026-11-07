@@ -1,0 +1,195 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  offline-suite:
+    name: Offline suite (Python ${{ matrix.python-version }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package with test and optional extras
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev,tui,gateway,research]"
+
+      - name: Run offline test suite
+        run: |
+          pytest -m "not live_provider and not live_antigravity and not real_host and not packaging" -v --tb=short
+        env:
+          ARGUS_RUN_LIVE_TESTS: "0"
+          ARGUS_RUN_ANTIGRAVITY_TESTS: "0"
+
+      - name: Coverage (patch engine and runtime, full offline scope)
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: |
+          pytest -q \
+            --cov=argus.patch --cov=argus.runtime \
+            --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under=70 \
+            -m "not live_provider and not live_antigravity and not real_host and not packaging"
+
+      - name: Upload coverage report
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: error
+
+  core-only-install:
+    name: Core install without optional extras
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install only the default dependency set
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install .
+
+      - name: Verify CLI and imports without optional extras
+        run: |
+          argus --version
+          argus --help
+          python -c "import sys, argus, argus.cli, argus.runtime.controller, argus.patch.fuzzy_engine; assert argus.__version__ == '0.2.0b1'; assert 'textual' not in sys.modules, 'textual must be optional'; assert 'fastapi' not in sys.modules, 'fastapi must be optional'"
+
+      - name: Run optional-free core gate against the installed package
+        run: |
+          pip install pytest pytest-asyncio
+          # test_security_adversarial.py and test_groq_prohibition_and_isolation.py
+          # exercise the deferred gateway and therefore require the 'gateway' extra.
+          pytest -q tests/test_patch_engine.py tests/test_candidate_applier.py \
+            tests/test_workspace_correctness.py tests/test_offline_anchor_matching.py \
+            tests/test_container_evaluation.py tests/test_frame_localization.py \
+            tests/test_secret_redaction.py tests/test_presets.py tests/test_providers.py
+
+  packaging:
+    name: Node packaging and wrapper
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up Node
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "22"
+
+      - name: Install package and Node tooling
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
+          npm install
+
+      - name: Run packaging tests
+        run: pytest -m "packaging and not windows_only" -v --tb=short
+
+  container-unit:
+    name: Container evaluator unit tests (no Docker e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
+
+      # These tests exercise ContainerEvaluator through mocks; they pass without a
+      # Docker daemon. No genuine Docker end-to-end test exists yet (see WP-1
+      # review, remaining risk). Do not claim container execution coverage from
+      # this job.
+      - name: Run container evaluator tests
+        run: pytest -q tests/test_container_evaluation.py -v --tb=short
+
+  build:
+    name: Build and install distribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fb737c33e60848885436dd10b918768 # v5.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip setuptools wheel build twine
+          python -m build
+          twine check dist/*
+
+      - name: Verify wheel contents and clean install
+        run: |
+          python -m venv /tmp/argus-clean
+          /tmp/argus-clean/bin/pip install --upgrade pip
+          /tmp/argus-clean/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/argus-clean/bin/argus --version
+          /tmp/argus-clean/bin/argus --help
+          /tmp/argus-clean/bin/python -c "import argus, argus.cli, argus.patch.fuzzy_engine; print(argus.__version__)"
+          /tmp/argus-clean/bin/python -c "import sys; import argus.cli; assert 'textual' not in sys.modules; assert 'fastapi' not in sys.modules"
+          unzip -l "$GITHUB_WORKSPACE"/dist/*.whl | grep -E "argus/assets/argus-logo.svg|argus/tui/styles.tcss"
