@@ -154,14 +154,22 @@ async def _run_task_worker(
                 "task_id": state.task_id,
             },
         }
-        loop.call_soon_threadsafe(state.event_queue.put_nowait, event)
+        try:
+            fut = asyncio.run_coroutine_threadsafe(state.event_queue.put(event), loop)
+            fut.result(timeout=5.0)
+        except Exception as ex:
+            logger.warning("Failed to queue ATTEMPT_START event: %s", ex)
 
     def on_attempt_end(record: AttemptRecord):
         event = {
             "type": "ATTEMPT_END",
             "payload": asdict(record),
         }
-        loop.call_soon_threadsafe(state.event_queue.put_nowait, event)
+        try:
+            fut = asyncio.run_coroutine_threadsafe(state.event_queue.put(event), loop)
+            fut.result(timeout=5.0)
+        except Exception as ex:
+            logger.warning("Failed to queue ATTEMPT_END event: %s", ex)
 
     try:
         # Run blocking controller in thread pool
