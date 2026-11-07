@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Argus — Adaptive Code Recovery Runtime</title>
+  <link rel="stylesheet" href="app.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo-group">
+        <span class="logo-icon">🛡️</span>
+        <span class="logo-title">Argus</span>
+        <span class="logo-badge">v0.2.0</span>
+      </div>
+      <div class="status-indicator" id="connection-status">
+        <span class="status-pulse"></span>
+        <span class="status-text" id="status-text">Connected</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="telemetry-badge" id="spend-badge" title="Session LLM API Spend">
+        <span class="badge-label">Spend:</span>
+        <span class="badge-value" id="session-spend">$0.0000</span>
+      </div>
+      <div class="telemetry-badge" id="port-badge" title="Active Loopback Port">
+        <span class="badge-label">Port:</span>
+        <span class="badge-value" id="active-port">8000</span>
+      </div>
+      <button class="icon-btn" id="help-btn" title="Keyboard Shortcuts (?)">?</button>
+      <button class="icon-btn exit-btn" id="exit-btn" title="Exit Argus">✕</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="app-container">
+    <!-- Left Column: Task Composer -->
+    <section class="panel composer-panel">
+      <div class="panel-header">
+        <h2>Task Composer</h2>
+        <span class="shortcut-hint">Ctrl + Enter to Run</span>
+      </div>
+      <form id="task-form" class="composer-form">
+        <div class="form-group">
+          <label for="target-file">Target File to Repair <span class="required">*</span></label>
+          <input type="text" id="target-file" name="target_file" placeholder="e.g. src/calculator.py" required spellcheck="false">
+        </div>
+
+        <div class="form-group">
+          <label for="test-command">Test Command <span class="required">*</span></label>
+          <input type="text" id="test-command" name="test_command" placeholder="e.g. pytest tests/test_calculator.py" required spellcheck="false">
+        </div>
+
+        <div class="form-group">
+          <label for="test-file">Test File (Optional)</label>
+          <input type="text" id="test-file" name="test_file" placeholder="e.g. tests/test_calculator.py" spellcheck="false">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group half">
+            <label for="model-tier">Routing Tier</label>
+            <select id="model-tier" name="model">
+              <option value="argus/auto" selected>argus/auto (Cost-Optimized)</option>
+              <option value="argus/cheap">argus/cheap (Routine Edits)</option>
+              <option value="argus/strong">argus/strong (Deep Repair)</option>
+              <option value="argus/frontier">argus/frontier (High-Complexity)</option>
+            </select>
+          </div>
+          <div class="form-group half">
+            <label for="max-attempts">Max Attempts</label>
+            <input type="number" id="max-attempts" name="max_attempts" min="1" max="8" value="4">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="slider-header">
+            <label for="budget-limit">USD Budget Cap</label>
+            <span class="slider-value" id="budget-value">$0.05</span>
+          </div>
+          <input type="range" id="budget-limit" name="budget" min="0.01" max="0.50" step="0.01" value="0.05">
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-btn" id="run-btn">
+            <span class="btn-icon">⚡</span>
+            <span>Run Recovery Loop</span>
+          </button>
+          <button type="button" class="secondary-btn" id="cancel-btn" disabled>
+            <span>Cancel</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Right Column: Waterfall & Diff Review -->
+    <section class="panel results-panel">
+      <!-- Tabs -->
+      <div class="tabs-header">
+        <button class="tab-btn active" data-tab="waterfall-tab">Execution Waterfall</button>
+        <button class="tab-btn" data-tab="diff-tab" id="diff-tab-btn">Diff Review <span class="tab-badge hidden" id="diff-badge">1</span></button>
+      </div>
+
+      <!-- Tab Content: Waterfall -->
+      <div class="tab-content active" id="waterfall-tab">
+        <div class="empty-state" id="empty-waterfall">
+          <div class="empty-icon">🔍</div>
+          <h3>Awaiting Recovery Task</h3>
+          <p>Submit a target file and test command to launch the non-destructive repair loop.</p>
+        </div>
+        <div class="waterfall-container hidden" id="waterfall-container">
+          <div class="waterfall-header">
+            <span id="waterfall-summary">Attempt Waterfall (Live)</span>
+            <span class="timer-badge" id="task-duration">0.0s</span>
+          </div>
+          <div class="attempts-list" id="attempts-list">
+            <!-- Dynamically populated attempt cards -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Diff Review -->
+      <div class="tab-content" id="diff-tab">
+        <div class="empty-state" id="empty-diff">
+          <div class="empty-icon">📝</div>
+          <h3>No Changes to Review</h3>
+          <p>Verified diffs will appear here after a successful recovery run.</p>
+        </div>
+        <div class="diff-viewer-container hidden" id="diff-viewer-container">
+          <div class="diff-toolbar">
+            <div class="diff-meta">
+              <span class="file-name" id="diff-file-name">src/target.py</span>
+              <span class="status-tag success">Verified Passing</span>
+            </div>
+            <div class="diff-actions">
+              <button class="secondary-btn" id="discard-diff-btn">Discard</button>
+              <button class="primary-btn apply-btn" id="apply-diff-btn">
+                <span class="btn-icon">✓</span>
+                <span>Approve & Apply (A)</span>
+              </button>
+            </div>
+          </div>
+          <div class="diff-editor" id="diff-editor">
+            <!-- Syntax highlighted diff lines -->
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div class="modal-overlay hidden" id="shortcuts-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Keyboard Shortcuts</h3>
+        <button class="close-btn" id="close-modal-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="shortcut-row">
+          <kbd>Ctrl</kbd> + <kbd>Enter</kbd>
+          <span>Run Recovery Loop</span>
+        </div>
+        <div class="shortcut-row">
+          <kbd>Esc</kbd>
+          <span>Cancel task / Close modal</span>
+        </div>
+        <div class="shortcut-row">
+          <kbd>A</kbd>
+          <span>Approve & Apply verified patch</span>
+        </div>
+        <div class="shortcut-row">
+          <kbd>?</kbd>
+          <span>Open this cheat sheet</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
