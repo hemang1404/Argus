@@ -2,10 +2,15 @@
   <style>
     .argus-letter {
       fill: none;
-      stroke: #e5e7ef;
+      stroke: #181926;
       stroke-width: 2.4;
       stroke-linecap: butt;
       stroke-linejoin: round;
+    }
+    @media (prefers-color-scheme: dark) {
+      .argus-letter {
+        stroke: #e5e7ef;
+      }
     }
   </style>
   <g id="argus-wordmark" transform="translate(55, 13)">
