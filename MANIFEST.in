@@ -1,0 +1,31 @@
+include README.md
+include LICENSE
+include pyproject.toml
+
+recursive-include argus *.py
+recursive-include argus/ui *
+recursive-include argus/tui *
+recursive-include argus/assets *
+
+prune data
+prune data_archive
+prune results
+prune experiments_archive
+prune models
+prune packages
+prune tools
+prune scratch
+prune node_modules
+prune .gemini
+prune .agents
+prune docs
+prune bin
+prune src
+prune argus-website
+
+global-exclude *.py[cod] __pycache__ *.so *.dylib *.dll *.log
+exclude package.json
+exclude package-lock.json
+exclude tsconfig.json
+exclude bun.lockb
+

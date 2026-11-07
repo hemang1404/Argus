@@ -1,0 +1,123 @@
+[build-system]
+requires = ["setuptools>=77.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "argus-recovery"
+version = "0.2.0b1"
+description = "Bounded, test-gated Python code recovery and resilient patch runtime."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Argus Contributors" }
+]
+keywords = [
+    "ai",
+    "code-repair",
+    "code-recovery",
+    "patch-engine",
+    "developer-tools",
+    "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
+dependencies = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+    "keyring>=24.0.0",
+    "mcp>=1.0.0,<2",
+    "pyyaml>=6.0.0",
+    "packaging>=23.0",
+]
+
+[project.optional-dependencies]
+# Terminal UI, including the Pillow-based logo renderers. Core recovery and the
+# CLI never import these modules, so the default install stays small.
+tui = [
+    "textual>=8.2.0",
+    "Pillow>=10.0.0",
+]
+# Deferred milestone: the local inference gateway. Never installed by default.
+gateway = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+]
+# Legacy confirmatory-analysis and tokenizer studies kept for reproducibility.
+research = [
+    "tiktoken>=0.7.0",
+    "scipy>=1.11.0",
+    "numpy>=1.26.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "psutil>=5.9.0",
+    "build>=1.2.0",
+]
+# Convenience bundle for the supported v0.1.0 surfaces (CLI + TUI).
+# The experimental gateway is intentionally excluded and must be requested
+# explicitly with the 'gateway' extra.
+all = [
+    "textual>=8.2.0",
+    "Pillow>=10.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/hemang1404/Argus"
+Repository = "https://github.com/hemang1404/Argus"
+Issues = "https://github.com/hemang1404/Argus/issues"
+
+[project.scripts]
+argus = "argus.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["argus*"]
+exclude = ["tests*", "data*", "results*", "models*", "packages*", "tools*", "argus-website*"]
+
+[tool.setuptools.package-data]
+argus = ["ui/*", "tui/*", "tui/*.tcss", "assets/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+norecursedirs = ["data", "results", ".agents", ".gemini", "node_modules"]
+markers = [
+    "live_provider: marks test as requiring live external LLM provider connectivity (opt-in via ARGUS_RUN_LIVE_TESTS=1)",
+    "live_antigravity: marks test as requiring live Antigravity host CLI execution",
+    "real_host: marks test as requiring live Antigravity host runtime connectivity",
+    "research: marks legacy research/confirmatory-analysis test requiring the 'research' extra",
+    "graphics: marks terminal-graphics tests requiring the 'tui' extra (Pillow)",
+    "packaging: marks npm/pnpm/ConPTY distribution tests requiring Node and optional native tooling",
+    "windows_only: marks tests that require a Windows ConPTY host",
+    "gateway: marks tests for the deferred inference-gateway milestone",
+]
+
+[tool.coverage.run]
+source = ["argus"]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
