@@ -5,13 +5,11 @@ interface Props {
 }
 
 const { tui = false } = Astro.props;
-const spec = tui
-  ? 'argus-recovery[tui] @ git+https://github.com/hemang1404/Argus.git'
-  : 'argus-recovery @ git+https://github.com/hemang1404/Argus.git';
+const spec = tui ? 'argus-recovery[tui]' : 'argus-recovery';
 
 const tabs = [
   { id: 'uv', label: 'uv', command: `uv pip install "${spec}"` },
-  { id: 'pipx', label: 'pipx', command: 'pipx install "git+https://github.com/hemang1404/Argus.git"' },
+  { id: 'pipx', label: 'pipx', command: `pipx install "${spec}"` },
   { id: 'pip', label: 'pip', command: `pip install "${spec}"` },
 ];
 ---
@@ -56,7 +54,7 @@ const tabs = [
     ))
   }
   <p class="install-note">
-    Installs from the GitHub repository. Argus 0.2.0b1 is not yet published on PyPI.
+    Published on PyPI as <a href="https://pypi.org/project/argus-recovery/" target="_blank" rel="noopener noreferrer"><code>argus-recovery</code></a>. Requires Python &gt;= 3.11.
   </p>
   <p class="sr-only" role="status" aria-live="polite" data-install-status></p>
 </div>

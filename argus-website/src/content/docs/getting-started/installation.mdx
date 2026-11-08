@@ -20,14 +20,12 @@ The core install includes the CLI, recovery controller, patch engine, workspace
 manager, provider adapters, and the MCP server. The terminal UI and the
 experimental gateway are optional extras.
 
-<Aside type="caution" title="Not on PyPI yet">
-Argus `0.2.0b1` is pre-release and is not published to a public package index.
-The commands below install directly from
-`https://github.com/hemang1404/Argus.git`. Do not install an unrelated package
-with a similar name from PyPI.
+<Aside type="tip" title="Available on PyPI">
+Argus is published to PyPI as [`argus-recovery`](https://pypi.org/project/argus-recovery/).
+Install it directly with <code>pip</code>, <code>uv</code>, or <code>pipx</code>.
 </Aside>
 
-## Install from the repository
+## Install from PyPI
 
 <InstallTabs />
 
@@ -36,7 +34,7 @@ extra; the editable commands below include it so that `argus tui` and
 `argus app` work. To add it to a non-editable install:
 
 ```bash title="Shell"
-pip install "argus-recovery[tui] @ git+https://github.com/hemang1404/Argus.git"
+pip install "argus-recovery[tui]"
 ```
 
 To manage the installation yourself:

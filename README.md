@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
+  <a href="https://pypi.org/project/argus-recovery/">PyPI</a> ·
   <a href="docs/ARCHITECTURE.md">Architecture</a> ·
   <a href="#interactive-terminal-cockpit">TUI Cockpit</a> ·
   <a href="#model-context-protocol-mcp">MCP Server</a> ·
@@ -16,6 +17,13 @@
   <a href="examples/">Examples</a> ·
   <a href="benchmarks/">Benchmarks</a> ·
   <a href="argus-website/">Documentation Site</a>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/argus-recovery/"><img src="https://img.shields.io/pypi/v/argus-recovery.svg?color=blue" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/argus-recovery/"><img src="https://img.shields.io/pypi/pyversions/argus-recovery.svg" alt="Python versions"></a>
+  <a href="https://github.com/hemang1404/Argus/actions/workflows/ci.yml"><img src="https://github.com/hemang1404/Argus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
 </p>
 
 <p align="center">
@@ -63,7 +71,7 @@ If you are new to the repository, use this decision tree to find the right path:
 
 ### 1. Installation
 
-Install `argus-recovery` using your preferred Python package manager (requires Python `>=3.11`):
+Install `argus-recovery` directly from [PyPI](https://pypi.org/project/argus-recovery/) using your preferred Python package manager (requires Python `>=3.11`):
 
 ```bash
 # Using uv (recommended)
@@ -71,6 +79,9 @@ uv pip install argus-recovery
 
 # Using pip
 pip install argus-recovery
+
+# With optional interactive terminal UI cockpit
+pip install "argus-recovery[all]"
 
 # Using pipx (isolated standalone CLI application)
 pipx install argus-recovery
