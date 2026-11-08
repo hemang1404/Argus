@@ -613,3 +613,21 @@ async def test_execution_timeline_cancellation():
             assert screen.query_one("#btn-return-menu", Button).disabled is False
 
 
+
+@pytest.mark.asyncio
+async def test_doctor_modal_mount_and_dismiss():
+    """Verify DoctorModal mounts, renders diagnostics, and dismisses on escape."""
+    app = ArgusTUIApp(workspace=".")
+    async with app.run_test() as pilot:
+        modal = DoctorModal(config=ArgusConfig())
+        app.push_screen(modal)
+        await pilot.pause()
+
+        assert app.screen == modal
+        assert modal.query_one("#doctor-container") is not None
+        assert modal.query_one("#doctor-content", Static) is not None
+        assert modal.query_one("#doctor-close", Button) is not None
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, DoctorModal)
