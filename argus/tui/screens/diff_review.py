@@ -81,33 +81,39 @@ class DiffReviewScreen(Screen[None]):
 
             yield Static("", id="diff-feedback")
 
-            with VerticalScroll(id="diff-scroll-pane"):
-                if has_diff:
+            if has_diff:
+                with VerticalScroll(id="diff-scroll-pane"):
                     yield DiffViewer(diff_text=self.diff_text, id="diff-viewer-widget")
-                else:
-                    with Vertical(id="diff-empty-state"):
+            else:
+                # Kept outside the scroll pane: a VerticalScroll ignores the parent's
+                # `align` rules, which left the glyph and command box flush left.
+                with Vertical(id="diff-empty-state"):
+                    # Each centred element gets its own full-width row: a container
+                    # only applies `align` evenly when every child is full width.
+                    with Horizontal(id="diff-empty-glyph-row"):
                         yield Static("±", id="diff-empty-glyph")
-                        yield Static(
-                            "No candidate patches are waiting for review.",
-                            id="diff-empty-title",
-                        )
-                        yield Static(
-                            "Run a test command from the home screen to synthesize a fix.",
-                            id="diff-empty-copy",
-                        )
+                    yield Static(
+                        "No candidate patches are waiting for review.",
+                        id="diff-empty-title",
+                    )
+                    yield Static(
+                        "Run a test command from the home screen to synthesize a fix.",
+                        id="diff-empty-copy",
+                    )
+                    with Horizontal(id="diff-empty-command-row"):
                         yield Static(
                             "[#8188ff]❯[/]  pytest tests/your_test.py   [#667085]↵[/]",
                             id="diff-empty-command",
                         )
-                        yield Static(
-                            "Argus reproduces the failure in an isolated git worktree, synthesizes "
-                            "a patch, and stages it here for verification and approval.",
-                            id="diff-empty-note",
-                        )
-                        yield Static(
-                            "01 Reproduce   →   02 Synthesize   →   03 Verify",
-                            id="diff-empty-flow",
-                        )
+                    yield Static(
+                        "Argus reproduces the failure in an isolated git worktree, then stages "
+                        "the candidate patch here for verification and approval.",
+                        id="diff-empty-note",
+                    )
+                    yield Static(
+                        "01 Reproduce   →   02 Synthesize   →   03 Verify",
+                        id="diff-empty-flow",
+                    )
 
             with Horizontal(id="diff-actions-bar"):
                 yield Button("Discard (Esc)", id="btn-discard")

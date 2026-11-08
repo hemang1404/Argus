@@ -35,7 +35,7 @@ class DiffViewer(Static):
 
         for line in lines:
             if line.startswith("---") or line.startswith("+++") or line.startswith("@@"):
-                out.append(f"       │ {line}\n", style="bold #818cf8")
+                out.append(f"       │ {line}\n", style="bold #8188ff")
                 if line.startswith("@@"):
                     # Parse @@ -old,count +new,count @@
                     try:
@@ -46,15 +46,15 @@ class DiffViewer(Static):
                         pass
             elif line.startswith("diff ") or line.startswith("index ") or line.startswith("\\"):
                 # File headers and "No newline at end of file" markers carry no line.
-                out.append(f"       │ {line}\n", style="dim #64748b")
+                out.append(f"       │ {line}\n", style="#667085")
             elif line.startswith("+"):
-                out.append(f"  {new_lineno:4d} │ {line}\n", style="bold #3fb950 on #04260f")
+                out.append(f"  {new_lineno:4d} │ {line}\n", style="#7bc79e on #0f1a15")
                 new_lineno += 1
             elif line.startswith("-"):
-                out.append(f"{old_lineno:4d}   │ {line}\n", style="bold #f85149 on #3b1113")
+                out.append(f"{old_lineno:4d}   │ {line}\n", style="#e07178 on #1c1114")
                 old_lineno += 1
             else:
-                out.append(f"{old_lineno:4d} {new_lineno:4d} │ {line}\n", style="dim #64748b")
+                out.append(f"{old_lineno:4d} {new_lineno:4d} │ {line}\n", style="#667085")
                 old_lineno += 1
                 new_lineno += 1
 
