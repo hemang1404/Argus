@@ -170,7 +170,7 @@ class StatsModal(ModalScreen[None]):
         bar.append("BUDGET  ", style=_MUTED)
         color = _GREEN if pct < 70 else (_ORANGE if pct < 95 else _RED)
         bar.append("█" * filled, style=color)
-        bar.append("░" * (20 - filled), style="#1c1f27")
+        bar.append("░" * (20 - filled), style="#252831")
         bar.append(f"  {pct:.1f}% of ${self.budget_limit_usd:.2f}", style=_SECONDARY)
         return bar
 
@@ -198,11 +198,12 @@ class StatsModal(ModalScreen[None]):
         total_tiers = sum(self.tier_counts.values()) if self.tier_counts else 0
         tot = max(1, total_tiers if total_tiers > 0 else self.total_calls)
 
+        # Kept short enough to stay on one row inside the detail column.
         table.add_row(
-            "Tier distribution",
-            f"[{_GREEN}]Tier 1 (Cheap 8B): {cheap_cnt} ({cheap_cnt / tot * 100:.0f}%)[/]  "
-            f"[{_BLUE}]T2: {strong_cnt} ({strong_cnt / tot * 100:.0f}%)[/]  "
-            f"[{_ORANGE}]T3: {frontier_cnt} ({frontier_cnt / tot * 100:.0f}%)[/]",
+            "Tier 1 (Cheap 8B)",
+            f"[{_GREEN}]{cheap_cnt} · {cheap_cnt / tot * 100:.0f}%[/]   "
+            f"[{_BLUE}]T2 {strong_cnt} · {strong_cnt / tot * 100:.0f}%[/]   "
+            f"[{_ORANGE}]T3 {frontier_cnt} · {frontier_cnt / tot * 100:.0f}%[/]",
         )
         table.add_row(
             "Tokens (in / out)",

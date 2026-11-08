@@ -225,7 +225,7 @@ class PolicyModal(ModalScreen[Optional[dict[str, Any]]]):
 
         checks = list(self.query(".tier-check"))
         if is_auto:
-            indicators = [f"[{_GREEN}]1st[/]", f"[{_BLUE}]2nd[/]", f"[{_ORANGE}]3rd[/]"]
+            indicators = [f"[{_BLUE}]1st[/]", f"[{_BLUE}]2nd[/]", f"[{_BLUE}]3rd[/]"]
             for check, ind in zip(checks, indicators):
                 check.update(ind)
         else:

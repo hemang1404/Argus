@@ -95,9 +95,9 @@ class ConnectModal(ModalScreen[None]):
     def _layers(c: DiscoveredClient) -> str:
         layers = []
         if c.mcp_supported:
-            layers.append("MCP Tools")
+            layers.append("MCP")
         if c.gateway_supported:
-            layers.append("Inference Gateway")
+            layers.append("gateway")
         return " + ".join(layers) or "—"
 
     @staticmethod
@@ -119,9 +119,9 @@ class ConnectModal(ModalScreen[None]):
             border_style="#1c1f27",
             padding=(0, 1),
         )
-        table.add_column("Client / tool", width=22)
-        table.add_column("System status", width=19)
-        table.add_column("Integration layer", style=_MUTED)
+        table.add_column("Client / tool", width=24)
+        table.add_column("System status", width=17)
+        table.add_column("Layers", style=_MUTED)
 
         groups = [
             ("Connected", [c for c in clients if c.configured], _GREEN),
@@ -131,7 +131,7 @@ class ConnectModal(ModalScreen[None]):
         for label, members, color in groups:
             if not members:
                 continue
-            table.add_row(f"[bold {color}]{label.upper()}[/]", f"[{_MUTED}]{len(members)}[/]", "")
+            table.add_row(f"[bold {color}]{label.upper()}[/] [{_MUTED}]{len(members)}[/]", "", "")
             for c in members:
                 name_style = f"bold {_TEXT}" if (c.configured or c.installed) else _MUTED
                 table.add_row(

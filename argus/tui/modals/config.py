@@ -93,7 +93,7 @@ class ConfigModal(ModalScreen[Optional[Any]]):
                     yield Static("PROVIDER API KEY", classes="field-label")
                     yield Static(f"[{_MUTED}]optional · OS keyring[/]", classes="field-meta")
                 yield Input(
-                    placeholder="Enter API key (sk-...) or leave blank to keep current secret or host CLI",
+                    placeholder="sk-... (blank keeps current key)",
                     password=True,
                     id="config-api-key",
                 )
@@ -117,11 +117,13 @@ class ConfigModal(ModalScreen[Optional[Any]]):
                 t1 = dyn["t1"]["model"]
                 t2 = dyn["t2"]["model"]
                 t3 = dyn["t3"]["model"]
+                # One line per option: the list is 6 rows tall, so wrapped labels
+                # would push the last tier out of view.
                 yield OptionList(
-                    Option(f"● argus/auto     (Dynamic Escalation: {t1} → {t2} → {t3})", id="argus/auto"),
-                    Option(f"○ argus/cheap    (Pinned Fast Tier: {t1})", id="argus/cheap"),
-                    Option(f"○ argus/strong   (Pinned Balanced Tier: {t2})", id="argus/strong"),
-                    Option(f"○ argus/frontier (Pinned Frontier Tier: {t3})", id="argus/frontier"),
+                    Option("● argus/auto      adaptive ladder (T1 → T2 → T3)", id="argus/auto"),
+                    Option(f"○ argus/cheap     pinned · {t1}", id="argus/cheap"),
+                    Option(f"○ argus/strong    pinned · {t2}", id="argus/strong"),
+                    Option(f"○ argus/frontier  pinned · {t3}", id="argus/frontier"),
                     id="config-options",
                 )
 
