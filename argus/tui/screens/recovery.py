@@ -55,7 +55,7 @@ class RecoveryWorkflowScreen(Screen[None]):
             with Container(id="workflow-card"):
                 with Horizontal(id="workflow-header-row"):
                     yield Static("Recovery runtime", id="workflow-card-title")
-                    yield Static("[#7bc79e]● isolated sandbox[/]", id="workflow-esc")
+                    yield Static("[#667085]esc back[/]", id="workflow-esc")
 
                 yield Static(
                     "Non-destructive patch synthesis in an isolated git worktree.",
@@ -85,7 +85,8 @@ class RecoveryWorkflowScreen(Screen[None]):
                 yield Static("", id="error-banner")
                 yield Static(self._format_context_text(), id="context-info")
                 yield Static(
-                    "[#7bc79e]●[/] Isolated worktree · no writes before approval · verified candidate only",
+                    # Exactly CONTEXT_LINE_MAX_WIDTH cells: the card clips wider lines.
+                    "[#7bc79e]●[/] Isolated worktree · no writes before approval · verified output only",
                     id="workflow-guardrail",
                 )
 
