@@ -72,6 +72,7 @@ export const navGroups = [
 ];
 
 export const topNav = [
+  { label: 'Home', href: '/', key: 'home' },
   { label: 'Docs', href: '/getting-started/introduction/', key: 'docs' },
   { label: 'CLI', href: '/interfaces/cli/', key: 'cli' },
   { label: 'MCP', href: '/interfaces/mcp-server/', key: 'mcp' },
@@ -99,6 +100,7 @@ export function groupForHref(href) {
 /** Top-navigation key for the current page, used for active states. */
 export function topNavKey(pathname) {
   const path = normalizePath(pathname);
+  if (path === '/' || path === '') return 'home';
   if (path.startsWith('/interfaces/cli')) return 'cli';
   if (path.startsWith('/interfaces/mcp-server')) return 'mcp';
   if (path.startsWith('/project/architecture')) return 'architecture';

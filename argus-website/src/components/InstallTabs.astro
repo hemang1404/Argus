@@ -27,9 +27,7 @@ const tabs = [
           aria-controls={`install-panel-${tab.id}`}
           tabindex={index === 0 ? 0 : -1}
           data-install-tab={tab.id}
-        >
-          {tab.label}
-        </button>
+        >{tab.label}</button>
       ))
     }
   </div>
