@@ -16,7 +16,7 @@
   <a href="docs/SECURITY_MODEL.md">Security</a> ·
   <a href="examples/">Examples</a> ·
   <a href="benchmarks/">Benchmarks</a> ·
-  <a href="argus-website/">Documentation Site</a>
+  <a href="https://argus.hemangsharrma.workers.dev">Documentation Site</a>
 </p>
 
 <p align="center">
@@ -63,7 +63,7 @@ If you are new to the repository, use this decision tree to find the right path:
 | **Expose recovery tools to my agent via MCP** | Run `argus mcp install` or configure `argus mcp` as a stdio server in your agent's config. |
 | **Run the local OpenAI/Anthropic gateway proxy** | Use `argus gateway` to route agent traffic through Argus budget and rate guards. |
 | **Inspect the technical architecture & security model** | Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md). |
-| **Explore the developer documentation portal** | Check out [`argus-website/`](argus-website/) or run `npm run build` inside the docs site. |
+| **Explore the developer documentation portal** | Visit the live site at [argus.hemangsharrma.workers.dev](https://argus.hemangsharrma.workers.dev) or inspect [`argus-website/`](argus-website/). |
 
 ---
 
@@ -274,7 +274,7 @@ This repository is organized into distinct, focused modules:
 | Directory / Package | What it is |
 | :--- | :--- |
 | [`argus/`](argus/) (`argus-recovery` on PyPI) | **The Core Runtime:** Recovery controller, workspace sandbox, 5-tier patch engine, provider adapters, Textual TUI, local gateway, and FastMCP server. |
-| [`argus-website/`](argus-website/) | **Documentation Website:** Production documentation portal built with Astro & Starlight, featuring custom monochromatic design, TUI simulator, and dark/light modes. |
+| [`argus-website/`](argus-website/) | **Documentation Website:** Production documentation portal deployed at [argus.hemangsharrma.workers.dev](https://argus.hemangsharrma.workers.dev), built with Astro & Starlight, featuring custom monochromatic design, TUI simulator, and dark/light modes. |
 | [`docs/`](docs/) | **Architectural Blueprints:** Technical specifications for [Architecture](docs/ARCHITECTURE.md), [Security Model](docs/SECURITY_MODEL.md), and [Benchmark Methodology](docs/BENCHMARK_METHODOLOGY.md). |
 | [`examples/`](examples/) | **Runnable Cookbook:** Ready-to-run examples for [quickstart recovery](examples/quickstart_recovery.py) and [custom provider configuration](examples/custom_provider_config.py). |
 | [`benchmarks/`](benchmarks/) | **Benchmark Suites:** Evaluation harnesses, verified task runners, and reproducible benchmark configurations. |

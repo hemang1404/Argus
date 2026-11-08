@@ -80,7 +80,8 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/hemang1404/Argus"
+Homepage = "https://argus.hemangsharrma.workers.dev"
+Documentation = "https://argus.hemangsharrma.workers.dev"
 Repository = "https://github.com/hemang1404/Argus"
 Issues = "https://github.com/hemang1404/Argus/issues"
 

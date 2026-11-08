@@ -6,6 +6,7 @@ import mdx from '@astrojs/mdx';
 import { starlightSidebar, repoUrl } from './src/data/nav.mjs';
 
 export default defineConfig({
+  site: 'https://argus.hemangsharrma.workers.dev',
   trailingSlash: 'ignore',
   integrations: [
     starlight({
