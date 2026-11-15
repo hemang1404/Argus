@@ -59,7 +59,7 @@ Residual weaknesses: one reader for the passing-but-wrong review; the blind-set 
 | C22 | "Argus localizes the buggy file" | Partially | All headline numbers had the target file given. Localizer recall was about 27% in separate measurements. |
 | C23 | "Tests pass means fixed" | Incorrect | About 18% of resolved patches judged wrong or fragile; 6.6-12.0% of target passes broke other tests. |
 | C24 | "The repository keeps its evaluation material in-tree" (old website text) | Incorrect | Research directories are gitignored and untracked; the evidence is not in a clone. |
-| C25 | "Tests: 471 / 489 passing" (old README/site/changelog) | Incorrect (inconsistent, hand-copied) | See the test-count note in the CHANGELOG: one dated, environment-specific measurement (625 passed, 15 skipped, 3 failed on 2026-11-16 mid-remediation). CI is the source of truth. |
+| C25 | "Tests: 471 / 489 passing" (old README/site/changelog) | Incorrect (inconsistent, hand-copied) | See the test-count note in the CHANGELOG: one dated, environment-specific measurement (796 passed, 11 skipped, 8 deselected, 0 failed on 2026-11-16, Windows, Python 3.14). CI is the source of truth. |
 
 ---
 
