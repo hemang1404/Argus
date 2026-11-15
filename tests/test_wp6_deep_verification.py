@@ -277,3 +277,31 @@ def test_recovery_controller_deterministic_http_client_lifecycle():
         c2 = ad._get_client()
         assert c2.is_closed is False
     assert c2.is_closed is True
+
+
+def test_ps_create_time_parses_lstart_output(monkeypatch):
+    """macOS/BSD have no /proc: the `ps -o lstart=` fallback must parse the C-locale timestamp."""
+    import subprocess as sp
+    import time as _time
+    from argus.runtime import workspace as ws
+
+    class _Res:
+        returncode = 0
+        stdout = "Mon Nov 16 09:30:05 2026\n"
+
+    monkeypatch.setattr(ws.subprocess, "run", lambda *a, **k: _Res())
+    expected = _time.mktime(_time.strptime("Mon Nov 16 09:30:05 2026", "%a %b %d %H:%M:%S %Y"))
+    assert ws._ps_create_time(4242) == expected
+
+    class _Gone:
+        returncode = 1
+        stdout = ""
+
+    monkeypatch.setattr(ws.subprocess, "run", lambda *a, **k: _Gone())
+    assert ws._ps_create_time(4242) is None
+
+    def _boom(*a, **k):
+        raise sp.TimeoutExpired("ps", 5)
+
+    monkeypatch.setattr(ws.subprocess, "run", _boom)
+    assert ws._ps_create_time(4242) is None

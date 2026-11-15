@@ -91,6 +91,24 @@ def _handle_remove_readonly(func, path, exc_info):
         pass
 
 
+def _ps_create_time(pid: int) -> Optional[float]:
+    """Process start time (Unix epoch seconds) via ``ps -o lstart=``; used where /proc does not exist (macOS, BSD).
+
+    ``lstart`` has one-second resolution and is printed in the local time zone, which is
+    consistent with the 2 s tolerance in :func:`is_process_alive`. Returns None when ``ps``
+    is missing, the process is gone, or the output cannot be parsed.
+    """
+    try:
+        env = {**os.environ, "LC_ALL": "C", "LANG": "C"}
+        res = subprocess.run(["ps", "-o", "lstart=", "-p", str(int(pid))], capture_output=True, text=True, timeout=5, env=env)
+        text = " ".join(res.stdout.split())
+        if res.returncode != 0 or not text:
+            return None
+        return time.mktime(time.strptime(text, "%a %b %d %H:%M:%S %Y"))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
 def get_process_create_time(pid: int) -> Optional[float]:
     """Get process creation timestamp (Unix epoch seconds) if accessible."""
     if pid <= 0:
@@ -132,7 +150,7 @@ def get_process_create_time(pid: int) -> Optional[float]:
                 return proc_stat.stat().st_ctime
         except Exception:
             pass
-        return None
+        return _ps_create_time(pid)
 
 
 def is_process_alive(pid: int, expected_create_time: Optional[float] = None) -> bool:
