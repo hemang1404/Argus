@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import difflib
 import io
 import re
@@ -176,14 +177,55 @@ def _indent_of(line: str) -> str:
     return _INDENT_RE.match(line).group(0)  # type: ignore[union-attr]
 
 
-def _uniform_shift(src_indents: Sequence[str], search_indents: Sequence[str]) -> Optional[Tuple[str, str]]:
+def _continuation_flags(lines: Sequence[str]) -> List[bool]:
+    """For each line: does it start inside an open bracket (and outside a string)?
+
+    The indentation of such a continuation line is visual alignment, not Python
+    structure, so it is the only indentation a tolerant match may disregard. A
+    block is assumed to start at bracket depth 0, so a fragment that begins
+    mid-expression is simply compared strictly.
+    """
+    text = "\n".join(lines)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line) + 1)
+    flags = [0] * len(lines)
+    in_string = [False] * len(lines)
+    depth = 0
+    nxt = 0
+    for m in _TOKEN_RE.finditer(text):
+        row = bisect.bisect_right(starts, m.start()) - 1
+        while nxt <= row and nxt < len(lines):
+            flags[nxt] = depth
+            nxt += 1
+        if m.lastgroup == "string" and "\n" in m.group(0):
+            end_row = bisect.bisect_right(starts, m.end() - 1) - 1
+            for r in range(row + 1, min(end_row, len(lines) - 1) + 1):
+                in_string[r] = True
+        elif m.lastgroup == "op":
+            if m.group(0) in ("(", "[", "{"):
+                depth += 1
+            elif m.group(0) in (")", "]", "}") and depth:
+                depth -= 1
+    while nxt < len(lines):
+        flags[nxt] = depth
+        nxt += 1
+    return [flags[i] > 0 and not in_string[i] for i in range(len(lines))]
+
+
+def _uniform_shift(
+    src_indents: Sequence[str],
+    search_indents: Sequence[str],
+    continuation: Optional[Sequence[bool]] = None,
+) -> Optional[Tuple[str, str]]:
     """The single indentation shift turning the search indents into the source indents.
 
     Returns ``("add", prefix)`` when every source indent is ``prefix + search
     indent``, ``("remove", prefix)`` when every search indent is ``prefix +
     source indent`` and ``("same", "")`` when they are equal. Returns None when
     the relative indentation differs (different nesting, tabs vs spaces), which
-    is a structural difference in Python and is never tolerated.
+    is a structural difference in Python and is never tolerated. Lines flagged
+    in ``continuation`` (inside an open bracket) are exempt from the comparison.
     """
     if not src_indents or len(src_indents) != len(search_indents):
         return None
@@ -196,7 +238,9 @@ def _uniform_shift(src_indents: Sequence[str], search_indents: Sequence[str]) ->
         shift = ("remove", q0[len(s0) :])
     else:
         return None
-    for s, q in zip(src_indents, search_indents):
+    for i, (s, q) in enumerate(zip(src_indents, search_indents)):
+        if continuation is not None and i > 0 and continuation[i]:
+            continue
         if shift[0] == "same" and s != q:
             return None
         if shift[0] == "add" and s != shift[1] + q:
@@ -227,7 +271,9 @@ def _window_shift(source_lines: Sequence[str], start: int, block: str) -> Option
     size = len(block_lines)
     src = [line.rstrip() for line in source_lines[start : start + size] if line.strip()]
     want = [line for line in block_lines if line.strip()]
-    return _uniform_shift([_indent_of(x) for x in src], [_indent_of(x) for x in want])
+    return _uniform_shift(
+        [_indent_of(x) for x in src], [_indent_of(x) for x in want], _continuation_flags(want)
+    )
 
 
 def _stripped_window_matches(source_lines: Sequence[str], block: str) -> List[int]:
@@ -244,6 +290,13 @@ def _stripped_window_matches(source_lines: Sequence[str], block: str) -> List[in
         if window == collapsed:
             hits.append(i)
     return hits
+
+
+def _lines_within(part: str, whole: str) -> bool:
+    """Do the stripped, non-blank lines of ``part`` occur as a run of lines of ``whole``?"""
+    a = [ln.strip() for ln in part.splitlines() if ln.strip()]
+    b = [ln.strip() for ln in whole.splitlines() if ln.strip()]
+    return bool(a) and any(b[i : i + len(a)] == a for i in range(len(b) - len(a) + 1))
 
 
 def _replacement_lines(replace: str) -> List[str]:
@@ -329,10 +382,28 @@ class ResilientPatchEngine:
         working = source_code
         last: Optional[PatchResult] = None
         tier = 0
+        applied_pairs = set()
         for block in blocks:
+            pair = (normalize_newlines(block.search_text), normalize_newlines(block.replace_text))
             res = self._apply_one(working, block, filename, validate=False)
+            if pair in applied_pairs:
+                # The response repeats a (search, replace) pair that was already
+                # applied. That is one edit, not two: it is skipped when the
+                # repeat finds nothing to do (its search text was already
+                # rewritten) or would only re-edit its own earlier output (the
+                # replacement still contains the search text). A repeat that
+                # lands on a different, still-unedited site is a real second
+                # edit and is applied.
+                if not res.success and res.refusal_reason in (
+                    RefusalReason.REFUSED_ALREADY_APPLIED,
+                    RefusalReason.REFUSED_NO_MATCH,
+                ):
+                    continue
+                if res.success and _lines_within(res.matched_search_block or "", pair[1]):
+                    continue
             if not res.success:
                 return res
+            applied_pairs.add(pair)
             tier = max(tier, res.tier_used or 0)
             working = res.patched_code if res.patched_code is not None else working
             last = res
@@ -551,6 +622,7 @@ class ResilientPatchEngine:
         found: List[Tuple[float, int, int]] = []
         shifts: dict = {}
         search_nonblank = [ln for ln in search_lines if ln.strip()]
+        search_continuation = _continuation_flags(search_nonblank)
         for delta in (0, 1, -1):
             cur_k = k + delta
             if cur_k <= 0 or cur_k > len(source_lines):
@@ -575,10 +647,14 @@ class ResilientPatchEngine:
                 region_nonblank = [ln for ln in region if ln.strip()]
                 if delta == 0 and len(region_nonblank) == len(search_nonblank):
                     src_pair, want_pair = region_nonblank, search_nonblank
+                    continuation: Optional[List[bool]] = search_continuation
                 else:
                     src_pair = [region[0]]
                     want_pair = [search_nonblank[0]]
-                shift = _uniform_shift([_indent_of(x) for x in src_pair], [_indent_of(x) for x in want_pair])
+                    continuation = None
+                shift = _uniform_shift(
+                    [_indent_of(x) for x in src_pair], [_indent_of(x) for x in want_pair], continuation
+                )
                 if shift is None:
                     continue
                 shifts[(i, cur_k)] = shift

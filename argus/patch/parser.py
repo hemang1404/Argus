@@ -37,6 +37,7 @@ class PatchParser:
     # >>>>>>> REPLACE
     _START_RE = re.compile(r"^[ \t]*<{3,}[ \t]*SEARCH(?:[ \t]+(\S.*?))?[ \t]*$")
     _SEP_RE = re.compile(r"^[ \t]*={3,}[ \t]*$")
+    _SEP_COL0_RE = re.compile(r"^={3,}[ \t]*$")
     _END_RE = re.compile(r"^[ \t]*>{3,}[ \t]*REPLACE\b.*$")
 
     _HUNK_HEADER_RE = re.compile(r"^@@\s*-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s*@@")
@@ -83,6 +84,25 @@ class PatchParser:
         replace_buf: List[str] = []
         before: List[str] = []
 
+        def is_separator(at: int) -> bool:
+            """Is lines[at] the SEARCH/REPLACE divider rather than SEARCH text?
+
+            An indented run of ``=`` is usually an RST/docstring underline that
+            belongs to the code being searched. It is only taken as the divider
+            when no column-0 divider follows before the block ends.
+            """
+            if not cls._SEP_RE.match(lines[at].rstrip("\r")):
+                return False
+            if cls._SEP_COL0_RE.match(lines[at].rstrip("\r")):
+                return True
+            for nxt in lines[at + 1 :]:
+                nxt = nxt.rstrip("\r")
+                if cls._START_RE.match(nxt) or cls._END_RE.match(nxt):
+                    break
+                if cls._SEP_COL0_RE.match(nxt):
+                    return False
+            return True
+
         def finish() -> None:
             cleaned_path = path_hint.strip() if path_hint else default_path
             if not cleaned_path:
@@ -125,7 +145,7 @@ class PatchParser:
                 search_buf, replace_buf = [], []
                 continue
             if state == "search":
-                if cls._SEP_RE.match(line):
+                if is_separator(idx):
                     state = "replace"
                 elif cls._END_RE.match(line):
                     outcome.errors.append(
