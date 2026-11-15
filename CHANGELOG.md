@@ -6,7 +6,7 @@ All notable changes to Argus are documented in this file. The format is based on
 
 ## [0.2.0b2] - 2026-11-16
 
-Changes from a full engineering audit (November 2026). Version `0.2.0b2` is prepared but not yet tagged or published to PyPI: the `0.2.0b1` package on PyPI predates all of this.
+Changes from a full engineering audit (November 2026). Version `0.2.0b2` was tagged `v0.2.0b2` and published to PyPI on 2026-11-16; the older `0.2.0b1` package predates all of this.
 
 ### Changed (behaviour)
 - **Model dispatch.** The configured model is authoritative. A named model is pinned for every attempt (no substitution, no escalation). The cheap-first cascade (openai gpt-4o-mini -> gpt-4o, deepseek deepseek-flash -> deepseek-chat, gemini gemini-2.5-flash -> gemini-2.5-pro, antigravity gemini-3.8-flash-low -> gemini-3.8-flash-high) applies only when no model is named. The old fallback to a small local model on budget pressure is gone (`BUDGET_EXCEEDED`). The `argus/auto` pseudo-model means "no model". Antigravity no longer downgrades pro-class names to flash, and the executed model is recorded per attempt.

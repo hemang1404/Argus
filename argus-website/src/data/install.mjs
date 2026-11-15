@@ -9,10 +9,10 @@
 import { version, repoUrl } from './nav.mjs';
 
 /** Flip to true once `version` has been published to PyPI. */
-export const currentOnPypi = false;
+export const currentOnPypi = true;
 
 /** Latest version actually on PyPI while currentOnPypi is false. */
-export const pypiVersion = '0.2.0b1';
+export const pypiVersion = '0.2.0b2';
 
 export const pypiUrl = 'https://pypi.org/project/argus-recovery/';
 export const gitUrl = `git+${repoUrl}.git`;

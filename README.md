@@ -86,7 +86,7 @@ pip install "argus-recovery[tokens]"  # optional exact token counting (downloads
 # or, isolated: pipx install argus-recovery
 ```
 
-The `0.2.0b1` release on PyPI predates the audit remediation described in [CHANGELOG.md](CHANGELOG.md); that work is version `0.2.0b2`, not yet published. To get the current behaviour documented here, install from the repository:
+`0.2.0b2` on PyPI includes the audit remediation described in [CHANGELOG.md](CHANGELOG.md); the older `0.2.0b1` does not. To track the repository head instead of the latest release, install from GitHub:
 
 ```bash
 pip install "git+https://github.com/hemang1404/Argus.git"
