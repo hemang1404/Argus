@@ -9,9 +9,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
@@ -31,6 +34,34 @@ EFFORT_TIER_MAP = {
 }
 
 DEFAULT_ANTIGRAVITY_MODEL = "gemini-2.5-flash"
+
+# Streaming: longest silence tolerated between output lines, and how much stderr is kept.
+DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS = 60.0
+_STDERR_KEEP_CHARS = 64 * 1024
+
+
+def _kill_process_tree(proc: "subprocess.Popen[Any]") -> None:
+    """Terminate ``proc`` and its children (taskkill /T on Windows, process group elsewhere)."""
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                shell=False,
+                capture_output=True,
+                timeout=10,
+            )
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        proc.kill()
+    except OSError:
+        pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.SubprocessError:
+        pass
 
 
 def is_antigravity_cli_available(custom_path: Optional[str | Path] = None) -> bool:
@@ -128,6 +159,7 @@ class AntigravityHostAdapter(ProviderAdapter):
         self._custom_cli_path = cli_path
         self._cli_path: Optional[Path] = None
         self._timeout_seconds = timeout_seconds or getattr(self.config, "timeout_seconds", 60.0)
+        self._stream_idle_timeout_seconds = min(self._timeout_seconds, DEFAULT_STREAM_IDLE_TIMEOUT_SECONDS)
         self._supported_efforts: Optional[set[str]] = None
         self._available_models: Optional[list[str]] = None
         self._is_agentapi: bool = False
@@ -460,7 +492,7 @@ class AntigravityHostAdapter(ProviderAdapter):
 
             if proc.returncode != 0:
                 # Check for authentication errors
-                if any(w in scrubbed_err.lower() for w in ["unauthenticated", "login required", "not authenticated", "auth"]):
+                if any(w in scrubbed_err.lower() for w in ["unauthenticated", "login required", "not authenticated", "authentication"]):
                     raise ProviderError(
                         f"Antigravity authentication error: {scrubbed_err}. "
                         "Please authenticate via the Antigravity CLI ('agy') or Antigravity IDE.",
@@ -500,6 +532,7 @@ class AntigravityHostAdapter(ProviderAdapter):
             except json.JSONDecodeError:
                 pass
 
+        usage_estimated = prompt_tokens == 0 or completion_tokens == 0
         if prompt_tokens == 0:
             prompt_tokens = max(1, len(full_prompt) // 4)
         if completion_tokens == 0:
@@ -517,6 +550,7 @@ class AntigravityHostAdapter(ProviderAdapter):
             cache_read_tokens=cache_read_tokens,
             thinking_tokens=thinking_tokens,
             net_prompt_tokens=net_prompt,
+            usage_estimated=usage_estimated,
             raw_response={
                 "provider": "antigravity",
                 "cli_path": str(cli),
@@ -586,35 +620,115 @@ class AntigravityHostAdapter(ProviderAdapter):
             output_format="stream-json",
         )
 
+        popen_kwargs: Dict[str, Any] = {}
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        else:
+            popen_kwargs["start_new_session"] = True  # so the whole tree can be signalled
         try:
             proc = subprocess.Popen(
                 cmd_args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 shell=False,
                 cwd=effective_cwd,
                 stdin=subprocess.DEVNULL,
                 bufsize=1,
+                **popen_kwargs,
             )
         except Exception as ex:
             raise ProviderError(f"Failed to launch Antigravity streaming process: {ex}") from None
 
+        # stdout is pumped by a thread so a silent process cannot block the generator
+        # past the idle/overall timeouts; stderr is drained concurrently so a chatty
+        # process can never fill the pipe and deadlock.
+        lines: "queue.Queue[Optional[str]]" = queue.Queue()
+        stderr_chunks: List[str] = []
+
+        def _pump_stdout() -> None:
+            try:
+                if proc.stdout:
+                    for line in proc.stdout:
+                        lines.put(line)
+            except (OSError, ValueError):
+                pass
+            finally:
+                lines.put(None)
+
+        def _drain_stderr() -> None:
+            kept = 0
+            try:
+                if proc.stderr:
+                    for line in proc.stderr:
+                        if kept < _STDERR_KEEP_CHARS:
+                            stderr_chunks.append(line)
+                            kept += len(line)
+            except (OSError, ValueError):
+                pass
+
+        threads = [
+            threading.Thread(target=_pump_stdout, daemon=True),
+            threading.Thread(target=_drain_stderr, daemon=True),
+        ]
+        for t in threads:
+            t.start()
+
+        started = time.monotonic()
+        last_activity = started
         try:
-            if proc.stdout:
-                for line in proc.stdout:
-                    line_str = line.strip()
-                    if line_str.startswith("{") and line_str.endswith("}"):
-                        try:
-                            event = json.loads(line_str)
-                            if event.get("event") == "step_update":
-                                step = event.get("step_update", {})
-                                delta = step.get("text_delta")
-                                if delta:
-                                    yield delta
-                        except json.JSONDecodeError:
-                            pass
-            proc.wait(timeout=self._timeout_seconds)
+            while True:
+                now = time.monotonic()
+                overall_left = self._timeout_seconds - (now - started)
+                idle_left = self._stream_idle_timeout_seconds - (now - last_activity)
+                if overall_left <= 0:
+                    raise ProviderError(
+                        f"Antigravity streaming timed out after {self._timeout_seconds}s.", status_code=504
+                    )
+                if idle_left <= 0:
+                    raise ProviderError(
+                        f"Antigravity streaming produced no output for {self._stream_idle_timeout_seconds}s.",
+                        status_code=504,
+                    )
+                try:
+                    line = lines.get(timeout=min(overall_left, idle_left))
+                except queue.Empty:
+                    continue
+                if line is None:
+                    break
+                last_activity = time.monotonic()
+                line_str = line.strip()
+                if line_str.startswith("{") and line_str.endswith("}"):
+                    try:
+                        event = json.loads(line_str)
+                        if event.get("event") == "step_update":
+                            step = event.get("step_update", {})
+                            delta = step.get("text_delta")
+                            if delta:
+                                yield delta
+                    except json.JSONDecodeError:
+                        pass
+            try:
+                returncode = proc.wait(timeout=max(1.0, self._timeout_seconds - (time.monotonic() - started)))
+            except subprocess.TimeoutExpired:
+                raise ProviderError("Antigravity streaming process did not exit.", status_code=504) from None
+            if returncode != 0:
+                threads[1].join(timeout=1.0)
+                detail = scrub_secrets("".join(stderr_chunks).strip()[:300]) or f"exit code {returncode}"
+                raise ProviderError(
+                    f"Antigravity streaming process failed with code {returncode}: {detail}",
+                    status_code=returncode,
+                )
+        except ProviderError:
+            raise
         except Exception as ex:
-            proc.kill()
-            raise ProviderError(f"Antigravity streaming error: {ex}") from None
+            raise ProviderError(f"Antigravity streaming error: {scrub_secrets(str(ex))}") from None
+        finally:
+            # Also runs when the consumer closes the generator (cancel): never leave the
+            # process or its children running.
+            if proc.poll() is None:
+                _kill_process_tree(proc)
+            for t in threads:
+                t.join(timeout=1.0)

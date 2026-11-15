@@ -35,7 +35,7 @@ developer repository
 | Live working tree unchanged during attempts | Yes |
 | Patch applied only after passing tests | Yes |
 | Patch applied only after approval | Yes, unless `--force` is used explicitly; approval is recorded in signed metadata |
-| An agent or workspace file edit can forge approval | No for file-level edits (HMAC signature); **yes for code running as you** |
+| An agent or workspace file edit can forge approval | No for file-level edits (HMAC signature); **yes for code running as you**, which includes the test command and an MCP-supplied `test_command` |
 | Ambiguous or low-similarity patch applied | No; refusal is the default |
 | Invalid Python syntax applied | No; a full-file syntactic gate (`ast.parse` + `compile`) gates acceptance |
 | Host subprocess isolated from your account | **No** |

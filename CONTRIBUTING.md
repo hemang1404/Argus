@@ -38,7 +38,7 @@ Every contribution must pass the offline regression test suite before submission
 
 ```bash
 # 1. Run the full offline test suite (no network, no model calls)
-pytest -q --ignore=tests/test_real_host_integration.py
+ARGUS_OFFLINE=1 pytest -q -m "not live_provider and not live_antigravity and not real_host and not tokenizer_download"
 
 # 2. Focused gates: runtime/workspace safety, gateway security, patch engine, signed candidates
 pytest tests/test_runtime_and_workspace_safety.py tests/test_gateway_security.py        tests/test_patch_remediation.py tests/test_candidate_signing.py

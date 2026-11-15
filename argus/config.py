@@ -150,7 +150,7 @@ class ArgusConfig:
          ``[tool.argus]`` in the *workspace root*), applied by ``apply_project_policy``.
          The repository being analysed is untrusted input, so it may only TIGHTEN
          caps (lower ``max_attempts`` / ``budget_limit_usd`` / ``test_timeout_seconds``,
-         disable escalation, set ``reasoning_effort`` when the caller left it unset).
+         disable escalation, lower ``reasoning_effort`` to ``low`` when the caller left it unset).
          It can never raise a cap and never selects a model or provider.
       3. Built-in defaults (``DEFAULT_*`` constants above).
     Environment variables are consulted only for provider selection (``ARGUS_PROVIDER``).
@@ -218,6 +218,8 @@ class ArgusConfig:
     # snapshot_max_bytes: fail fast above this size (None disables the limit).
     snapshot_exclude: List[str] = field(default_factory=list)
     snapshot_respect_gitignore: bool = True
+    # .env*, key files and similar credential files are left out of the copy unless this is True.
+    snapshot_include_secrets: bool = False
     snapshot_max_bytes: Optional[int] = 2 * 1024 ** 3
 
     # UI and Terminal Branding Renderer (auto, braille, halfblock, sixel, kitty, text, box)
@@ -298,6 +300,22 @@ class ArgusConfig:
         self.small_model = self.large_model = self.model
         self.ladder_source = "provider-default" if self.model else "unresolved"
 
+    def pin_model(self, model: Optional[str]) -> None:
+        """Select ``model`` for every attempt, as ``--model`` does on the CLI.
+
+        Assigning ``config.model`` after construction is NOT enough for a provider
+        with a cascade (or an explicit ladder): the ladder rungs were fixed at
+        construction. This re-resolves the ladder so the pinned model is the one
+        dispatched. An empty/None model un-pins (back to the provider default).
+        """
+        cleaned = (model or "").strip()
+        if cleaned.lower() in _PSEUDO_MODELS:
+            cleaned = ""
+        self.model = cleaned or None
+        self.small_model = None
+        self.large_model = None
+        self._resolve_model_ladder()
+
     def model_for_tier(self, tier_idx: int) -> Optional[str]:
         """Model dispatched at escalation tier ``tier_idx`` (1-2: small rung, 3: large rung)."""
         if not self.escalation_enabled or self.ladder_source not in ("explicit-ladder", "provider-cascade"):
@@ -348,8 +366,17 @@ class ArgusConfig:
             self.escalation_enabled = False
             notes.append(f"Project policy ({source}) disabled escalation.")
         if "reasoning_effort" in policy and not self.reasoning_effort:
-            self.reasoning_effort = str(policy["reasoning_effort"])
-            notes.append(f"Project policy ({source}) set reasoning_effort={self.reasoning_effort}.")
+            # Tighten-only: a project file may lower the effort (and so the token use) to
+            # "low", never raise it. Any other value could increase cost and is ignored.
+            wanted = str(policy["reasoning_effort"]).strip().lower()
+            if wanted == "low":
+                self.reasoning_effort = "low"
+                notes.append(f"Project policy ({source}) set reasoning_effort=low.")
+            else:
+                notes.append(
+                    f"Ignored reasoning_effort={policy['reasoning_effort']!r} in {source}: a project file "
+                    "may only lower the effort to 'low', never raise it."
+                )
         for key in ("model", "small_model", "large_model", "provider"):
             if key in policy:
                 notes.append(

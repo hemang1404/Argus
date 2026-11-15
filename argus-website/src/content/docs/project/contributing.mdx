@@ -25,7 +25,7 @@ Run the offline suite before opening a pull request:
 
 ```bash title="Shell"
 # Full offline suite (excludes the test that calls a real local model host)
-pytest -q --ignore=tests/test_real_host_integration.py
+ARGUS_OFFLINE=1 pytest -q -m "not live_provider and not live_antigravity and not real_host and not tokenizer_download"
 
 # Focused gates
 pytest tests/test_runtime_and_workspace_safety.py \

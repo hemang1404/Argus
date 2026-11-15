@@ -130,17 +130,16 @@ def test_streaming_patch_healer_in_memory():
         healer = StreamPatchHealer(workspace=tmp_path, enabled=True)
         interceptor = StreamInterceptor(healer)
 
-        # Simulate LLM output with bad indentation / whitespace in search block
+        # Simulate LLM output whose search block lost its leading indentation uniformly
+        # (a uniform shift is healed; a different relative indentation is refused).
         broken_patch = (
             "Here is the fix for your issue:\n"
             "<<<<<<< SEARCH\n"
-            "def calculate(a: int, b: int) -> int:\n"
-            "  # Exact file contents with 4-space indent\n"
-            "  total = a + b\n"
+            "# Exact file contents with 4-space indent\n"
+            "total = a + b\n"
             "=======\n"
-            "def calculate(a: int, b: int) -> int:\n"
-            "    # Fixed total\n"
-            "    total = a + b + 10\n"
+            "# Fixed total\n"
+            "total = a + b + 10\n"
             ">>>>>>> REPLACE\n"
             "Done!"
         )

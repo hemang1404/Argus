@@ -121,7 +121,7 @@ def test_cli_candidates_approval_and_inspect():
         assert candidates[0].approved is False
 
 
-def test_cli_mcp_commands():
+def test_cli_mcp_commands(repo_on_pythonpath):
     """Verify mcp verify and install commands via CLI."""
     runner = CliRunner()
 

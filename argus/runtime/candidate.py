@@ -121,6 +121,24 @@ def validate_run_id(run_id: str) -> str:
     return run_id
 
 
+def _read_key_file(key_path: Path) -> Optional[bytes]:
+    """The key stored at ``key_path`` if it is exactly 32 bytes of hex, else None.
+
+    An empty or short file must never be accepted: an HMAC under an empty key is
+    computable by anyone.
+    """
+    try:
+        raw = key_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if len(raw) != 64:
+        return None
+    try:
+        return bytes.fromhex(raw)
+    except ValueError:
+        return None
+
+
 def _load_signing_key(workspace_root: Optional[Path] = None) -> bytes:
     """Load (or create) the per-user HMAC key used to authenticate run metadata.
 
@@ -143,27 +161,39 @@ def _load_signing_key(workspace_root: Optional[Path] = None) -> bytes:
             raise CandidateSignatureError(
                 f"Refusing to use a signing key stored inside the workspace ({key_path})."
             )
-    try:
-        raw = key_path.read_text(encoding="utf-8").strip()
-        if len(raw) >= 64:
-            return bytes.fromhex(raw)
-    except (OSError, ValueError):
-        pass
+    existing = _read_key_file(key_path)
+    if existing is not None:
+        return existing
+    # Missing, empty, short or corrupt: (re)generate. The new key is written
+    # completely to a private temp file first and then moved into place, so a
+    # concurrent reader never sees a half-written key.
     key_hex = secrets.token_hex(32)
+    tmp_path = key_path.with_name(f".{SIGNING_KEY_FILENAME}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
     try:
         key_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(str(key_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        # Lost a creation race (or the file was unreadable/short above): re-read.
-        try:
-            return bytes.fromhex(key_path.read_text(encoding="utf-8").strip())
-        except (OSError, ValueError) as ex:
-            raise CandidateSignatureError(f"Signing key at {key_path} is unreadable or corrupt: {ex}")
+        fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(key_hex)
+        if key_path.exists():
+            os.replace(tmp_path, key_path)  # replaces an invalid (empty/short/corrupt) key file
+        else:
+            try:
+                os.link(tmp_path, key_path)  # atomic create; fails if another process won
+            except FileExistsError:
+                pass
+            except OSError:
+                os.replace(tmp_path, key_path)  # filesystem without hard links
     except OSError as ex:
         raise CandidateSignatureError(f"Cannot create the run-signing key at {key_path}: {ex}")
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(key_hex)
-    return bytes.fromhex(key_hex)
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+    stored = _read_key_file(key_path)
+    if stored is None:
+        raise CandidateSignatureError(f"Signing key at {key_path} is unreadable or corrupt.")
+    return stored
 
 
 def _sign_metadata(data: Dict[str, Any], workspace_root: Optional[Path] = None) -> str:
@@ -333,15 +363,15 @@ class CandidateArtifactStore:
 
         # 3. Write patch.diff (if present)
         if unified_diff:
-            (run_dir / "patch.diff").write_text(unified_diff, encoding="utf-8")
+            (run_dir / "patch.diff").write_bytes(unified_diff.encode("utf-8"))  # no newline translation
 
         # 4. Write forensic artifacts (scrubbed to prevent credential retention on disk)
         if prompt_text:
-            (run_dir / "prompt.txt").write_text(scrub_secrets(prompt_text), encoding="utf-8")
+            (run_dir / "prompt.txt").write_bytes(scrub_secrets(prompt_text).encode("utf-8"))
         if raw_response:
-            (run_dir / "raw_response.txt").write_text(scrub_secrets(raw_response), encoding="utf-8")
+            (run_dir / "raw_response.txt").write_bytes(scrub_secrets(raw_response).encode("utf-8"))
         if parsed_patch and not unified_diff:
-            (run_dir / "unapplied_patch.txt").write_text(scrub_secrets(parsed_patch), encoding="utf-8")
+            (run_dir / "unapplied_patch.txt").write_bytes(scrub_secrets(parsed_patch).encode("utf-8"))
         if context_window:
             safe_context = scrub_object(context_window)
             (run_dir / "context_window.json").write_text(json.dumps(safe_context, indent=2), encoding="utf-8")
@@ -447,7 +477,8 @@ class CandidateArtifactStore:
             run_dir = cls.resolve_run_dir(run_id, workspace_root)
             diff_file = run_dir / "patch.diff"
             if diff_file.is_file():
-                return diff_file.read_text(encoding="utf-8")
+                with diff_file.open("r", encoding="utf-8", newline="") as fh:  # keep CRLF as stored
+                    return fh.read()
         except CandidateNotFoundError:
             pass
         return ""

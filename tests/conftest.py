@@ -108,3 +108,14 @@ def isolate_keyring_globally(monkeypatch: pytest.MonkeyPatch):
 def pytest_configure(config):
     config.addinivalue_line("markers", "keep_cwd: do not chdir into a scratch directory for this test")
     config.addinivalue_line("markers", "real_gateway_auth: run with the gateway's real fail-closed auth and Host guard")
+
+
+@pytest.fixture
+def repo_on_pythonpath(monkeypatch: pytest.MonkeyPatch):
+    """Let subprocesses started by a test (``python -m argus.mcp``) import ``argus`` from this
+    checkout without requiring an installed package."""
+    import os
+
+    existing = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv("PYTHONPATH", str(REPO_ROOT) + (os.pathsep + existing if existing else ""))
+    yield

@@ -56,7 +56,7 @@ pytest tests/test_runtime_and_workspace_safety.py \
        tests/test_wp7_deep_verification.py
 
 pytest -v tests/test_patch_adversarial_corpus.py
-pytest -q --ignore=tests/test_real_host_integration.py
+ARGUS_OFFLINE=1 pytest -q -m "not live_provider and not live_antigravity and not real_host and not tokenizer_download"
 python -m compileall -q argus tests
 ```
 

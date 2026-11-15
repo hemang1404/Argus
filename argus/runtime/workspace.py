@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import fnmatch
 import json
 import os
 import shutil
@@ -40,6 +41,41 @@ DEFAULT_SNAPSHOT_EXCLUDES: Set[str] = {
     ".hg",
     ".svn",
 }
+
+# Secret-bearing files are never copied into the workspace snapshot by default
+# (the tests run on a copy that may be left behind in a temp directory, and the
+# model-visible tree should not carry credentials). Matched on the file name at
+# any depth. ``.env.example``-style templates are not secrets and are kept. Set
+# ``snapshot_include_secrets=True`` (config) when the tests genuinely need them.
+SECRET_FILE_PATTERNS = (
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    ".netrc",
+    "_netrc",
+    ".pypirc",
+    ".npmrc",
+    ".git-credentials",
+    "secrets.json",
+    "credentials.json",
+)
+SECRET_FILE_ALLOWED_SUFFIXES = (".example", ".sample", ".template", ".dist")
+
+
+def is_secret_file_name(name: str) -> bool:
+    """Whether ``name`` looks like a credential file that snapshots leave out."""
+    lowered = name.lower()
+    if lowered.endswith(SECRET_FILE_ALLOWED_SUFFIXES):
+        return False
+    return any(fnmatch.fnmatchcase(lowered, pat) for pat in SECRET_FILE_PATTERNS)
+
 
 # Upper bound on the copied project size, so a mis-rooted run (for example a
 # home directory) fails fast instead of copying everything. None disables it.
@@ -223,7 +259,7 @@ class TargetOutsideWorkspaceError(ValueError):
     """The target file lies outside the workspace root; Argus will not re-root the snapshot."""
 
 
-def _is_excluded(rel_parts: Sequence[str], root_level_excludes: Set[str]) -> bool:
+def _is_excluded(rel_parts: Sequence[str], root_level_excludes: Set[str], protect_secrets: bool = True) -> bool:
     """Whether a snapshot-relative path is left out of the workspace copy."""
     if not rel_parts:
         return False
@@ -231,10 +267,12 @@ def _is_excluded(rel_parts: Sequence[str], root_level_excludes: Set[str]) -> boo
         return True
     if rel_parts[0] in root_level_excludes:
         return True
+    if protect_secrets and any(is_secret_file_name(part) for part in rel_parts):
+        return True
     return rel_parts[-1].endswith((".pyc", ".pyo"))
 
 
-def _walk_snapshot_files(root: Path, base: Path, excludes: Set[str]) -> List[Path]:
+def _walk_snapshot_files(root: Path, base: Path, excludes: Set[str], protect_secrets: bool = True) -> List[Path]:
     """All files and symlinks below ``root`` (relative to ``base``), honouring excludes."""
     found: List[Path] = []
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
@@ -243,7 +281,7 @@ def _walk_snapshot_files(root: Path, base: Path, excludes: Set[str]) -> List[Pat
         keep: List[str] = []
         for d in dirnames:
             rel = rel_dir / d
-            if _is_excluded(rel.parts, excludes):
+            if _is_excluded(rel.parts, excludes, protect_secrets):
                 continue
             if (here / d).is_symlink():
                 found.append(rel)  # linked directory: copied as a link, never followed
@@ -252,12 +290,14 @@ def _walk_snapshot_files(root: Path, base: Path, excludes: Set[str]) -> List[Pat
         dirnames[:] = keep
         for f in filenames:
             rel = rel_dir / f
-            if not _is_excluded(rel.parts, excludes):
+            if not _is_excluded(rel.parts, excludes, protect_secrets):
                 found.append(rel)
     return found
 
 
-def _git_snapshot_files(root: Path, excludes: Set[str], timeout: int) -> Optional[List[Path]]:
+def _git_snapshot_files(
+    root: Path, excludes: Set[str], timeout: int, protect_secrets: bool = True
+) -> Optional[List[Path]]:
     """Tracked plus untracked-but-not-ignored files per git, or None if unavailable."""
     try:
         proc = subprocess.run(
@@ -276,7 +316,7 @@ def _git_snapshot_files(root: Path, excludes: Set[str], timeout: int) -> Optiona
         if not raw:
             continue
         rel = Path(os.fsdecode(raw))
-        if rel in seen or _is_excluded(rel.parts, excludes):
+        if rel in seen or _is_excluded(rel.parts, excludes, protect_secrets):
             continue
         seen.add(rel)
         src = root / rel
@@ -284,7 +324,7 @@ def _git_snapshot_files(root: Path, excludes: Set[str], timeout: int) -> Optiona
             files.append(rel)
         elif src.is_dir():
             # submodule / nested repository: take its working files directly
-            files.extend(p for p in _walk_snapshot_files(src, root, excludes) if p not in seen)
+            files.extend(p for p in _walk_snapshot_files(src, root, excludes, protect_secrets) if p not in seen)
         # tracked-but-deleted paths simply do not exist and are skipped
     return files
 
@@ -331,6 +371,7 @@ class WorkspaceManager:
         snapshot_exclude: Optional[Iterable[str]] = None,
         snapshot_respect_gitignore: bool = True,
         snapshot_max_bytes: Optional[int] = DEFAULT_SNAPSHOT_MAX_BYTES,
+        snapshot_include_secrets: bool = False,
     ) -> None:
         if use_worktree:
             raise ValueError(
@@ -340,6 +381,7 @@ class WorkspaceManager:
         self.snapshot_excludes: Set[str] = set(DEFAULT_SNAPSHOT_EXCLUDES) | set(snapshot_exclude or ())
         self.snapshot_respect_gitignore = snapshot_respect_gitignore
         self.snapshot_max_bytes = snapshot_max_bytes
+        self.snapshot_protect_secrets = not snapshot_include_secrets
         self.git_timeout: int = 30
         if repo_root:
             self.repo_root = Path(repo_root).resolve()
@@ -414,10 +456,14 @@ class WorkspaceManager:
 
     def _snapshot_file_list(self) -> List[Path]:
         if self.snapshot_respect_gitignore:
-            listed = _git_snapshot_files(self.repo_root, self.snapshot_excludes, self.git_timeout)
+            listed = _git_snapshot_files(
+                self.repo_root, self.snapshot_excludes, self.git_timeout, self.snapshot_protect_secrets
+            )
             if listed is not None:
                 return listed
-        return _walk_snapshot_files(self.repo_root, self.repo_root, self.snapshot_excludes)
+        return _walk_snapshot_files(
+            self.repo_root, self.repo_root, self.snapshot_excludes, self.snapshot_protect_secrets
+        )
 
     def setup(self) -> Path:
         """Create the ephemeral workspace copy and record the target's baseline."""

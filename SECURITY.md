@@ -23,7 +23,7 @@ This document states what Argus does and does not protect, its trust boundaries,
 
 Consequences worth stating explicitly:
 
-- The **signing key** for candidate approvals (below) lives in your user configuration directory. Code running as you, which includes the tests Argus runs, can read it. Signing stops accidental or file-level forgery by an agent that can only edit files in the workspace; it does not defend against code that executes on the host.
+- The **signing key** for candidate approvals (below) lives in your user configuration directory. Code running as you, which includes the tests Argus runs, can read it. Signing stops accidental or file-level forgery by an agent that can only edit files in the workspace. It does **not** defend against code that executes as your user: the test command (including a `test_command` supplied by an MCP agent) can read the key, forge a valid approved run and then apply it. Argus removes `ARGUS_CONFIG_DIR` and `ARGUS_KEYRING_SERVICE` from the test command's environment, but the default per-user location cannot be hidden from a process of the same user. An empty or malformed key file is rejected and regenerated. Container evaluation or a separate OS account is the only real separation.
 - The command runner rejects shell operators and runs without a shell (`shell=False`). That prevents naive injection. The executable allow-list in `runner.py` is a guard rail, not a security boundary: an allowed interpreter can run arbitrary code.
 - Container evaluation exists in the library (`use_container_runner`, `ContainerEvaluator`, `--network=none`, resource limits, tar-over-stdin transfer) but is **opt-in, not exposed as a CLI flag, and not independently audited**. It shares the host kernel. Do not treat it as a validated boundary.
 
@@ -67,7 +67,7 @@ Consequences worth stating explicitly:
 | Patch paths | Traversal / writes outside the workspace | Absolute paths, `..`, NUL and symlinks leaving the workspace rejected; single-file scope |
 | Patch application | Wrong-location or ambiguous edit | Refuse on ambiguity; Tier 3 is token-equal only; syntax gate on the final state; tests decide correctness |
 | Stale or concurrent edits | Overwriting newer user changes | Baseline SHA-256 checked at apply; atomic replace; per-run apply lock |
-| Candidate forgery | Agent or file edit flips `approved` / swaps the patch | `metadata.json` is HMAC-signed (`metadata.sig`); candidate and baseline hashes re-checked; run IDs validated against a strict pattern (no traversal) |
+| Candidate forgery by file edit | Agent or file edit flips `approved` / swaps the patch (not code running as your user, see above) | `metadata.json` is HMAC-signed (`metadata.sig`); candidate and baseline hashes re-checked; run IDs validated against a strict pattern (no traversal) |
 | Secrets | Keys in logs, artifacts, prompts | `scrub_secrets` on logs/artifacts; `scrub_prompt` (known keys, token-shaped secrets, PEM blocks) on text sent to the model; subprocess environment scrubbed |
 | Spend | Runaway cost | Per-run hard budget, reservation before each call, unknown model prices refused, non-finite or negative budgets rejected |
 | Provider choice | Hidden fallback or silent model change | Only the configured provider is used; a pinned model is never substituted; absent provider = `CONFIG_ERROR` |

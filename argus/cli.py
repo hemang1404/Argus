@@ -675,7 +675,7 @@ def run(
 
             dot_argus = ws_root / ".argus"
             dot_argus.mkdir(exist_ok=True)
-            (dot_argus / "last_run.diff").write_text(outcome.unified_diff, encoding="utf-8")
+            (dot_argus / "last_run.diff").write_bytes(outcome.unified_diff.encode("utf-8"))
 
             if apply and not yes_reviewed:
                 console.print(

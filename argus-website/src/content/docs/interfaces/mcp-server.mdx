@@ -118,8 +118,10 @@ agent: argus_apply_candidate(...) → applied
 
 This prevents a model from both proposing and authorizing a modification to your
 repository. Approval records are HMAC-signed with a key kept outside the
-workspace, so an agent that can edit files in the project still cannot flip
-`approved` by editing `metadata.json`. Do not build automation that removes the human step unless you have a
+workspace, so an agent that can only edit files in the project cannot flip
+`approved` by editing `metadata.json`. An agent that also supplies the
+`test_command` can run code as your user, read the key and forge an approval, so
+only connect agents you trust. Do not build automation that removes the human step unless you have a
 stronger review process outside Argus.
 
 ## Output hygiene

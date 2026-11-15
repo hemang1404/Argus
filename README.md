@@ -40,7 +40,7 @@ Argus is a local tool, not a service. It has no Argus-owned keys and no hidden f
 
 - **Tiered patch reconciliation.** SEARCH/REPLACE blocks are located in the file through exact matching, then whitespace/indentation-tolerant matching, then (default on) a token-equal match that may differ only in whitespace and comments. Tier 4 (anchor matching) is experimental and off unless you pass `--enable-tier4`. Anything ambiguous or not found is refused, never guessed. See [the tier table](#the-patch-engine).
 - **Syntax gate, not a correctness proof.** Every result must parse (`ast.parse` plus `compile`) before it is tried. That only means "valid Python syntax". Whether the change is right is decided by your tests, and even they are only test-relative.
-- **Isolated attempts.** Each run works in a temporary copy of your project (by default), so failed attempts never touch your working tree. The copy is not a security sandbox; see [Trust model](#trust-model-read-this-first).
+- **Isolated attempts.** Each run works in a temporary copy of your project (by default), so failed attempts never touch your working tree, including the preliminary test run that localizes the file when `--file` is omitted (that run also happens in the copy). The copy is not a security sandbox; see [Trust model](#trust-model-read-this-first).
 - **Feedback loop with a bounded budget.** Failed attempts feed the test output back to the model. Attempts, time, output size and spend all have ceilings. A model with no known price is refused rather than assumed free, unless the provider is local.
 - **Approval-gated apply.** Candidates are stored under `.argus/runs/<run_id>/` with baseline and candidate SHA-256 hashes and an HMAC signature. `argus apply` refuses unless the candidate is verified, approved, unmodified, and the target file still matches its baseline.
 - **Interfaces.** CLI, a Textual TUI, an MCP stdio server for agents, and an experimental local gateway.
@@ -86,7 +86,7 @@ pip install "argus-recovery[tokens]"  # optional exact token counting (downloads
 # or, isolated: pipx install argus-recovery
 ```
 
-The `0.2.0b1` release on PyPI predates the audit remediation described in [CHANGELOG.md](CHANGELOG.md). To get the current behaviour documented here, install from the repository:
+The `0.2.0b1` release on PyPI predates the audit remediation described in [CHANGELOG.md](CHANGELOG.md); that work is version `0.2.0b2`, not yet published. To get the current behaviour documented here, install from the repository:
 
 ```bash
 pip install "git+https://github.com/hemang1404/Argus.git"
@@ -222,7 +222,7 @@ Manual configuration for any MCP client:
 
 `mcp install` currently knows three hosts: Antigravity, OpenCode and Gemini CLI. For other MCP clients (Claude Desktop, Cursor and so on) use the manual entry above.
 
-Tools: `argus_status`, `argus_recover`, `argus_get_candidate`, `argus_apply_candidate`. There is deliberately **no approval tool**: an agent can propose and request apply, but a human records approval with `argus approve`, and approval records are signed so an agent cannot forge one by editing files. The server confines its workspace to the directory it was started in (or `ARGUS_MCP_WORKSPACE_ROOT`) and caps an agent-supplied budget at `$0.25` (override ceiling with `ARGUS_MCP_MAX_BUDGET_USD`). MCP responses carry the host-execution notice.
+Tools: `argus_status`, `argus_recover`, `argus_get_candidate`, `argus_apply_candidate`. There is deliberately **no approval tool**: an agent can propose and request apply, but a human records approval with `argus approve`, and approval records are signed with a key in your configuration directory, which stops forgery by editing files in the workspace but not by code that runs as your OS user: the test command (including a `test_command` an MCP agent supplies) is such code, so only expose Argus over MCP for repositories and agents you trust. See [SECURITY.md](SECURITY.md). The server confines its workspace to the directory it was started in (or `ARGUS_MCP_WORKSPACE_ROOT`) and caps an agent-supplied budget at `$0.25` (override ceiling with `ARGUS_MCP_MAX_BUDGET_USD`). MCP responses carry the host-execution notice.
 
 ---
 
@@ -260,11 +260,11 @@ Python 3.11 to 3.14. Argus is developed and exercised mainly on Windows; the CI 
 
 ```bash
 pip install -e ".[dev,tui,gateway]"
-pytest -q --ignore=tests/test_real_host_integration.py     # offline suite; no network, no model calls
+ARGUS_OFFLINE=1 pytest -q -m "not live_provider and not live_antigravity and not real_host and not tokenizer_download"   # offline suite; no model calls
 ruff check .
 ```
 
-`tests/test_real_host_integration.py` calls a locally installed Antigravity CLI and makes real inference calls; it is excluded on purpose. The 500-case adversarial patch corpus (`tests/test_patch_adversarial_corpus.py`) is synthetic (seven templated mutation families): "zero incorrect applications" is a statement about that corpus, and one wrong-location application has been observed on real model output.
+The marker selector excludes tests that call a locally installed Antigravity CLI or a live provider (real inference calls) and tests that download the tiktoken vocabulary; `ARGUS_OFFLINE=1` makes token estimates use the byte heuristic instead of a download. Tests that need Docker skip themselves when Docker is absent. The 500-case adversarial patch corpus (`tests/test_patch_adversarial_corpus.py`) is synthetic (seven templated mutation families): "zero incorrect applications" is a statement about that corpus, and one wrong-location application has been observed on real model output.
 
 ## Contributing
 

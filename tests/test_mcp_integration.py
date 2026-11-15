@@ -69,7 +69,7 @@ def test_mcp_direct_tools():
     assert "argus_apply_candidate" in tools
 
 
-def test_mcp_stdio_handshake_and_call():
+def test_mcp_stdio_handshake_and_call(repo_on_pythonpath):
     """Verify live MCP stdio initialization handshake, tool listing, and argus_status call."""
     res = verify_mcp_handshake(timeout_seconds=10.0)
     assert res["success"] is True, f"MCP handshake failed at stage '{res.get('stage')}': {res.get('error')}"

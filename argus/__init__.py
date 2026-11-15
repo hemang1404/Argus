@@ -7,5 +7,5 @@ candidate for explicit approval. The version below is the single source of truth
 packaging metadata reads it.
 """
 
-__version__ = "0.2.0b1"
+__version__ = "0.2.0b2"
 __all__ = ["__version__"]

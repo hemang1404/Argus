@@ -58,7 +58,7 @@ checks at application time. Neither flag changes the candidate content.
 
 The TUI records approval from the diff review screen after an explicit
 confirmation. The MCP surface has no approval tool; an agent cannot approve its own
-candidate, and the approval file is signed so it cannot be forged by editing it.
+candidate, and the approval file is signed so it cannot be forged by editing files in the workspace. The signature does not stop code that runs as your user (such as the test command); see the [security model](/project/security-model/).
 An invalid or missing signature is reported as `CANDIDATE_SIGNATURE_INVALID`, and a
 malformed run ID as `INVALID_RUN_ID`.
 

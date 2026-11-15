@@ -169,6 +169,67 @@ def _exact_candidates(source: str, search: str, replace: str = "") -> List[int]:
     return whole if whole else partial
 
 
+_INDENT_RE = re.compile(r"[ \t]*")
+
+
+def _indent_of(line: str) -> str:
+    return _INDENT_RE.match(line).group(0)  # type: ignore[union-attr]
+
+
+def _uniform_shift(src_indents: Sequence[str], search_indents: Sequence[str]) -> Optional[Tuple[str, str]]:
+    """The single indentation shift turning the search indents into the source indents.
+
+    Returns ``("add", prefix)`` when every source indent is ``prefix + search
+    indent``, ``("remove", prefix)`` when every search indent is ``prefix +
+    source indent`` and ``("same", "")`` when they are equal. Returns None when
+    the relative indentation differs (different nesting, tabs vs spaces), which
+    is a structural difference in Python and is never tolerated.
+    """
+    if not src_indents or len(src_indents) != len(search_indents):
+        return None
+    s0, q0 = src_indents[0], search_indents[0]
+    if s0 == q0:
+        shift: Tuple[str, str] = ("same", "")
+    elif s0.startswith(q0):
+        shift = ("add", s0[len(q0) :])
+    elif q0.startswith(s0):
+        shift = ("remove", q0[len(s0) :])
+    else:
+        return None
+    for s, q in zip(src_indents, search_indents):
+        if shift[0] == "same" and s != q:
+            return None
+        if shift[0] == "add" and s != shift[1] + q:
+            return None
+        if shift[0] == "remove" and q != shift[1] + s:
+            return None
+    return shift
+
+
+def _reindent(lines: Sequence[str], shift: Tuple[str, str]) -> List[str]:
+    mode, prefix = shift
+    out: List[str] = []
+    for line in lines:
+        if not line.strip():
+            out.append("")
+        elif mode == "add":
+            out.append(prefix + line)
+        elif mode == "remove":
+            out.append(line[len(prefix) :] if line.startswith(prefix) else line.lstrip(" \t"))
+        else:
+            out.append(line)
+    return out
+
+
+def _window_shift(source_lines: Sequence[str], start: int, block: str) -> Optional[Tuple[str, str]]:
+    """Uniform indentation shift between a stripped-matching window and ``block``."""
+    block_lines = [line.rstrip() for line in block.strip("\n").split("\n")]
+    size = len(block_lines)
+    src = [line.rstrip() for line in source_lines[start : start + size] if line.strip()]
+    want = [line for line in block_lines if line.strip()]
+    return _uniform_shift([_indent_of(x) for x in src], [_indent_of(x) for x in want])
+
+
 def _stripped_window_matches(source_lines: Sequence[str], block: str) -> List[int]:
     """Start indices where the stripped, blank-collapsed lines of ``block`` match."""
     block_lines = [line.rstrip() for line in block.strip("\n").split("\n")]
@@ -428,29 +489,20 @@ class ResilientPatchEngine:
         """Tier 2: Normalized whitespace, stripped line endings, and trimmed blank lines."""
         search_lines = [line.rstrip() for line in search.strip("\n").split("\n")]
         source_all = source.split("\n")
-        matched_indices = _stripped_window_matches(source_all, search)
         window_size = len(search_lines)
+        # Only a uniform leading-indent shift is tolerated: the relative
+        # indentation of the block must be identical, or a search with different
+        # nesting would be spliced in and move code out of its block.
+        shifts = {}
+        for i in _stripped_window_matches(source_all, search):
+            shift = _window_shift(source_all, i, search)
+            if shift is not None:
+                shifts[i] = shift
+        matched_indices = list(shifts)
 
         if len(matched_indices) == 1:
             idx = matched_indices[0]
-            src_first_line = source_all[idx]
-            search_first_line = search_lines[0] if search_lines else ""
-
-            src_indent = len(src_first_line) - len(src_first_line.lstrip())
-            search_indent = len(search_first_line) - len(search_first_line.lstrip())
-            delta = src_indent - search_indent
-
-            adjusted_replace_lines = []
-            for r_line in _replacement_lines(replace):
-                if not r_line.strip():
-                    adjusted_replace_lines.append("")
-                elif delta > 0:
-                    adjusted_replace_lines.append(" " * delta + r_line)
-                elif delta < 0:
-                    trim = min(abs(delta), len(r_line) - len(r_line.lstrip()))
-                    adjusted_replace_lines.append(r_line[trim:])
-                else:
-                    adjusted_replace_lines.append(r_line)
+            adjusted_replace_lines = _reindent(_replacement_lines(replace), shifts[idx])
 
             patched_lines = source_all[:idx] + adjusted_replace_lines + source_all[idx + window_size :]
             matched_block = "\n".join(source_all[idx : idx + window_size])
@@ -497,6 +549,8 @@ class ResilientPatchEngine:
         per_line = [_line_tokens(line) for line in source_lines]
         search_joined = "\n".join(search_lines)
         found: List[Tuple[float, int, int]] = []
+        shifts: dict = {}
+        search_nonblank = [ln for ln in search_lines if ln.strip()]
         for delta in (0, 1, -1):
             cur_k = k + delta
             if cur_k <= 0 or cur_k > len(source_lines):
@@ -511,8 +565,24 @@ class ResilientPatchEngine:
                     continue
                 window = "\n".join(source_lines[i : i + cur_k])
                 ratio = difflib.SequenceMatcher(None, window, search_joined).ratio()
-                if ratio >= self.similarity_threshold:
-                    found.append((ratio, i, cur_k))
+                if ratio < self.similarity_threshold:
+                    continue
+                # Indentation is structure in Python: the region must sit at a
+                # uniform indentation shift from the search block. Windows whose
+                # line count differs (re-wrapped lines) can only be compared at
+                # their first line (continuation lines indent freely).
+                region = source_lines[i : i + cur_k]
+                region_nonblank = [ln for ln in region if ln.strip()]
+                if delta == 0 and len(region_nonblank) == len(search_nonblank):
+                    src_pair, want_pair = region_nonblank, search_nonblank
+                else:
+                    src_pair = [region[0]]
+                    want_pair = [search_nonblank[0]]
+                shift = _uniform_shift([_indent_of(x) for x in src_pair], [_indent_of(x) for x in want_pair])
+                if shift is None:
+                    continue
+                shifts[(i, cur_k)] = shift
+                found.append((ratio, i, cur_k))
 
         if not found:
             return None
@@ -533,7 +603,8 @@ class ResilientPatchEngine:
                     ),
                 )
 
-        patched_lines = source_lines[:best_idx] + _replacement_lines(replace) + source_lines[best_idx + best_len :]
+        new_lines = _reindent(_replacement_lines(replace), shifts[(best_idx, best_len)])
+        patched_lines = source_lines[:best_idx] + new_lines + source_lines[best_idx + best_len :]
         matched_block = "\n".join(source_lines[best_idx : best_idx + best_len])
         return PatchResult(
             success=True,

@@ -191,7 +191,7 @@
       target_file: formData.get('target_file'),
       test_command: formData.get('test_command'),
       test_file: formData.get('test_file') || null,
-      model: formData.get('model'),
+      model: (formData.get('model') || '').trim() || null,
       max_attempts: parseInt(formData.get('max_attempts'), 10),
       budget: parseFloat(formData.get('budget'))
     };

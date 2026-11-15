@@ -168,6 +168,12 @@ SCRUB_ENV_PATTERNS = (
 )
 
 
+# Variables that point test code at Argus's own state (run-signing key, stored
+# provider secrets). Dropping them is exposure reduction only: the default
+# per-user location is still readable by any process running as the same user.
+HIDDEN_ENV_NAMES = frozenset({"ARGUS_CONFIG_DIR", "ARGUS_KEYRING_SERVICE"})
+
+
 def detect_project_virtualenv(cwd: Path) -> Optional[Path]:
     """Detect local project virtual environment (e.g. .venv, venv, env) in cwd or parents.
     
@@ -195,6 +201,8 @@ def get_sanitized_environment(cwd: Path, venv_py: Optional[Path] = None) -> dict
         k_upper = k.upper()
         if k_upper in ("TOKENIZERS_PARALLELISM", "AUTHENTICATION_PROFILE_DIR"):
             safe_env[k] = v
+            continue
+        if k_upper in HIDDEN_ENV_NAMES:
             continue
         if any(pat in k_upper for pat in SCRUB_ENV_PATTERNS):
             continue

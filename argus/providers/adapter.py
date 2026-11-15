@@ -45,6 +45,9 @@ class CompletionResponse:
     transmitted_payload: Dict[str, Any] = field(default_factory=dict)
     # Provider-reported stop reason ("stop", "length", ...); None when the adapter cannot report it.
     finish_reason: Optional[str] = None
+    # True when prompt/completion token counts were estimated locally (e.g. len/4)
+    # because the provider did not report usage. Consumers must label such counts honestly.
+    usage_estimated: bool = False
 
 
 @dataclass

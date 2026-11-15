@@ -430,7 +430,7 @@ async def apply_verified_patch(
     dot_argus = workspace_root / ".argus"
     dot_argus.mkdir(parents=True, exist_ok=True)
     if state.outcome.unified_diff:
-        (dot_argus / "last_run.diff").write_text(state.outcome.unified_diff, encoding="utf-8")
+        (dot_argus / "last_run.diff").write_bytes(state.outcome.unified_diff.encode("utf-8"))
 
     return {
         "status": "applied",

@@ -827,55 +827,90 @@ class RecoveryController:
 
         ws_root = self._resolve_workspace_root(target_file, workspace_root)
 
-        # Step 0: Auto-localization if target_file was omitted
+        # Step 0: Auto-localization if target_file was omitted. Nothing runs in the
+        # user's tree: the configuration and workspace are validated first, then the
+        # preliminary test run and the localization happen inside an isolated copy.
         if target_file is None:
-            prelim_res = self.test_runner.run_test(test_command, cwd=ws_root)
-            if prelim_res.passed:
+            def _early(status: str, message: str, elapsed: bool = True) -> RecoveryOutcome:
                 return RecoveryOutcome(
-                    status="ALREADY_PASSING",
+                    status=status,
                     total_attempts=0,
                     total_cost_usd=0.0,
-                    total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-                    message="Target test suite already passes without any modifications.",
+                    total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2) if elapsed else 0.0,
+                    message=message,
                     run_id=f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
                     tests_executed=[test_command],
                 )
 
-            # Check if test framework failed before executing tests (e.g. file not found / syntax error in CLI)
-            is_runner_setup_error = (
-                prelim_res.exit_code in (4, 5)
-                or "file or directory not found" in (prelim_res.stderr or "").lower()
-                or "no tests ran" in (prelim_res.stdout or "").lower()
-            )
-            if is_runner_setup_error:
-                err_detail = (prelim_res.stderr or prelim_res.stdout).strip()
-                return RecoveryOutcome(
-                    status="TEST_SETUP_ERROR",
-                    total_attempts=0,
-                    total_cost_usd=0.0,
-                    total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-                    message=f"Test command failed to execute or find tests: {err_detail}",
-                    run_id=f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
-                    tests_executed=[test_command],
+            early_issues = self.config.validate(check_provider=self.adapter is None)
+            if early_issues:
+                return _early("CONFIG_ERROR", "; ".join(early_issues), elapsed=False)
+            if not ws_root.is_dir():
+                return _early("INVALID_TARGET", f"Workspace root is not a directory: {ws_root}")
+            pre_container = kwargs.get("container_evaluator", self.container_evaluator)
+            if pre_container is not None:
+                return _early(
+                    "LOCALIZATION_FAILED",
+                    "Auto-localization runs the test command on the host and is not available with "
+                    "container evaluation. Specify the target file explicitly (--file).",
+                )
+            if getattr(self.config, "require_container_isolation", False) or getattr(
+                self.config, "use_container_runner", False
+            ):
+                return _early(
+                    "CONTAINER_SETUP_ERROR",
+                    "SECURITY REFUSAL: Container runner or isolation is required by configuration, but no "
+                    "active container evaluator is available. Host execution of untrusted code is prohibited.",
                 )
 
-            localized = self.auto_localize_target_file(
-                repo_dir=ws_root,
-                failure_output=prelim_res.traceback_summary or (prelim_res.stdout + "\n" + prelim_res.stderr),
-                test_command=test_command,
-            )
-            if localized is None:
-                return RecoveryOutcome(
-                    status="LOCALIZATION_FAILED",
-                    total_attempts=0,
-                    total_cost_usd=0.0,
-                    total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-                    message="Could not auto-localize the target source file from test failure. Please specify target_file explicitly.",
-                    run_id=f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
-                    tests_executed=[test_command],
+            try:
+                with WorkspaceManager(
+                    repo_root=ws_root,
+                    snapshot_exclude=self.config.snapshot_exclude,
+                    snapshot_respect_gitignore=self.config.snapshot_respect_gitignore,
+                    snapshot_include_secrets=self.config.snapshot_include_secrets,
+                    snapshot_max_bytes=self.config.snapshot_max_bytes,
+                ) as loc_ws:
+                    scratch = (loc_ws.temp_dir or ws_root).resolve()
+                    scratch_cmd = test_command.replace(str(ws_root), str(scratch))
+                    prelim_res = self.test_runner.run_test(scratch_cmd, cwd=scratch)
+                    if prelim_res.passed:
+                        return _early("ALREADY_PASSING", "Target test suite already passes without any modifications.")
+
+                    # Check if test framework failed before executing tests (e.g. file not found / syntax error in CLI)
+                    is_runner_setup_error = (
+                        prelim_res.exit_code in (4, 5)
+                        or "file or directory not found" in (prelim_res.stderr or "").lower()
+                        or "no tests ran" in (prelim_res.stdout or "").lower()
+                    )
+                    if is_runner_setup_error:
+                        err_detail = (prelim_res.stderr or prelim_res.stdout).strip()
+                        return _early("TEST_SETUP_ERROR", f"Test command failed to execute or find tests: {err_detail}")
+
+                    localized_scratch = self.auto_localize_target_file(
+                        repo_dir=scratch,
+                        failure_output=prelim_res.traceback_summary or (prelim_res.stdout + "\n" + prelim_res.stderr),
+                        test_command=scratch_cmd,
+                    )
+                    localized_rel: Optional[Path] = None
+                    if localized_scratch is not None:
+                        try:
+                            localized_rel = Path(localized_scratch).resolve().relative_to(scratch)
+                        except ValueError:
+                            localized_rel = None
+            except SnapshotTooLargeError as exc:
+                return _early("CONFIG_ERROR", f"SnapshotTooLargeError: {exc}")
+            except (OSError, UnsupportedEncodingError) as exc:
+                return _early("INVALID_TARGET", f"{type(exc).__name__}: {exc}")
+
+            if localized_rel is None:
+                return _early(
+                    "LOCALIZATION_FAILED",
+                    "Could not auto-localize the target source file from test failure. "
+                    "Please specify target_file explicitly.",
                 )
-            target_path = localized
-            target_file = str(target_path.relative_to(ws_root))
+            target_path = (ws_root / localized_rel).resolve()
+            target_file = str(localized_rel)
         else:
             target_path = Path(target_file)
             if not target_path.is_absolute():
@@ -996,8 +1031,13 @@ class RecoveryController:
                     ),
                     encoding="utf-8",
                 )
-            except Exception:
-                pass
+            except Exception as persist_err:
+                # Not silent: without the stored run the candidate cannot be approved or applied.
+                outcome.message = (
+                    f"{outcome.message} WARNING: run artifacts could not be saved "
+                    f"({type(persist_err).__name__}: {scrub_secrets(str(persist_err))[:200]}); "
+                    "this run cannot be approved or applied."
+                ).strip()
 
             if event_emitter:
                 event_emitter.outcome(
@@ -1067,6 +1107,7 @@ class RecoveryController:
                         test_file=test_file,
                         snapshot_exclude=self.config.snapshot_exclude,
                         snapshot_respect_gitignore=self.config.snapshot_respect_gitignore,
+                        snapshot_include_secrets=self.config.snapshot_include_secrets,
                         snapshot_max_bytes=self.config.snapshot_max_bytes,
                     )
                 )
@@ -1486,6 +1527,12 @@ class RecoveryController:
                             # Post-dispatch client/gateway timeout, 504, 500, 502, 503, connection dropped:
                             # Provider received request or compute is UNCERTAIN! Quarantine!
                             self.budget_tracker.quarantine(reserved_cost)
+                            _timed_out = getattr(p_err, "status_code", None) in (408, 504) or "timed out" in str(p_err).lower()
+                            _failure_label = (
+                                "Inference timeout"
+                                if _timed_out
+                                else f"Provider error ({getattr(p_err, 'status_code', None)}), outcome unknown"
+                            )
                             attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
                             record = AttemptRecord(
                                 attempt=attempt_idx,
@@ -1497,7 +1544,7 @@ class RecoveryController:
                                 model_tier=tier_idx,
                                 patch_success=False,
                                 test_passed=False,
-                                error_summary=f"Inference timeout / uncertain spend (spend quarantined: ${reserved_cost:.6f}): {p_err}",
+                                error_summary=f"{_failure_label} / uncertain spend (spend quarantined: ${reserved_cost:.6f}): {p_err}",
                                 model_used=tier_model,
                                 prompt_text=curr_prompt,
                                 raw_response="",
@@ -1516,7 +1563,7 @@ class RecoveryController:
                                     cost_usd=reserved_cost,
                                     model=tier_model,
                                 )
-                            last_error = f"Inference timeout: {p_err}"
+                            last_error = f"{_failure_label}: {p_err}"
                             attempt_idx += 1
                             break
 
@@ -1916,7 +1963,10 @@ class RecoveryController:
                             total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                             unified_diff=diff,
                             history=history,
-                            message=f"Bug resolved and verified passing in attempt {attempt_idx}!",
+                            message=(
+                                f"The test command passed on the patched copy in attempt {attempt_idx}. "
+                                "Review the diff before applying: passing tests do not prove the change is correct."
+                            ),
                             patched_content=patched_code,
                             target_file=str(target_file),
                             tier_used=patch_res.tier_used if patch_res else None,

@@ -93,8 +93,9 @@ presentation and in the operations they expose:
 | Configure provider | yes | palette | no | via config |
 
 The absence of approval over MCP is an architectural boundary, not an unfinished
-handler. Approval records are HMAC-signed, so an agent that can write files in the
-workspace still cannot forge one.
+handler. Approval records are HMAC-signed, so an agent that can only write files in
+the workspace cannot forge one. Code that runs as your user, including the test
+command, can read the key; see the security model.
 
 ## Data ownership
 

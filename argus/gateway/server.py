@@ -952,7 +952,7 @@ async def _handle_host_request(
             completion_tokens=out_tokens,
             latency_ms=duration_ms,
             cost_usd=0.0,
-            usage_source="provider_reported",
+            usage_source="locally_estimated" if getattr(resp, "usage_estimated", False) else "provider_reported",
             cost_status="zero_subscription",
         )
     except OSError as ex:

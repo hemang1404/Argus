@@ -68,7 +68,7 @@ class ArgusTUIApp(App[None]):
                 if "max_attempts" in p_data:
                     self.config.max_attempts = int(p_data["max_attempts"])
                 if "model" in p_data:
-                    self.config.model = str(p_data["model"])
+                    self.config.pin_model(str(p_data["model"]))
         except (OSError, TypeError, ValueError):
             # Unreadable or corrupt policy file: keep defaults rather than crashing startup.
             pass
@@ -181,7 +181,7 @@ class ArgusTUIApp(App[None]):
                 "t3": t3,
             }
             if tier in tier_models:
-                self.config.model = tier_models[tier]
+                self.config.pin_model(tier_models[tier])
 
             try:
                 from argus.providers.storage import get_config_dir
@@ -248,10 +248,10 @@ class ArgusTUIApp(App[None]):
             cval = result.get("value")
 
             if ctype == "model":
-                self.config.model = str(cval)
                 p_val = result.get("provider")
                 if p_val:
                     self.config.provider = str(p_val)
+                self.config.pin_model(str(cval))
                 self.notify(f"Active model set to: {cval}", severity="information")
             elif ctype == "tier":
                 self.current_tier = str(cval)
@@ -270,7 +270,7 @@ class ArgusTUIApp(App[None]):
                     "t3": t3,
                 }
                 if str(cval) in tier_models:
-                    self.config.model = tier_models[str(cval)]
+                    self.config.pin_model(tier_models[str(cval)])
                 self.notify(f"Routing tier configured: {cval}", severity="information")
             elif ctype == "budget":
                 self.config.budget_limit_usd = float(cval)

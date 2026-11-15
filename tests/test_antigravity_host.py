@@ -573,6 +573,8 @@ def test_stream_chat_completion_real_time_incremental_deltas(tmp_path):
             self.returncode = 0
         def wait(self, timeout=None):
             return 0
+        def poll(self):
+            return 0
         def kill(self):
             pass
 

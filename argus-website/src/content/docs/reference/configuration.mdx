@@ -27,7 +27,7 @@ max_attempts: 3
 budget_limit_usd: 0.05
 test_timeout_seconds: 45
 model: qwen2.5-coder:7b
-reasoning_effort: medium
+reasoning_effort: low
 ```
 
 ```toml title="pyproject.toml"
@@ -46,7 +46,7 @@ model = "qwen2.5-coder:7b"
 | `budget_limit_usd` | float | Spend ceiling in USD |
 | `test_timeout_seconds` | integer | Reproduction timeout |
 | `escalation_enabled` | boolean | `false` turns model escalation off (it cannot turn it on) |
-| `reasoning_effort` | string | Default reasoning effort, if the caller did not set one |
+| `reasoning_effort` | string | Only `low` is honoured (it lowers token use), and only if the caller did not set one; any other value is ignored with a note |
 
 For `max_attempts`, `budget_limit_usd` and `test_timeout_seconds` a file can only
 **lower** the caller's value; a higher value is ignored. The keys `model`,

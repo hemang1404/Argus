@@ -115,6 +115,7 @@ sequenceDiagram
     Dev->>UI: argus run --test "pytest tests/test_calc.py"
     UI->>RC: run(test_command, target_file?)
     RC->>RC: validate config, prices, policy
+    Note over RC,WM: without --file, the preliminary test run and file localization also run in a temporary copy, after validation
     RC->>WM: setup() -> temporary copy
     RC->>SR: baseline test in the copy
     loop up to max_attempts
@@ -138,6 +139,18 @@ sequenceDiagram
 
 ---
 
-## 4. Not in the architecture
+## 4. Packaging scope: accepted decision (ARCH-09)
+
+The wheel ships the recovery runtime together with the optional gateway (`argus/gateway/`), the experimental desktop API (`argus/api/`) and the static web app (`argus/ui/`); together with the TUI they are roughly 40% of the package bytes. **Decision: the distribution is not split for now.** Rationale:
+
+- The runtime never depends on them. `import argus`, `argus.cli` and `argus.runtime.controller` do not import `argus.gateway`, `argus.api`, `argus.ui` or `argus.tui`; this is checked by `tests/test_closeout_runtime.py::test_core_import_does_not_load_optional_surfaces`. Their third-party dependencies (FastAPI, uvicorn, Textual) live in extras, so a default install does not pull them.
+- The code is inert unless a user starts it (`argus gateway`, `argus tui`, or serving `create_app()` themselves); `argus gateway` without the extra exits with an install hint.
+- A split needs a second distribution, its own versioning, release and CI, and migration of `argus gateway`; that cost is not justified before the gateway has users.
+
+Residual risk accepted: dead-weight bytes and a larger audited surface in the wheel. Follow-up: when the gateway is promoted from experimental (or a second consumer appears), move `argus/gateway`, `argus/api` and `argus/ui` into a separate `argus-gateway` distribution that depends on `argus-recovery`; until then these surfaces are labelled experimental and excluded from supported-surface claims.
+
+---
+
+## 5. Not in the architecture
 
 Earlier documents described an adaptive or learned router, execution-state feature vectors and embedding retrieval. None of that is in the shipped runtime. The evidence did not justify a learned router; see [RESEARCH_STATUS.md](RESEARCH_STATUS.md).
