@@ -1,4 +1,4 @@
-"""Streaming interceptor: Passes prose through immediately, buffers code blocks, heals diffs via 5-tier patch engine."""
+"""Streaming interceptor: Passes prose through immediately, buffers code blocks, heals diffs via the tiered patch engine."""
 
 from __future__ import annotations
 

@@ -93,6 +93,7 @@ flowchart TD
 - **TUI** (`argus/tui/`, `tui` extra): same controller and candidate store.
 - **MCP server** (`argus/mcp/server.py`): four tools, no approval tool; workspace confined to the server root; budget capped.
 - **Gateway** (`argus/gateway/`, `gateway` extra): loopback proxy; outside the recovery loop.
+- **Desktop API and web app** (`argus/api/`, `argus/ui/`): **experimental and not started by any CLI command** (decision recorded in the audit: nothing in the package or packaging starts them; only tests exercise them). Reachable only by serving `argus.api.create_app()` yourself; not covered by supported-surface claims.
 - **Container evaluator** (`argus/runtime/container.py`): library-level only; `--network=none`, resource limits; opt-in via `use_container_runner`.
 
 ---

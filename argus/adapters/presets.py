@@ -160,7 +160,7 @@ ANTIGRAVITY_CONF = """{
   },
   "healing": {
     "enabled": true,
-    "strategy": "5-tier-resilient"
+    "strategy": "tiered-matching"
   }
 }
 """

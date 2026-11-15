@@ -52,8 +52,9 @@ tui = [
     "textual>=8.2.0",
     "Pillow>=10.0.0",
 ]
-# Deferred milestone: the local inference gateway and the HTTP/SSE API (argus serve).
-# fastapi brings in pydantic, which the API and gateway models use.
+# The experimental local inference gateway (`argus gateway`, alias `argus serve`). The
+# desktop HTTP/SSE API (argus.api) and web app (argus/ui) also need these packages, but no
+# CLI command starts them. fastapi brings in pydantic, which the gateway models use.
 gateway = [
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",

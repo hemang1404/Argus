@@ -109,7 +109,9 @@ Presets: `antigravity` (host CLI, no key), `ollama`, `lmstudio`, `openai`, `deep
 argus doctor
 ```
 
-`doctor` reports Python, Git, pytest, the Antigravity CLI, a local Ollama endpoint and the active provider. Note that it makes a live request to the active provider, which can be billable.
+`doctor` reports Python, Git, pytest, the Antigravity CLI, a local Ollama endpoint and the active provider. By default it makes one small live request to the active provider, which can be billable; use `argus doctor --offline` to skip that connectivity check.
+
+If the Antigravity host CLI was installed through npm and only a `.cmd`/`.bat` shim exists, Argus refuses to run it (Windows would re-parse the prompt in `cmd.exe`). Point `ARGUS_AGY_BIN` at the real `agy.exe`.
 
 ### 4. Run a recovery
 
@@ -227,6 +229,8 @@ Tools: `argus_status`, `argus_recover`, `argus_get_candidate`, `argus_apply_cand
 ## Local Gateway Proxy (experimental)
 
 `argus gateway` (alias `argus serve`) starts a loopback OpenAI- and Anthropic-compatible proxy with budget reservation and streaming patch healing. It needs the `gateway` extra and `ARGUS_GATEWAY_API_KEY`; it refuses to start without a key, binds to `127.0.0.1` by default, validates `Host`/`Origin`, and needs `--allow-remote` for non-loopback binding. Unknown models are priced fail-closed. It is outside the recovery loop and is not required for anything else.
+
+**Experimental, not started by the CLI.** The package also contains a local desktop HTTP/SSE API (`argus.api.create_app`) and a static web app (`argus/ui`). No `argus` command starts either of them, and they are not covered by the supported-surface claims above (the supported surfaces are the CLI, TUI, MCP server and Python API). They need the `gateway` extra (`fastapi`, `uvicorn`) and you would have to serve `create_app()` yourself. Treat them as unreleased.
 
 ---
 

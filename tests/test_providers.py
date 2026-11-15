@@ -7,7 +7,7 @@ from argus.config import ArgusConfig
 from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
 from argus.providers.storage import ProviderStorage, scrub_secrets, maybe_load_dotenv
 from argus.providers.adapter import OpenAICompatibleAdapter, ProviderError
-from argus.providers.mock_server import MockOpenAIServer
+from tests.mock_server import MockOpenAIServer
 
 
 @pytest.fixture(autouse=True)

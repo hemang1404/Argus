@@ -9,7 +9,7 @@ from click.testing import CliRunner
 import pytest
 
 from argus.cli import main
-from argus.providers.mock_server import MockOpenAIServer
+from tests.mock_server import MockOpenAIServer
 from argus.runtime.candidate import CandidateArtifactStore
 
 

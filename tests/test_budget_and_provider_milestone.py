@@ -131,6 +131,50 @@ def test_gpt_oss_tokenizer_o200k_harmony_selected():
     assert tokenizer.name == "o200k_harmony"
 
 
+def test_gpt_oss_tokenizer_selection_order_without_download(monkeypatch):
+    """Selection prefers o200k_harmony and falls back in order, using a fake tiktoken (no network)."""
+    import sys
+    import types
+
+    from argus.runtime import budget
+
+    requested: list[str] = []
+
+    class _Enc:
+        def __init__(self, name):
+            self.name = name
+
+    def _get(name):
+        requested.append(name)
+        if name == "o200k_harmony" and not available_harmony:
+            raise ValueError("unavailable")
+        return _Enc(name)
+
+    fake = types.SimpleNamespace(get_encoding=_get)
+    monkeypatch.setitem(sys.modules, "tiktoken", fake)
+    monkeypatch.delenv("ARGUS_OFFLINE", raising=False)
+    monkeypatch.delenv("ARGUS_TOKENIZER", raising=False)
+
+    available_harmony = True
+    monkeypatch.setattr(budget, "_TOKENIZER_CACHE", {})
+    assert budget.get_gpt_oss_tokenizer("openai/gpt-oss-20b").name == "o200k_harmony"
+
+    available_harmony = False
+    requested.clear()
+    monkeypatch.setattr(budget, "_TOKENIZER_CACHE", {})
+    assert budget.get_gpt_oss_tokenizer("openai/gpt-oss-20b").name == "o200k_base"
+    assert requested[:2] == ["o200k_harmony", "o200k_base"]
+
+
+def test_gpt_oss_tokenizer_heuristic_when_offline(monkeypatch):
+    """ARGUS_OFFLINE=1 skips tiktoken entirely; counting falls back to the byte estimate."""
+    from argus.runtime.budget import count_prompt_tokens, get_gpt_oss_tokenizer
+
+    monkeypatch.setenv("ARGUS_OFFLINE", "1")
+    assert get_gpt_oss_tokenizer("openai/gpt-oss-20b") is None
+    assert count_prompt_tokens("x = 1", "openai/gpt-oss-20b") > 0
+
+
 def test_conservative_prompt_token_counting():
     """GPT-OSS o200k_harmony token estimation accounts for system prompt and message framing."""
     code_sample = "def add(a: int, b: int) -> int:\n    return a + b\n"

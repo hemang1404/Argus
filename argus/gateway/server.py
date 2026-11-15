@@ -2,7 +2,7 @@
 
 Implements an OpenAI-compatible HTTP proxy on localhost with:
 1. Model tier resolution (argus/auto, argus/cheap, argus/strong, argus/frontier)
-2. In-memory streaming patch healing via the 5-Tier Resilient Patch Engine
+2. In-memory streaming patch healing via the tiered patch engine (exact, whitespace-tolerant, token-equal; fuzzy opt-in)
 3. Task-level and session-level USD budget caps
 """
 
@@ -712,17 +712,7 @@ async def chat_completions(request: Request) -> Response:
             },
         )
 
-    # 3b. Fail closed on unpriced models: cost must be boundable before any paid upstream call.
-    try:
-        price_for_model(target.upstream_model, target.provider_name, target.base_url)
-    except UnpricedModelError as ex:
-        _budget_guard.release(res_id)
-        return JSONResponse(
-            status_code=400,
-            content={"error": {"message": str(ex), "type": "unpriced_model", "code": "unpriced_model"}},
-        )
-
-    # 4. Safe Upstream Credential Resolution & Provider Isolation
+    # 3b. Safe Upstream Credential Resolution & Provider Isolation
     expected_token = _config.get_gateway_key()
     client_supplied_upstream_key, cred_err = resolve_client_upstream_credential(
         request, target.provider_name, expected_token, has_configured_key=bool(target.api_key)
@@ -732,6 +722,16 @@ async def chat_completions(request: Request) -> Response:
         return JSONResponse(
             status_code=400,
             content={"error": cred_err},
+        )
+
+    # 3c. Fail closed on unpriced models: cost must be boundable before any paid upstream call.
+    try:
+        price_for_model(target.upstream_model, target.provider_name, target.base_url)
+    except UnpricedModelError as ex:
+        _budget_guard.release(res_id)
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": str(ex), "type": "unpriced_model", "code": "unpriced_model"}},
         )
 
     configured_provider_key = target.api_key

@@ -32,6 +32,9 @@ def offline_tokenizer(request, monkeypatch: pytest.MonkeyPatch):
     ``tokenizer_download`` and are excluded from the offline CI selector.
     """
     if request.node.get_closest_marker("tokenizer_download"):
+        # These tests exercise the real vocabulary: do not inherit ARGUS_OFFLINE from the shell.
+        monkeypatch.delenv("ARGUS_OFFLINE", raising=False)
+        monkeypatch.delenv("ARGUS_TOKENIZER", raising=False)
         yield
         return
     monkeypatch.setenv("ARGUS_OFFLINE", "1")

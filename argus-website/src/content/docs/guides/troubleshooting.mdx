@@ -97,7 +97,9 @@ The Ollama preset uses `http://localhost:11434/v1`. LM Studio uses
 ### Antigravity is not detected
 
 `argus doctor` reports the host CLI path. Set `ARGUS_AGY_BIN` to an explicit
-binary if it is installed outside `PATH`. The `antigravity` preset uses the host
+binary if it is installed outside `PATH`. If the CLI was installed through npm and only an
+`agy.cmd`/`agy.bat` shim exists, Argus refuses to run it (the prompt would be re-parsed by
+`cmd.exe`); set `ARGUS_AGY_BIN` to the real `agy.exe`. The `antigravity` preset uses the host
 CLI rather than an HTTP key.
 
 ## Recovery

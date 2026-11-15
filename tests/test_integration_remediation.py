@@ -130,6 +130,21 @@ def test_truncated_block_is_reported_to_the_model(tmp_path):
     assert "Malformed SEARCH/REPLACE response" in outcome.history[0].error_summary
 
 
+def test_attempt_record_separates_patch_tier_from_model_tier(tmp_path):
+    target = _write_project(tmp_path)
+    truncated = "<<<<<<< SEARCH\n    return a + b\n=======\n    return a *"
+    fixed = _block("    return a + b", "    return a * b")
+    outcome = RecoveryController(config=_cfg(), adapter=ScriptedAdapter([truncated, fixed])).run(
+        target_file=target, test_command="pytest -q test_calc.py", workspace_root=tmp_path
+    )
+    first, second = outcome.history
+    # Nothing was matched on the first attempt: no patch tier, but the model tier is still recorded.
+    assert first.tier_used is None and first.model_tier is not None
+    # Exact-match edit is patch tier 1; the model ladder index is independent of it.
+    assert second.tier_used == 1 and second.model_tier is not None
+    assert outcome.tier_used == 1 and outcome.model_tier == second.model_tier
+
+
 def test_multi_block_patch_gates_only_the_final_state(tmp_path):
     source = "def compute_total(a, b):\n    return a + b\n"
     target = _write_project(tmp_path, source)

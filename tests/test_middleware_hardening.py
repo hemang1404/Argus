@@ -609,7 +609,9 @@ def test_opaque_credential_missing_binding_rejected_transport_never_called(tmp_p
         mock_post.assert_not_called()
 
 
-def test_opaque_credential_custom_openai_provider_routing(tmp_path):
+def test_opaque_credential_custom_openai_provider_routing(tmp_path, monkeypatch):
+    from argus.config import MODEL_REGISTRY, ModelCost
+    monkeypatch.setitem(MODEL_REGISTRY, "custom-model", ModelCost(input_cost_per_m=1.0, output_cost_per_m=1.0))
     """Client supplies opaque key with explicit X-Upstream-Provider; forwarded when matched, rejected when mismatched."""
     p_custom = ProviderConfig(name="custom-openai", kind="openai_compatible", base_url="https://api.custom.internal/v1", api_key="")
     cfg = GatewayConfig(providers=[p_custom], tiers={"cheap": TierDefinition(provider="custom-openai", model="custom-model")})
@@ -673,6 +675,23 @@ def test_conflicting_provider_header_and_signature_transport_never_called(tmp_pa
         )
         assert resp.status_code == 400
         assert resp.json()["error"]["code"] == "conflicting_provider_binding"
+        mock_post.assert_not_called()
+
+
+def test_unpriced_model_still_fails_closed_for_paid_provider(tmp_path):
+    """Pricing stays fail-closed: an unknown model on a paid host is rejected before transport."""
+    p = ProviderConfig(name="custom-openai", kind="openai_compatible", base_url="https://api.custom.internal/v1", api_key="")
+    cfg = GatewayConfig(providers=[p], tiers={"cheap": TierDefinition(provider="custom-openai", model="no-such-priced-model")})
+    init_gateway(cfg, workspace=tmp_path)
+    client = TestClient(app)
+    with patch("httpx.AsyncClient.post") as mock_post:
+        resp = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer opaque-key", "X-Upstream-Provider": "custom-openai"},
+            json={"model": "argus/cheap", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == "unpriced_model"
         mock_post.assert_not_called()
 
 

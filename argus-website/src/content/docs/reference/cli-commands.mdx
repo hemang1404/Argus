@@ -185,7 +185,8 @@ it writes configuration for every detected tool).
 unknown client or an existing file.
 Preset clients include Aider, Claude, OpenCode, Continue, and Cursor.
 
-`doctor` makes a live request to the active provider, which can be billable.
+By default `doctor` makes one small live request to the active provider, which can be
+billable. `argus doctor --offline` skips that connectivity check (no request is sent).
 
 ## Maintenance
 

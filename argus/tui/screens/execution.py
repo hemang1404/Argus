@@ -259,7 +259,9 @@ class ExecutionTimelineScreen(Screen[None]):
         self.cumulative_cost += record.cost_usd
         self.current_phase = "[3/3] Executing verification test suite..."
         status_text = "[bold green]PASS[/bold green]" if record.test_passed else "[bold red]FAIL[/bold red]"
-        tier_info = f"Tier {record.tier_used}" if record.tier_used else "No Patch"
+        tier_info = f"Patch tier {record.tier_used}" if record.tier_used else "No Patch"
+        if record.model_tier:
+            tier_info += f" | [dim]Model tier:[/dim] {record.model_tier}"
         msg = (
             f"  [dim]Result:[/dim] {status_text} | "
             f"[dim]Reconciliation:[/dim] {tier_info} | "

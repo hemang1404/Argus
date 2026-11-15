@@ -56,6 +56,8 @@ class AttemptRecord:
     prompt_tokens: int
     completion_tokens: int
     cost_usd: float
+    # Patch (SEARCH/REPLACE matcher) tier that produced the edit; None when no patch was matched.
+    # This is NOT the model tier: see ``model_tier``.
     tier_used: Optional[int]
     patch_success: bool
     test_passed: bool
@@ -76,6 +78,8 @@ class AttemptRecord:
     refusal_reason: Optional[str] = None
     # Provider-reported stop reason for this attempt's completion (None if the adapter cannot report it).
     finish_reason: Optional[str] = None
+    # Index of the model-ladder tier (1 = cheap, 2 = mid, 3 = strong) this attempt dispatched to.
+    model_tier: Optional[int] = None
 
 
 @dataclass
@@ -98,7 +102,8 @@ class RecoveryOutcome:
     candidate_hash: str = ""
     verified: bool = False
     approved: bool = False
-    tier_used: Optional[int] = None
+    tier_used: Optional[int] = None  # patch (matcher) tier of the accepted edit, not the model tier
+    model_tier: Optional[int] = None  # model-ladder tier of the final attempt
     effort_used: Optional[str] = None
     routing_reasons: List[str] = field(default_factory=list)
     spend_uncertain: bool = False
@@ -971,6 +976,7 @@ class RecoveryController:
                             {
                                 "attempt": h.attempt,
                                 "tier_used": h.tier_used,
+                                "model_tier": h.model_tier,
                                 "model_used": h.model_used,
                                 "prompt_tokens": h.prompt_tokens,
                                 "completion_tokens": h.completion_tokens,
@@ -1302,7 +1308,7 @@ class RecoveryController:
                             total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                             history=history,
                             message=f"Pre-dispatch budget refusal: {reason}",
-                            tier_used=tier_idx,
+                            model_tier=tier_idx,
                         )
                     )
 
@@ -1330,7 +1336,7 @@ class RecoveryController:
                                 total_duration_ms=round(elapsed_task_sec * 1000, 2),
                                 history=history,
                                 message=f"Task deadline of {self.config.task_deadline_seconds}s exceeded during dispatch.",
-                                tier_used=tier_idx,
+                                model_tier=tier_idx,
                                 spend_uncertain=self.budget_tracker.spend_uncertain,
                                 quarantined_usd=round(self.budget_tracker.quarantined_spend, 6),
                             )
@@ -1373,7 +1379,7 @@ class RecoveryController:
                                 total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                 history=history,
                                 message=f"{cfg_err.message} No request was made.",
-                                tier_used=tier_idx,
+                                model_tier=tier_idx,
                             )
                         )
 
@@ -1392,7 +1398,7 @@ class RecoveryController:
                                         total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                         history=history,
                                         message=f"Provider rate limited (429) and retries are disabled: {p_err}",
-                                        tier_used=tier_idx,
+                                        model_tier=tier_idx,
                                     )
                                 )
 
@@ -1411,7 +1417,7 @@ class RecoveryController:
                                         total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                         history=history,
                                         message=f"Rate limit backoff ceiling ({self.config.rate_limit_backoff_max_seconds}s) exceeded.",
-                                        tier_used=tier_idx,
+                                        model_tier=tier_idx,
                                     )
                                 )
 
@@ -1433,7 +1439,7 @@ class RecoveryController:
                                         total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                         history=history,
                                         message=f"Pre-dispatch budget refusal upon 429 retry: {re_reason}",
-                                        tier_used=tier_idx,
+                                        model_tier=tier_idx,
                                     )
                                 )
                             reserved_cost = re_cost
@@ -1449,7 +1455,8 @@ class RecoveryController:
                                 prompt_tokens=0,
                                 completion_tokens=0,
                                 cost_usd=0.0,
-                                tier_used=tier_idx,
+                                tier_used=None,
+                                model_tier=tier_idx,
                                 patch_success=False,
                                 test_passed=False,
                                 error_summary=f"Provider error ({p_err.status_code}): {str(p_err)[:120]}",
@@ -1486,7 +1493,8 @@ class RecoveryController:
                                 prompt_tokens=0,
                                 completion_tokens=0,
                                 cost_usd=reserved_cost,
-                                tier_used=tier_idx,
+                                tier_used=None,
+                                model_tier=tier_idx,
                                 patch_success=False,
                                 test_passed=False,
                                 error_summary=f"Inference timeout / uncertain spend (spend quarantined: ${reserved_cost:.6f}): {p_err}",
@@ -1525,7 +1533,8 @@ class RecoveryController:
                             prompt_tokens=0,
                             completion_tokens=0,
                             cost_usd=quarantined_usd,
-                            tier_used=tier_idx,
+                            tier_used=None,
+                            model_tier=tier_idx,
                             patch_success=False,
                             test_passed=False,
                             error_summary=f"Inference error: {str(ex)[:120]}",
@@ -1591,7 +1600,8 @@ class RecoveryController:
                         prompt_tokens=p_tokens,
                         completion_tokens=c_tokens,
                         cost_usd=call_cost,
-                        tier_used=tier_idx,
+                        tier_used=None,
+                        model_tier=tier_idx,
                         patch_success=False,
                         test_passed=False,
                         error_summary=(
@@ -1659,6 +1669,7 @@ class RecoveryController:
                         completion_tokens=c_tokens,
                         cost_usd=call_cost,
                         tier_used=None,
+                        model_tier=tier_idx,
                         patch_success=False,
                         test_passed=False,
                         error_summary=refusal_msg,
@@ -1714,6 +1725,7 @@ class RecoveryController:
                         completion_tokens=c_tokens,
                         cost_usd=call_cost,
                         tier_used=patch_res.tier_used if patch_res else None,
+                        model_tier=tier_idx,
                         patch_success=False,
                         test_passed=False,
                         error_summary=refusal_msg,
@@ -1778,6 +1790,7 @@ class RecoveryController:
                             completion_tokens=c_tokens,
                             cost_usd=call_cost,
                             tier_used=patch_res.tier_used if patch_res else None,
+                            model_tier=tier_idx,
                             patch_success=False,
                             test_passed=False,
                             error_summary=f"AST Syntax Error: {ast_check.formatted_error()}",
@@ -1836,7 +1849,7 @@ class RecoveryController:
                                 total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                 history=history,
                                 message=c_res.error or c_res.traceback_summary,
-                                tier_used=tier_idx,
+                                model_tier=tier_idx,
                             )
                         )
                     test_summary = "" if test_passed else (c_res.traceback_summary or c_res.error or c_res.stderr)
@@ -1850,7 +1863,7 @@ class RecoveryController:
                                 total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                 history=history,
                                 message="SECURITY REFUSAL: Container runner or isolation is required by configuration, but no active container evaluator is available. Host execution of untrusted candidate code is prohibited.",
-                                tier_used=tier_idx,
+                                model_tier=tier_idx,
                             )
                         )
                     test_res = self.test_runner.run_test(exec_test_cmd, cwd=ws.temp_dir)
@@ -1865,6 +1878,7 @@ class RecoveryController:
                     completion_tokens=c_tokens,
                     cost_usd=call_cost,
                     tier_used=patch_res.tier_used if patch_res else None,
+                    model_tier=tier_idx,
                     patch_success=True,
                     test_passed=test_passed,
                     error_summary=test_summary,
@@ -1906,6 +1920,7 @@ class RecoveryController:
                             patched_content=patched_code,
                             target_file=str(target_file),
                             tier_used=patch_res.tier_used if patch_res else None,
+                            model_tier=tier_idx,
                         )
                     )
                 else:

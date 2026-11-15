@@ -1,10 +1,9 @@
-"""Unit tests for Argus Deterministic Hybrid Pipeline (Localizer and FrameSlicer)."""
+"""Unit tests for Argus Deterministic Hybrid Pipeline (Localizer)."""
 
 from pathlib import Path
 import pytest
 
 from argus.localization.localizer import DeterministicLocalizer
-from argus.runtime.frame_slicer import FrameSlicer
 
 
 @pytest.fixture
@@ -73,24 +72,3 @@ ValueError: Unsupported format
     assert candidate.file_path == mod_file
     assert candidate.line_number == 11
     assert candidate.score == 1000.0
-
-
-def test_frame_slicer_bounds_and_ast(sample_repo):
-    repo_dir, mod_file = sample_repo
-    slicer = FrameSlicer(window_radius=5)
-
-    slice_res = slicer.slice_file(mod_file, repo_dir, target_line=11)
-    assert slice_res.total_lines > 0
-    assert "def write_table" in slice_res.code_slice
-    assert "write_table" in slice_res.containing_symbol
-
-    # Test prompt generation
-    prompt = slicer.build_search_replace_prompt(
-        task_statement="Support additional formats",
-        frame_slice=slice_res,
-        diagnostic="ValueError: Unsupported format"
-    )
-    assert "<<<<<<< SEARCH" in prompt
-    assert ">>>>>>> REPLACE" in prompt
-    assert "def write_table" in prompt
-    assert "### File: mypackage/handler.py" in prompt

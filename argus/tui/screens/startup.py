@@ -81,7 +81,7 @@ class StartupScreen(Screen[None]):
                         )
                     with Horizontal(id="command-row-bottom"):
                         yield Static(
-                            f"[dim #64748b]Recover[/dim #64748b]  [dim #64748b]·[/dim #64748b]  [bold #818cf8]argus/auto[/bold #818cf8]  [dim #64748b]·[/dim #64748b]  [#f8fafc]${self.config.budget_limit_usd:.2f} cap[/]",
+                            f"[dim #64748b]Recover[/dim #64748b]  [dim #64748b]·[/dim #64748b]  [bold #818cf8]auto ladder[/bold #818cf8]  [dim #64748b]·[/dim #64748b]  [#f8fafc]${self.config.budget_limit_usd:.2f} cap[/]",
                             id="sub-status",
                         )
                         yield Static(
@@ -107,6 +107,8 @@ class StartupScreen(Screen[None]):
         """Update the sub-status line in command box."""
         if self.is_mounted and self.query("#sub-status"):
             tier_name = getattr(self.app, "current_tier", "argus/auto")
+            if tier_name in ("argus/auto", "auto", ""):
+                tier_name = "auto ladder"
             self.query_one("#sub-status", Static).update(
                 f"[dim #64748b]Recover[/dim #64748b]  [dim #64748b]·[/dim #64748b]  [bold #818cf8]{tier_name}[/bold #818cf8]  [dim #64748b]·[/dim #64748b]  [#f8fafc]${self.config.budget_limit_usd:.2f} cap[/]"
             )

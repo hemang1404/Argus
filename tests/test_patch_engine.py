@@ -1,4 +1,4 @@
-"""Unit tests for the Argus 5-Tier Resilient Patch Engine and AST validator."""
+"""Unit tests for the Argus tiered patch engine and AST validator."""
 
 import pytest
 

@@ -126,13 +126,15 @@ class RecoveryWorkflowScreen(Screen[None]):
     def _format_context_text(self) -> Text:
         """Render the runtime summary as a single line that never wraps in the card."""
         tier_name = getattr(self.app, "current_tier", "argus/auto")
+        if tier_name in ("argus/auto", "auto", ""):
+            tier_name = "auto ladder"
         display_model = self.config.model
         if not display_model:
             try:
                 from argus.providers.discovery import resolve_dynamic_tiers
                 display_model = resolve_dynamic_tiers()["t1"]["model"]
             except Exception:
-                display_model = "gemini-2.5-flash"
+                display_model = ""
 
         def build(model: str) -> Text:
             line = Text()

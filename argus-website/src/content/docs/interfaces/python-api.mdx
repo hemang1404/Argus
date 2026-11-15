@@ -75,7 +75,8 @@ print(outcome.unified_diff)
 | `effort_used` | `str \| None` | Adaptive routing decision |
 | `routing_reasons` | `list[str]` | Why that effort and which model ladder (`model_ladder=...`) were chosen |
 | `config_notes` | `list[str]` | Project-policy notes: limits tightened, keys ignored, parse errors |
-| `tier_used` | `int \| None` | Patch tier that applied the accepted edit |
+| `tier_used` | `int \| None` | Patch (SEARCH/REPLACE matcher) tier that applied the accepted edit; never the model tier |
+| `model_tier` | `int \| None` | Model-ladder tier (1 = cheap ... 3 = strong) of the final attempt; each `AttemptRecord` has both fields |
 
 A `SUCCESS` outcome is the only state that produces an applyable candidate. Do
 not infer applicability from `verified` alone; approval is still required.
