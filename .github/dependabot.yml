@@ -10,3 +10,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # The MCP server is written against the 1.x SDK; 2.x needs httpx2 and breaks the offline suite.
+      # Remove this rule in a change that tests the server against 2.x.
+      - dependency-name: "mcp"
+        versions: [">=2"]
