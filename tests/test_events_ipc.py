@@ -13,7 +13,6 @@ import io
 import json
 from pathlib import Path
 from unittest.mock import patch
-import pytest
 from click.testing import CliRunner
 
 from argus.cli import main
@@ -177,7 +176,8 @@ def test_cli_run_json_events_mode(tmp_path: Path):
         )
 
     assert res.exit_code == 0
-    lines = [line.strip() for line in res.output.splitlines() if line.strip()]
+    # stdout only: the host-execution notice goes to stderr so stdout stays pure JSON Lines.
+    lines = [line.strip() for line in res.stdout.splitlines() if line.strip()]
     assert len(lines) >= 4
 
     # Every single line must be valid JSON with an event envelope

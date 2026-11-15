@@ -18,27 +18,32 @@ Artifacts are written inside the project that was recovered:
     └── runs/
         └── run_20261106_142530_9f3a1c2d/
             ├── metadata.json
+            ├── metadata.sig
             ├── candidate.patched
             ├── patch.diff
             ├── prompt.txt
             ├── raw_response.txt
+            ├── attempts.json
             └── context_window.json
 ```
 
-`.argus/` is ignored by the repository's `.gitignore`. Keep it out of version
-control: forensic files can contain source context, even after secret scrubbing.
+Argus writes `.argus/.gitignore` (containing `*`) so the directory stays out of
+`git status`. Keep it out of version control regardless: the files can contain
+source context, even after secret scrubbing, and they persist for failed runs too.
 
 ## Files
 
 | File | Contents |
 | --- | --- |
 | `metadata.json` | Run identity, target, test command, hashes, status, verification, approval and application state |
+| `metadata.sig` | HMAC-SHA256 signature of `metadata.json` |
 | `candidate.patched` | The complete patched source file as verified |
 | `patch.diff` | The unified diff shown during review |
 | `prompt.txt` | The scrubbed prompt sent to the provider |
 | `raw_response.txt` | The scrubbed raw model response |
 | `unapplied_patch.txt` | A parsed patch that produced no unified diff |
 | `context_window.json` | Scrubbed context supplied to the model |
+| `attempts.json` | Per-attempt record: patch tier, model, tokens, cost, finish reason, patch and test flags |
 
 Not every run produces every file. A failed attempt may leave diagnostic files
 without a candidate. `last_run_id` points at the most recent run; `last_run.diff`
@@ -51,9 +56,23 @@ The metadata records two SHA-256 digests:
 - **`baseline_hash`** — the digest of the target file before modification.
 - **`candidate_hash`** — the digest of the verified patched content.
 
-Both are computed over UTF-8 encoded text. Application compares the live file
-against `baseline_hash` and the stored candidate against `candidate_hash` before
-writing. A mismatch is a refusal, not a warning.
+Both are computed over the file's bytes as Argus read and will write them, so line
+endings and byte-order marks are part of the hash. Application compares the live
+file against `baseline_hash` and the stored candidate against `candidate_hash`
+before writing. A mismatch is a refusal, not a warning.
+
+## Signature
+
+`metadata.json` is signed with HMAC-SHA256 (`metadata.sig`). The key
+(`artifact_signing.key`) lives in your Argus configuration directory, never in the
+workspace, and is created with mode 0600 on POSIX. Listing, loading, approving and
+applying all verify the signature. Metadata that is unsigned or was edited gives
+`CANDIDATE_SIGNATURE_INVALID`, and a run ID that does not match the strict ID
+pattern gives `INVALID_RUN_ID`. This stops an agent or script that can only edit
+files in the workspace from flipping `approved` or swapping a patch. It does not
+stop code running as you (including the tests Argus runs) from reading the key.
+Runs created by versions before signing existed cannot be applied; re-run
+recovery.
 
 The metadata also carries the run ID, target path, test command, status,
 verification flag, tier used, attempt count, cost, duration, creation time, and
@@ -80,15 +99,18 @@ These are separate from verification:
 | `applied` | The candidate has been written to the working tree |
 | `applied_at` | When application succeeded |
 
+"Verified" means the one test command you supplied passed in the workspace copy.
 An unverified candidate cannot be applied, even if approved. An approved
 candidate whose baseline no longer matches cannot be applied, even if its own
-hash is intact.
+hash is intact. Applying the same run twice reports "already applied".
 
 ## Secret handling
 
 Provider credentials are never intentionally written to artifacts. Prompts,
 model responses, and context windows pass through `scrub_secrets` before
-persistence. Environment scrubbing also applies when launching subprocesses.
+persistence. (Text sent to the model uses a narrower filter, `scrub_prompt`, so
+ordinary source such as `password = "x"` is not rewritten.) Environment scrubbing
+also applies when launching subprocesses.
 Scrubbing is a safety net, not a guarantee that arbitrary user content contains
 no sensitive data: avoid putting secrets in test fixtures or source files you ask
 Argus to process.
@@ -114,7 +136,8 @@ argus diff <run_id>
 
 ## Retention
 
-Argus does not garbage-collect run history. Artifacts remain until you remove the
-`.argus` directory or individual run folders. That makes audits possible, but it
+Argus does not garbage-collect run history and has no `clean` command yet.
+Artifacts remain until you remove the `.argus` directory or individual run
+folders by hand. That makes audits possible, but it
 also means disk use grows with experimentation. Archive or delete old runs
 deliberately; do not assume a background process will do it.

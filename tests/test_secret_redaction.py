@@ -10,15 +10,12 @@ Verifies:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from argus.config import ArgusConfig
 from argus.providers.adapter import OpenAICompatibleAdapter
-from argus.providers.antigravity import AntigravityHostAdapter
 from argus.providers.models import ProviderConfig
 from argus.runtime.candidate import CandidateArtifactStore
 from argus.runtime.controller import RecoveryController

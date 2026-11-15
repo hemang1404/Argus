@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from rich import box
 from rich.table import Table
@@ -13,7 +13,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
-from argus.adapters.discovery import DiscoveredClient, connect_all_detected, connect_client, discover_clients
+from argus.adapters.discovery import DiscoveredClient, connect_all_detected, discover_clients
 
 _TEXT = "#e1e4ec"
 _SECONDARY = "#9298a8"

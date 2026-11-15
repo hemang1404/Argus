@@ -24,9 +24,12 @@ argus mcp install all
 argus mcp verify
 ```
 
-`argus mcp install` supports `antigravity`, `opencode`, and `gemini`, or `all`.
-It writes a timestamped backup before modifying an existing configuration file.
-Use `--workspace` instead of `--global` to write workspace-local configuration.
+`argus mcp install` supports exactly three hosts: `antigravity`, `opencode`, and
+`gemini` (or `all`). It writes a timestamped backup before modifying an existing
+configuration file. Use `--workspace` instead of `--global` to write
+workspace-local configuration. For any other MCP client, such as Claude Desktop,
+Cursor or Windsurf, add the manual entry below to that client's own configuration;
+Argus does not write those files.
 
 A manual entry for a host that reads `mcpServers` looks like this:
 
@@ -66,15 +69,16 @@ Runs a non-destructive recovery and returns the candidate metadata and diff.
 | `test_command` | yes | — | Command that reproduces the failure |
 | `target_file` | no | auto-localize | Project-relative or absolute path |
 | `test_file` | no | — | Copy this test file into the workspace |
-| `workspace` | no | current directory | Project root |
+| `workspace` | no | server root | Project root; must be inside the server root (the directory the server was started in, or `ARGUS_MCP_WORKSPACE_ROOT`) |
 | `max_attempts` | no | `3` | Clamped to a maximum of 3 |
-| `budget` | no | `0.05` | Spend ceiling in USD |
+| `budget` | no | `0.05` | Spend ceiling in USD; must be finite and positive, and is capped at `0.25` (`ARGUS_MCP_MAX_BUDGET_USD` sets the ceiling) |
 | `model` | no | provider default | Model override |
 | `provider` | no | active provider | Provider name, `auto`, or `antigravity` |
 
 The response contains `run_id`, `status`, `verified`, attempts, cost, duration,
-target, diff, diagnostics, and a `next_step` instruction. A verified patch is not
-applied by this call.
+target, diff, diagnostics, a `next_step` instruction, and a `security_notice`
+stating that the test command ran on the host with the user's permissions. A
+verified patch (the test command passed in the copy) is not applied by this call.
 
 ### `argus_get_candidate`
 
@@ -96,8 +100,8 @@ Applies a verified candidate that has already been approved.
 | `run_id` | yes |
 | `workspace` | no |
 
-The call enforces `verified == true`, `approved == true`, and the baseline hash
-check. If approval has not been recorded, it returns
+The call enforces `verified == true`, `approved == true`, the metadata signature,
+and the baseline hash check. If approval has not been recorded, it returns
 `CANDIDATE_NOT_APPROVED`.
 
 ## The approval boundary
@@ -113,7 +117,9 @@ agent: argus_apply_candidate(...) → applied
 ```
 
 This prevents a model from both proposing and authorizing a modification to your
-repository. Do not build automation that removes the human step unless you have a
+repository. Approval records are HMAC-signed with a key kept outside the
+workspace, so an agent that can edit files in the project still cannot flip
+`approved` by editing `metadata.json`. Do not build automation that removes the human step unless you have a
 stronger review process outside Argus.
 
 ## Output hygiene
@@ -125,8 +131,12 @@ human-readable output.
 ## Security notes
 
 - Status responses mask keys. They never return the secret value.
-- `workspace` scopes candidate lookup and application, but does not override path
-  containment checks.
+- `workspace` is confined to the server root. A path outside it is refused, and it
+  does not override path containment checks.
+- The agent-supplied `budget` is capped, so a prompt-injected agent cannot raise the
+  spend limit.
+- The recovery runs your test command on the host (not sandboxed); only point the
+  server at repositories you trust.
 - The MCP surface does not expose the gateway, provider mutation, or arbitrary
   command execution.
 - The server is a local stdio process. It does not listen on a network socket.

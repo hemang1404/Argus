@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -15,7 +13,6 @@ from click.testing import CliRunner
 from argus import __version__
 from argus.cli import main
 from argus.update import (
-    DEFAULT_PYPI_JSON_URL,
     InstallMethod,
     UpdateChannel,
     UpdateCheckResult,
@@ -31,11 +28,19 @@ from argus.update import (
 # 1. Installer Detection Tests
 # =============================================================================
 
-def test_detect_install_method_source(monkeypatch):
-    """When inside a git checkout with pyproject.toml, reports SOURCE."""
-    # Running directly within the Argus git repository
-    method = detect_install_method()
-    assert method == InstallMethod.SOURCE
+def test_detect_install_method_source(monkeypatch, tmp_path):
+    """A checkout (.git directory + pyproject.toml beside the package) reports SOURCE.
+
+    The layout is built in tmp_path so the test does not depend on how the repository was
+    obtained (a source archive or sdist has no .git).
+    """
+    import argus.update as update_module
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "pyproject.toml").write_text("[project]" + chr(10) + "name = 'x'", encoding="utf-8")
+    (tmp_path / "argus").mkdir()
+    monkeypatch.setattr(update_module, "__file__", str(tmp_path / "argus" / "update.py"))
+    assert detect_install_method() == InstallMethod.SOURCE
 
 
 def test_detect_install_method_uv(monkeypatch):
@@ -330,7 +335,6 @@ def test_cli_update_apply_with_yes():
 @pytest.mark.asyncio
 async def test_tui_update_modal_render():
     try:
-        from textual.app import App
         from argus.tui.modals.update import UpdateModal
     except ImportError:
         pytest.skip("textual not installed in this environment")
@@ -391,7 +395,7 @@ async def test_tui_update_modal_apply_failure():
     """Verify UpdateModal renders error when apply_update fails."""
     try:
         from textual.app import App, ComposeResult
-        from textual.widgets import Button, Static
+        from textual.widgets import Static
         from argus.tui.modals.update import UpdateModal
     except ImportError:
         pytest.skip("textual not installed in this environment")

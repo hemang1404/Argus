@@ -93,7 +93,7 @@ class ExecutionTimelineScreen(Screen[None]):
                 yield Button("Review Diff", variant="primary", id="btn-review-diff", disabled=True)
                 yield Button("Return", variant="default", id="btn-return-menu", disabled=True)
 
-        yield StatusBar(workspace=self.workspace, version="v0.2.0")
+        yield StatusBar(workspace=self.workspace)
 
     def on_mount(self) -> None:
         """Start execution worker on mount."""
@@ -296,6 +296,12 @@ class ExecutionTimelineScreen(Screen[None]):
 
         self.current_phase = "Recovery loop completed"
         has_patch = bool(outcome.unified_diff and outcome.patched_content)
+
+        for note in outcome.config_notes:
+            self._append_event(f"[yellow]policy:[/yellow] [dim]{note}[/dim]")
+        for reason in outcome.routing_reasons:
+            if reason.startswith("model_ladder="):
+                self._append_event(f"[dim]models: {reason}[/dim]")
 
         metrics = self.query_one("#exec-header-metrics", Static)
         if outcome.status == "SUCCESS":

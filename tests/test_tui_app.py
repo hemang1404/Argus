@@ -3,28 +3,23 @@
 from __future__ import annotations
 
 import hashlib
-import os
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
-from textual.widgets import Button, Input, OptionList, Static
+from textual.widgets import Button, Input, Static
 
 from argus.config import ArgusConfig
-from argus.launcher import find_windows_terminal, install_desktop_shortcut
+from argus.launcher import install_desktop_shortcut
 from argus.runtime.candidate import CandidateArtifactStore
 from argus.tui.app import ArgusTUIApp
 from argus.tui.modals.config import ConfigModal
 from argus.tui.modals.doctor import DoctorModal
 from argus.tui.modals.help import HelpModal
 from argus.tui.modals.palette import CommandPaletteModal
-from argus.tui.modals.usage import UsageModal
 from argus.tui.screens.diff_review import DiffReviewScreen
 from argus.tui.screens.execution import ExecutionTimelineScreen
 from argus.tui.screens.recovery import RecoveryWorkflowScreen
 from argus.tui.screens.startup import StartupScreen
-from argus.tui.widgets.diff_viewer import DiffViewer
 from argus.tui.widgets.status_bar import StatusBar
 from argus.tui.widgets.wordmark import ArgusWordmark
 
@@ -259,6 +254,7 @@ async def test_diff_review_screen_stale_patch_conflict(tmp_path):
 
         # Attempt to approve
         screen.action_approve_and_apply()
+        screen.action_confirm_apply()  # second, explicit step
         await pilot.pause()
 
         feedback_text = str(screen.query_one("#diff-feedback", Static).content)
@@ -318,6 +314,7 @@ async def test_diff_review_screen_atomic_apply(tmp_path):
 
         # Approve and apply through the authoritative applier
         screen.action_approve_and_apply()
+        screen.action_confirm_apply()  # second, explicit step
         await pilot.pause()
 
         # Verify disk file updated

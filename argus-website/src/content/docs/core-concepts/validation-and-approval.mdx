@@ -5,25 +5,28 @@ description: The difference between a verified patch and an authorized one, and 
 
 Argus separates three questions that are easy to conflate:
 
-1. **Does the patch parse?** Syntax validation.
+1. **Does the patch parse?** Syntactic validation.
 2. **Does the patch pass the test?** Verification.
 3. **May this patch be written to the repository?** Approval and application.
 
 Only the first two are automated. The third belongs to a human, except for
-explicitly marked automation.
+explicitly marked automation. None of the three is a claim that the change is
+semantically correct; that is a judgement for the reviewer.
 
 ## Syntax validation
 
 Every successful reconciliation writes the replacement into the full target file
-and runs `ast.parse` over the result. The check catches:
+and runs `ast.parse` and `compile()` over the result (for `.py`, `.pyi`, `.pyw`).
+The result is labelled `syntactic`. The check catches:
 
 - unmatched brackets or quotes introduced by the patch;
 - malformed indentation that produces invalid Python;
 - replacements that delete a required block and leave an incomplete statement;
 - edits that are individually plausible but invalid in file context.
 
-The AST gate is mandatory for tiers 1–4. It is currently implemented for Python
-source only.
+The gate applies to every tier and checks the final state after all blocks of a
+response. It is implemented for Python source only, and it is not a correctness
+check.
 
 ## Test verification
 
@@ -53,8 +56,11 @@ is supplied. `--yes` is a trusted-automation bypass; it is recorded as
 `--force` allows approving an unverified candidate. It does not bypass integrity
 checks at application time. Neither flag changes the candidate content.
 
-The TUI records approval when you press `a` or `Enter` on the diff review screen.
-The MCP surface has no approval tool; an agent cannot approve its own candidate.
+The TUI records approval from the diff review screen after an explicit
+confirmation. The MCP surface has no approval tool; an agent cannot approve its own
+candidate, and the approval file is signed so it cannot be forged by editing it.
+An invalid or missing signature is reported as `CANDIDATE_SIGNATURE_INVALID`, and a
+malformed run ID as `INVALID_RUN_ID`.
 
 ## Application checks
 
@@ -63,7 +69,9 @@ before a write:
 
 | Check | Failure code |
 | --- | --- |
+| Run ID is well formed | `INVALID_RUN_ID` |
 | Candidate artifact loads | `CANDIDATE_NOT_FOUND` |
+| Metadata signature is valid | `CANDIDATE_SIGNATURE_INVALID` |
 | Candidate is verified | `CANDIDATE_NOT_VERIFIED` |
 | Candidate is approved (unless forced) | `CANDIDATE_NOT_APPROVED` |
 | Candidate content exists | `CANDIDATE_CONTENT_MISSING` |
@@ -72,7 +80,9 @@ before a write:
 | Target path stays inside the workspace | `PATH_TRAVERSAL_REJECTED` |
 | Target matches recorded target path | `TARGET_FILE_MISMATCH` |
 | Target is a regular file | `UNSAFE_TARGET_TYPE` |
-| Live file matches `baseline_hash` | `STALE_TARGET_CONFLICT` |
+| Live file matches `baseline_hash` | `STALE_TARGET_CONFLICT` (also what an already-applied run reports, with an "already applied" message) |
+| Target decodes (UTF-8, BOM, PEP 263) | `UNSUPPORTED_ENCODING` |
+| Only one apply runs for this run ID | `APPLY_IN_PROGRESS` |
 | No concurrent modification between checks | `CONCURRENT_MODIFICATION_DETECTED` |
 | File permissions can be preserved | `PERMISSION_PRESERVATION_FAILED` |
 

@@ -7,8 +7,36 @@ import threading
 import time
 import uuid
 from typing import Dict, Optional, Tuple
-from argus.config import MODEL_REGISTRY, ModelCost
+from argus.config import MODEL_REGISTRY, ModelCost, UnpricedModelError
 from argus.gateway.config import BudgetConfig
+
+
+_FREE_PROVIDER_NAMES = {"antigravity", "ollama", "lmstudio"}
+_LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def price_for_model(model: str, provider: Optional[str] = None, base_url: Optional[str] = None) -> ModelCost:
+    """Price of ``model``; fails closed like ``ArgusConfig.get_model_cost``.
+
+    A model absent from the registry is priced at zero only when the upstream is host-native
+    (antigravity) or served from this machine; otherwise ``UnpricedModelError`` is raised so a
+    paid, unknown model can never be metered at a guessed (low) price.
+    """
+    if model in MODEL_REGISTRY:
+        return MODEL_REGISTRY[model]
+    name = (provider or "").strip().lower()
+    host = ""
+    if base_url:
+        from urllib.parse import urlsplit
+        host = (urlsplit(base_url).hostname or "").lower()
+        if base_url.startswith("host://"):
+            name = name or "antigravity"
+    if name in _FREE_PROVIDER_NAMES or host in _LOCAL_HOSTNAMES or (model and "antigravity" in model.lower()):
+        return ModelCost(input_cost_per_m=0.0, output_cost_per_m=0.0)
+    raise UnpricedModelError(
+        f"Model '{model}' has no known price, so the gateway cannot bound its cost. "
+        "Use a model from the registry or a local/host-native provider."
+    )
 
 
 def _to_micro(usd: float) -> int:
@@ -203,8 +231,14 @@ class BudgetGuard:
         if is_subscription or (model and "antigravity" in model.lower()):
             cost = 0.0
         else:
-            cost_profile = MODEL_REGISTRY.get(model, ModelCost(input_cost_per_m=0.50, output_cost_per_m=0.50))
-            cost = cost_profile.calculate_cost(prompt_tokens, completion_tokens)
+            try:
+                cost = price_for_model(model).calculate_cost(prompt_tokens, completion_tokens)
+            except UnpricedModelError:
+                # The route handlers refuse unpriced models before the upstream call, so this is a
+                # defensive path: never guess a low price. Charge the whole reservation as uncertain.
+                with self._lock:
+                    held = self._active_reservations.get(reservation_id, (run_id, 0))[1] if reservation_id else 0
+                return self.record_uncertain(reservation_id, run_id, model, _to_usd(held))
 
         cost_micro = _to_micro(cost)
         with self._lock:

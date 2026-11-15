@@ -11,6 +11,7 @@ import httpx
 
 from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
 from argus.providers.storage import scrub_secrets
+from argus.utils.redaction import scrub_prompt
 
 
 class ProviderError(Exception):
@@ -163,7 +164,7 @@ class OpenAICompatibleAdapter(ProviderAdapter):
 
         # Scrub all outgoing message contents to prevent accidental secret leakage
         safe_messages = [
-            {"role": m.get("role", "user"), "content": scrub_secrets(m.get("content", ""))}
+            {"role": m.get("role", "user"), "content": scrub_prompt(m.get("content", ""), [self.config.api_key] if self.config.api_key else None)}
             for m in messages
         ]
 

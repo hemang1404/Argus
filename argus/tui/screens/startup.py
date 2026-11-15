@@ -9,12 +9,12 @@ from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.css.query import NoMatches
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Input, Static
 
+from argus import __version__
 from argus.config import ArgusConfig
-from argus.tui.modals.palette import CommandPaletteModal
 from argus.tui.widgets.status_bar import StatusBar
 from argus.tui.widgets.wordmark import ArgusWordmark
 
@@ -67,7 +67,7 @@ class StartupScreen(Screen[None]):
                 with Vertical(id="startup-hero"):
                     yield ArgusWordmark(config=self.config, id="wordmark")
                     yield Static(
-                        "/doctor to verify runtime v0.2.0",
+                        f"/doctor to check the environment · v{__version__}",
                         id="descriptor",
                     )
 
@@ -95,7 +95,7 @@ class StartupScreen(Screen[None]):
                     id="startup-tip",
                 )
 
-        yield StatusBar(workspace=self.workspace, version="v0.2.0")
+        yield StatusBar(workspace=self.workspace)
 
     def on_mount(self) -> None:
         """Focus the command input on screen mount."""
@@ -117,6 +117,10 @@ class StartupScreen(Screen[None]):
         if val == "/":
             event.input.value = ""
             self.action_open_palette(initial_query="/")
+        elif val == "?":
+            # The focused Input swallows '?', so the footer's Help binding never fires.
+            event.input.value = ""
+            self.action_open_help()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle Enter key in command box."""

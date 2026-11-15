@@ -163,7 +163,7 @@ class ArgusConfig:
     # Active provider and model (None by default on fresh install until configured)
     provider: Optional[str] = None
     model: Optional[str] = None
-    deepseek_api_key: Optional[str] = None
+    deepseek_api_key: Optional[str] = field(default=None, repr=False)
 
     # Adaptive reasoning effort configuration
     effort: Optional[str] = None
@@ -209,6 +209,16 @@ class ArgusConfig:
     # Experimental: Tier 4 anchor recovery has narrow positive coverage and is
     # not enabled by default. Enable explicitly only after independent review.
     enable_tier4: bool = False
+
+    # Tier 3 (token-equal tolerant match) is safe to leave on; this switch turns it off.
+    enable_tier3: bool = True
+
+    # Workspace snapshot options (see argus.runtime.workspace.WorkspaceManager).
+    # snapshot_exclude: extra root-level directory/file names to leave out of the copy.
+    # snapshot_max_bytes: fail fast above this size (None disables the limit).
+    snapshot_exclude: List[str] = field(default_factory=list)
+    snapshot_respect_gitignore: bool = True
+    snapshot_max_bytes: Optional[int] = 2 * 1024 ** 3
 
     # UI and Terminal Branding Renderer (auto, braille, halfblock, sixel, kitty, text, box)
     logo_renderer: str = "auto"

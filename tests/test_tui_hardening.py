@@ -192,6 +192,7 @@ async def test_diff_apply_routes_through_authoritative_applier(tmp_path):
             app.push_screen(screen)
             await pilot.pause()
             screen.action_approve_and_apply()
+            screen.action_confirm_apply()  # second, explicit step
             await pilot.pause()
 
     approve.assert_called_once()
@@ -222,6 +223,7 @@ async def test_diff_apply_refuses_unverified_candidate(tmp_path):
         app.push_screen(screen)
         await pilot.pause()
         screen.action_approve_and_apply()
+        screen.action_confirm_apply()  # second, explicit step
         await pilot.pause()
         feedback = str(screen.query_one("#diff-feedback", Static).content).lower()
 
@@ -271,6 +273,7 @@ async def test_direct_apply_preserves_file_mode(tmp_path):
         app.push_screen(screen)
         await pilot.pause()
         screen.action_approve_and_apply()
+        screen.action_confirm_apply()  # second, explicit step
         await pilot.pause()
 
     assert target.read_text() == "original = 2\n"

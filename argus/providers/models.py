@@ -103,7 +103,7 @@ class ProviderConfig:
     name: str
     base_url: str
     model: str
-    api_key: Optional[str] = None
+    api_key: Optional[str] = field(default=None, repr=False)
     temperature: float = 0.0
     max_tokens: int = 4096
     max_completion_tokens: Optional[int] = None

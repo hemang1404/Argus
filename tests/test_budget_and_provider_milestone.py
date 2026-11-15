@@ -6,28 +6,21 @@ All tests run strictly offline with no live paid API calls or SWE-bench benchmar
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from argus.config import ArgusConfig, MODEL_REGISTRY, ModelCost
+from argus.config import ArgusConfig, MODEL_REGISTRY
 from argus.providers.adapter import (
-    CompletionResponse,
-    OpenAICompatibleAdapter,
-    ProviderAdapter,
     ProviderError,
 )
-from argus.providers.models import PROVIDER_PRESETS, ProviderConfig
+from argus.providers.models import PROVIDER_PRESETS
 from argus.runtime.budget import (
     GlobalExperimentBudget,
-    TaskConditionBudget,
     count_prompt_tokens,
 )
-from argus.runtime.controller import RecoveryController, RecoveryOutcome
-
-pytestmark = pytest.mark.research
+from argus.runtime.controller import RecoveryController
 
 
 # =============================================================================
@@ -128,9 +121,10 @@ def test_official_gemini_model_pricing_math():
     assert MODEL_REGISTRY["gemini-3.8-flash-low"].input_cost_per_m == 0.0
 
 
+@pytest.mark.tokenizer_download
 def test_gpt_oss_tokenizer_o200k_harmony_selected():
     """Verify that GPT-OSS models resolve to o200k_harmony vocabulary."""
-    pytest.importorskip("tiktoken", reason="install 'argus-recovery[research]'")
+    pytest.importorskip("tiktoken", reason="install 'argus-recovery[tokens]'")
     from argus.runtime.budget import get_gpt_oss_tokenizer
     tokenizer = get_gpt_oss_tokenizer("openai/gpt-oss-20b")
     assert tokenizer is not None
@@ -189,9 +183,10 @@ def test_token_estimation_representative_code_unicode_and_metadata():
     assert tokens_meta >= 30
 
 
+@pytest.mark.tokenizer_download
 def test_token_estimation_comparison_against_mocked_provider_telemetry():
     """Verify local conservative estimate is always >= raw wire tokens reported by provider."""
-    tiktoken = pytest.importorskip("tiktoken", reason="install 'argus-recovery[research]'")
+    tiktoken = pytest.importorskip("tiktoken", reason="install 'argus-recovery[tokens]'")
     enc = tiktoken.get_encoding("o200k_harmony")
 
     user_prompt = "def calculate_mean(values: list[float]) -> float:\n    return sum(values) / len(values)\n"

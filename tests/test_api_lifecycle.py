@@ -11,10 +11,9 @@ from fastapi.testclient import TestClient
 
 from argus.api.auth import (
     SessionTokenManager,
-    validate_host_header,
     validate_path_within_workspace,
 )
-from argus.api.lifecycle import HeartbeatWatchdog, SessionFileManager, find_free_port
+from argus.api.lifecycle import SessionFileManager, find_free_port
 from argus.api.server import create_app
 
 

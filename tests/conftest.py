@@ -1,12 +1,41 @@
 """Global test configuration and fixtures."""
 
+from pathlib import Path
+
 import pytest
 
-# tests/test_calculator.py exercises the legacy research prototype in src/.
-# src/calculator.py intentionally contains a demo bug (``return a - b``) that the
-# recovery engine uses as a fixture; it is not a product test and must not be
-# collected. Deleting the fixture would break the demonstration, so it is kept.
-collect_ignore = ["test_calculator.py"]
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture(autouse=True)
+def run_in_scratch_cwd(request, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch):
+    """Run every test with a throwaway working directory.
+
+    Several code paths default to ``Path.cwd()`` (``.argus/`` run artifacts, session and
+    telemetry files, policy lookup). Without this fixture they were written into the repository
+    checkout and leaked state between tests. A test that needs a particular directory calls
+    ``monkeypatch.chdir`` itself; tests that need the repository root use ``REPO_ROOT``.
+    """
+    if request.node.get_closest_marker("keep_cwd"):
+        yield
+        return
+    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
+    yield
+
+
+@pytest.fixture(autouse=True)
+def offline_tokenizer(request, monkeypatch: pytest.MonkeyPatch):
+    """Budget estimates must not depend on the network: use the byte-based heuristic.
+
+    tiktoken fetches its vocabulary on first use, which made estimates differ between online
+    and offline machines. Tests that really need the vocabulary are marked
+    ``tokenizer_download`` and are excluded from the offline CI selector.
+    """
+    if request.node.get_closest_marker("tokenizer_download"):
+        yield
+        return
+    monkeypatch.setenv("ARGUS_OFFLINE", "1")
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -74,4 +103,5 @@ def isolate_keyring_globally(monkeypatch: pytest.MonkeyPatch):
 
 
 def pytest_configure(config):
+    config.addinivalue_line("markers", "keep_cwd: do not chdir into a scratch directory for this test")
     config.addinivalue_line("markers", "real_gateway_auth: run with the gateway's real fail-closed auth and Host guard")

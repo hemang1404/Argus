@@ -13,11 +13,9 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 from argus.api.server import create_app
-from argus.patch.ast_checker import ASTChecker
 from argus.patch.fuzzy_engine import PatchBlock, RefusalReason, ResilientPatchEngine
 from argus.runtime.runner import SubprocessTestRunner
 

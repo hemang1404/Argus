@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
+import math
 import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, NoReturn, Optional, Tuple
 
 import click
 import rich.box
@@ -16,13 +16,24 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 from argus import __version__
-from argus.config import ArgusConfig
+from argus.config import (
+    DEFAULT_BUDGET_USD,
+    DEFAULT_MAX_ATTEMPTS,
+    MAX_ATTEMPTS_CEILING,
+    ArgusConfig,
+    ModelCost,
+)
 from argus.providers.adapter import OpenAICompatibleAdapter
 from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
 from argus.providers.storage import ProviderStorage
-from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
+from argus.runtime.candidate import (
+    AuthoritativePatchApplier,
+    CandidateApplicationError,
+    CandidateArtifactStore,
+)
 from argus.runtime.controller import AttemptRecord, RecoveryController, RecoveryOutcome
 from argus.runtime.events import JsonLinesEmitter
+from argus.runtime.runner import HOST_EXECUTION_WARNING
 
 # Ensure UTF-8 output on Windows consoles to prevent cp1252 charmap encoding errors
 if sys.platform == "win32":
@@ -35,16 +46,88 @@ if sys.platform == "win32":
 console = Console(legacy_windows=False)
 
 
+# Upper bound for a single run's spend accepted on the command line (matches the TUI policy modal).
+MAX_CLI_BUDGET_USD = 10.0
+
+
 @click.group(invoke_without_command=True)
 @click.version_option(version=__version__, prog_name="argus")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path.")
+@click.option(
+    "--workspace",
+    "-w",
+    default=None,
+    type=click.Path(exists=True, file_okay=False),
+    help="Active workspace path. Used by every command unless the command's own -w is given (default: current directory).",
+)
 @click.pass_context
-def main(ctx: click.Context, workspace: str):
-    """Argus: Bounded, test-gated Python code recovery and patch runtime."""
+def main(ctx: click.Context, workspace: Optional[str]):
+    """Argus: Bounded, test-gated Python code recovery and patch runtime.
+
+    Exit codes: 0 success, 1 failure or error, 2 usage error.
+    """
+    ctx.ensure_object(dict)
+    ctx.obj["workspace"] = workspace
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
         console.print("\n[dim]Interactive UI: run 'argus tui' to launch the full-screen terminal app.[/dim]")
 
+
+def _workspace_arg(workspace: Optional[str]) -> Optional[Path]:
+    """The workspace the user explicitly chose (command -w, then global -w), else None."""
+    if workspace:
+        return Path(workspace).resolve()
+    ctx = click.get_current_context(silent=True)
+    root = ctx.find_root() if ctx is not None else None
+    global_ws = (root.obj or {}).get("workspace") if root is not None else None
+    return Path(global_ws).resolve() if global_ws else None
+
+
+def _workspace_or_cwd(workspace: Optional[str]) -> Path:
+    """Workspace for commands that always need a directory (candidate store, setup, gateway)."""
+    return _workspace_arg(workspace) or Path.cwd().resolve()
+
+
+def _fail(message: str, code: int = 1) -> NoReturn:
+    """Print an error and exit non-zero so scripts and CI can detect failure."""
+    console.print(message)
+    sys.exit(code)
+
+
+def _candidate_error(run_id: str, ex: CandidateApplicationError) -> str:
+    """User-facing text for a typed candidate-store error."""
+    text = f"[red]{ex.error_code}:[/red] {ex.message}"
+    if ex.error_code == "INVALID_RUN_ID":
+        text += f"\n  [dim]'{run_id}' is not a valid run id. Run 'argus candidates' to list run ids.[/dim]"
+    elif ex.error_code == "CANDIDATE_SIGNATURE_INVALID":
+        text += "\n  [dim]Argus only trusts run artifacts it wrote itself on this machine. Re-run 'argus run' to create a new candidate.[/dim]"
+    return text
+
+
+def _positive_finite_budget(ctx: click.Context, param: click.Parameter, value: float) -> float:
+    if not math.isfinite(value) or value <= 0:
+        raise click.BadParameter("must be a finite number greater than 0.")
+    if value > MAX_CLI_BUDGET_USD:
+        raise click.BadParameter(f"must be at most ${MAX_CLI_BUDGET_USD:.2f}.")
+    return value
+
+
+def _parse_prices(ctx: click.Context, param: click.Parameter, values: Tuple[str, ...]) -> Dict[str, ModelCost]:
+    """Parse repeated ``MODEL=INPUT,OUTPUT[,CACHED]`` (USD per 1M tokens) into model prices."""
+    prices: Dict[str, ModelCost] = {}
+    for raw in values:
+        name, sep, rest = raw.rpartition("=")
+        name = name.strip()
+        parts = [p.strip() for p in rest.split(",")] if sep else []
+        if not name or len(parts) not in (2, 3):
+            raise click.BadParameter(f"'{raw}': expected MODEL=INPUT,OUTPUT[,CACHED_INPUT] (USD per 1M tokens).")
+        try:
+            nums = [float(p) for p in parts]
+        except ValueError:
+            raise click.BadParameter(f"'{raw}': prices must be numbers.") from None
+        if any(not math.isfinite(n) or n < 0 for n in nums):
+            raise click.BadParameter(f"'{raw}': prices must be finite and non-negative.")
+        prices[name] = ModelCost(*nums)
+    return prices
 
 
 # =============================================================================
@@ -52,15 +135,23 @@ def main(ctx: click.Context, workspace: str):
 # =============================================================================
 
 @main.command()
-def doctor():
+@click.option(
+    "--offline",
+    is_flag=True,
+    default=False,
+    help="Skip the provider connectivity check. Without this flag doctor sends one small live request to the active provider (which may be billable).",
+)
+def doctor(offline: bool):
     """Run environment diagnostics and check active provider connectivity."""
     console.print(f"[bold]argus doctor[/bold] (v{__version__})\n")
+    failed = False
 
     # 1. Python Environment
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     if sys.version_info >= (3, 11):
         console.print(f"  [green]✓[/green] Python          {py_ver}")
     else:
+        failed = True
         console.print(f"  [red]✗[/red] Python          {py_ver} (< 3.11 required)")
 
     # 2. Git
@@ -81,7 +172,7 @@ def doctor():
     from argus.providers.antigravity import find_antigravity_cli
     agy_cli = find_antigravity_cli()
     if agy_cli:
-        console.print(f"  [green]✓[/green] Antigravity     {agy_cli}")
+        console.print(f"  [green]✓[/green] Antigravity     {agy_cli} (binary found; not an authenticated check)")
     else:
         console.print("  [dim]-[/dim] Antigravity     not detected in PATH")
 
@@ -109,23 +200,30 @@ def doctor():
         else:
             preset = PROVIDER_PRESETS.get(active_cfg.name.lower())
             if preset and preset.requires_key:
+                failed = True
                 console.print(f"  [red]✗[/red] Credentials     missing key for {active_cfg.name}")
             else:
                 console.print("  [green]✓[/green] Credentials     host/local (key not required)")
 
-        with console.status(f"[dim]Pinging {active_cfg.name}...[/dim]"):
-            if active_cfg.name.lower() == "antigravity":
-                from argus.providers.antigravity import AntigravityHostAdapter
-                adapter = AntigravityHostAdapter(active_cfg)
-            else:
-                adapter = OpenAICompatibleAdapter(active_cfg)
-            test_res = adapter.test_connection()
+        if offline:
+            console.print("  [dim]-[/dim] Connectivity    skipped (--offline)")
+        else:
+            with console.status(f"[dim]Pinging {active_cfg.name}...[/dim]"):
+                if active_cfg.name.lower() == "antigravity":
+                    from argus.providers.antigravity import AntigravityHostAdapter
+                    adapter = AntigravityHostAdapter(active_cfg)
+                else:
+                    adapter = OpenAICompatibleAdapter(active_cfg)
+                test_res = adapter.test_connection()
             if test_res.success:
                 console.print(f"  [green]✓[/green] Connectivity    {test_res.latency_ms:.1f}ms ({test_res.model})")
             else:
+                failed = True
                 console.print(f"  [red]✗[/red] Connectivity    offline: {test_res.message[:60]}")
 
     console.print()
+    if failed:
+        sys.exit(1)
 
 
 # =============================================================================
@@ -177,18 +275,22 @@ def provider_list():
 
 @provider_group.command("set")
 @click.option("--name", "-n", default=None, help="Provider name or preset identifier.")
-@click.option("--preset", "-p", default=None, help="Preset key (openai, openrouter, deepseek, ollama, lmstudio, custom).")
+@click.option("--preset", "-p", default=None, help="Preset key (see 'argus provider list': openai, openrouter, deepseek, gemini, ollama, lmstudio, antigravity, custom).")
 @click.option("--base-url", "-u", default=None, help="API Base URL (e.g. https://api.openai.com/v1).")
-@click.option("--model", "-m", default=None, help="Model identifier (e.g. gpt-4o-mini, llama-3.3-70b-versatile).")
-@click.option("--api-key", "-k", default=None, help="API Key (optional; prompted interactively with hidden input by default).")
+@click.option("--model", "-m", default=None, help="Model identifier (e.g. gpt-4o-mini).")
+@click.option("--api-key", "-k", default=None, help="API key. Visible in shell history and the process list: prefer --api-key-env or --api-key-stdin.")
+@click.option("--api-key-env", default=None, metavar="VAR", help="Read the API key from this environment variable.")
+@click.option("--api-key-stdin", is_flag=True, default=False, help="Read the API key from the first line of standard input.")
 @click.option("--timeout", "-t", default=60.0, type=float, help="Request timeout in seconds.")
-@click.option("--active", is_flag=True, default=True, help="Set as currently active provider.")
+@click.option("--active/--no-active", default=True, help="Set as currently active provider (default: yes).")
 def provider_set(
     name: Optional[str],
     preset: Optional[str],
     base_url: Optional[str],
     model: Optional[str],
     api_key: Optional[str],
+    api_key_env: Optional[str],
+    api_key_stdin: bool,
     timeout: float,
     active: bool,
 ):
@@ -200,6 +302,20 @@ def provider_set(
         console.print("[red]✗ Groq is strictly prohibited as an inference provider in Argus.[/red]")
         console.print("[dim]Please choose an authorized provider (e.g. ollama, openai, deepseek, antigravity).[/dim]")
         sys.exit(1)
+
+    if sum(1 for v in (api_key is not None, api_key_env is not None, api_key_stdin) if v) > 1:
+        raise click.UsageError("Use only one of --api-key, --api-key-env, --api-key-stdin.")
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise click.UsageError("--timeout must be a finite number greater than 0.")
+
+    if api_key_env is not None:
+        api_key = (os.environ.get(api_key_env) or "").strip() or None
+        if api_key is None:
+            _fail(f"[red]✗[/red] Environment variable '{api_key_env}' is not set or empty.")
+    elif api_key_stdin:
+        api_key = sys.stdin.readline().strip() or None
+        if api_key is None:
+            _fail("[red]✗[/red] --api-key-stdin: no key was provided on standard input.")
 
     if preset_key in PROVIDER_PRESETS:
         p_def = PROVIDER_PRESETS[preset_key]
@@ -219,21 +335,28 @@ def provider_set(
     existing = storage.get_provider(resolved_name)
     existing_key = existing.api_key if existing else None
 
-    # Collect API key via hidden interactive prompt if not supplied via option
+    # Collect the API key: hidden prompt on a terminal, one line from stdin otherwise
+    # (a hidden prompt without a console would block forever in automation).
     if api_key is None and requires_key:
-        prompt_label = f"Enter API key for '{resolved_name}'"
         if existing_key:
-            prompt_label += f" [leave blank to keep existing: {existing.masked_key}]"
-        try:
-            entered = click.prompt(prompt_label, hide_input=True, default="", show_default=False)
-            if entered.strip():
-                api_key = entered.strip()
-            elif existing_key:
-                api_key = existing_key
-            else:
-                api_key = None
-        except Exception:
             api_key = existing_key
+        if sys.stdin.isatty():
+            prompt_label = f"Enter API key for '{resolved_name}'"
+            if existing_key:
+                prompt_label += f" [leave blank to keep existing: {existing.masked_key}]"
+            try:
+                entered = click.prompt(prompt_label, hide_input=True, default="", show_default=False)
+            except click.Abort:
+                _fail("[red]✗[/red] Cancelled; provider not saved.")
+        else:
+            entered = sys.stdin.readline()
+        if entered.strip():
+            api_key = entered.strip()
+        elif not api_key:
+            _fail(
+                f"[red]✗[/red] '{resolved_name}' needs an API key and none was provided. "
+                "Pass --api-key-env VAR or --api-key-stdin, or run in a terminal."
+            )
 
     cfg = ProviderConfig(
         name=resolved_name,
@@ -264,22 +387,25 @@ def provider_select(name: str):
         cfg = storage.get_active_provider()
         console.print(f"[green]✓[/green] Active provider set to '{cfg.name}' (model: {cfg.model})")
     else:
-        console.print(f"[red]✗[/red] Provider '{name}' not found. Run 'argus provider list' to see available providers.")
+        _fail(f"[red]✗[/red] Provider '{name}' not found. Run 'argus provider list' to see available providers.")
 
 
 @provider_group.command("test")
 @click.argument("name", required=False, default=None)
 def provider_test(name: Optional[str]):
-    """Test connection and model response for the active or named provider."""
+    """Test connection and model response for the active or named provider (sends one live request)."""
     storage = ProviderStorage()
     cfg = storage.get_provider(name) if name else storage.get_active_provider()
     if not cfg:
         target = f"'{name}'" if name else "Active provider"
-        console.print(f"[red]✗[/red] {target} is not configured. Run 'argus provider set' first.")
-        return
+        _fail(f"[red]✗[/red] {target} is not configured. Run 'argus provider set' first.")
 
     with console.status(f"[dim]Pinging {cfg.name}...[/dim]"):
-        adapter = OpenAICompatibleAdapter(cfg)
+        if cfg.name.lower() == "antigravity":
+            from argus.providers.antigravity import AntigravityHostAdapter
+            adapter = AntigravityHostAdapter(cfg)
+        else:
+            adapter = OpenAICompatibleAdapter(cfg)
         res = adapter.test_connection()
 
     if res.success:
@@ -291,6 +417,7 @@ def provider_test(name: Optional[str]):
         console.print(f"[red]✗[/red] Connection failed: {res.message}")
         if res.status_code:
             console.print(f"  status:   {res.status_code}")
+        sys.exit(1)
 
 
 @provider_group.command("delete")
@@ -301,24 +428,96 @@ def provider_delete(name: str):
     if storage.delete_provider(name):
         console.print(f"[green]✓[/green] Provider '{name}' removed.")
     else:
-        console.print(f"[yellow]![/yellow] Provider '{name}' not found.")
+        _fail(f"[yellow]![/yellow] Provider '{name}' not found.")
 
 
 # =============================================================================
 # Code Recovery Execution
 # =============================================================================
 
+def _resolve_provider(provider: Optional[str], model: Optional[str], storage: ProviderStorage, command: str) -> ProviderConfig:
+    """Pick the provider for a run/exec. Never selects a provider the user did not configure or name."""
+    p_name = (provider or "").strip().lower()
+
+    if p_name == "auto":
+        # 'auto' is an explicit request for deterministic discovery: prefer the
+        # stored active provider, then the host runtime. Never infer from keys.
+        p_cfg = storage.get_active_provider()
+        if not p_cfg:
+            from argus.providers.antigravity import find_antigravity_cli
+            if find_antigravity_cli() is not None:
+                p_cfg = ProviderConfig.from_preset("antigravity", model=model)
+        if not p_cfg:
+            _fail(
+                "[bold red]No discoverable provider for '--provider auto'.[/bold red] "
+                "Configure one with 'argus provider set' or select 'antigravity' explicitly."
+            )
+        console.print(f"[dim]Auto-selected provider: {p_cfg.name}[/dim]")
+    elif p_name == "antigravity":
+        p_cfg = ProviderConfig.from_preset("antigravity", model=model)
+    elif provider:
+        p_cfg = storage.get_provider(provider)
+        if not p_cfg:
+            _fail(f"[bold red]Provider '{provider}' not configured.[/bold red] Run 'argus provider set' first.")
+    else:
+        p_cfg = storage.get_active_provider()
+        if not p_cfg:
+            _fail(
+                "[bold red]No LLM provider configured.[/bold red] Run 'argus provider set' first, "
+                f"specify '--provider <name>', or explicitly request '--provider auto' (or 'antigravity') for 'argus {command}'."
+            )
+
+    if model:
+        p_cfg.model = model
+    return p_cfg
+
+
+def _resolve_input_file(raw: Optional[str], ws: Optional[Path], option: str) -> Optional[str]:
+    """Validate a user-supplied file option and return the value to hand the controller.
+
+    Relative paths are resolved against the chosen workspace (or the current directory
+    when none was given). With an explicit workspace the absolute path is returned; without
+    one the value is passed through unchanged so the controller infers the workspace.
+    """
+    if raw is None:
+        return None
+    path = Path(raw)
+    full = path if path.is_absolute() else (ws or Path.cwd()) / path
+    if not full.is_file():
+        raise click.BadParameter(f"file not found: {full}", param_hint=option)
+    return str(full.resolve()) if ws is not None else raw
+
+
+def _print_run_notes(outcome: RecoveryOutcome) -> None:
+    """Show project-policy notes and the model ladder that was actually used."""
+    for note in outcome.config_notes:
+        console.print(f"  [yellow]policy:[/yellow] {note}")
+    for reason in outcome.routing_reasons:
+        if reason.startswith("model_ladder="):
+            console.print(f"  [dim]models:  {reason}[/dim]")
+    if outcome.config_notes or any(r.startswith("model_ladder=") for r in outcome.routing_reasons):
+        console.print()
+
+
 @main.command()
-@click.option("--file", "-f", "--target", "target_file", default=None, type=click.Path(exists=True), help="Target source file to fix (optional; auto-localized from test if omitted).")
+@click.option("--file", "-f", "--target", "target_file", default=None, type=str, help="Target source file to fix, relative to the workspace (optional; auto-localized from the test if omitted). With an absolute path and no -w, the file's directory becomes the workspace.")
 @click.option("--test", "-t", "test_command", required=True, type=str, help="Test command to run (e.g. 'pytest tests/test_calc.py').")
-@click.option("--test-file", type=click.Path(exists=True), default=None, help="Optional test file to copy to isolated workspace.")
+@click.option("--test-file", type=str, default=None, help="Optional test file to copy to isolated workspace.")
 @click.option("--provider", "-p", default=None, help="Override provider name for this run.")
 @click.option("--model", "-m", default=None, help="Override model ID for this run.")
 @click.option("--effort", "-e", type=click.Choice(["low", "medium", "high"], case_sensitive=False), default=None, help="Explicit reasoning effort.")
 @click.option("--no-adaptive", is_flag=True, default=False, help="Disable adaptive difficulty routing.")
-@click.option("--attempts", "-a", default=3, type=int, help="Maximum recovery attempts (max 3 turns).")
-@click.option("--budget", "-b", default=0.05, type=float, help="Maximum budget limit in USD.")
-@click.option("--workspace", "-w", default=None, help="Active workspace path.")
+@click.option("--attempts", "-a", default=DEFAULT_MAX_ATTEMPTS, show_default=True, type=click.IntRange(1, MAX_ATTEMPTS_CEILING), help=f"Maximum recovery attempts (1-{MAX_ATTEMPTS_CEILING}).")
+@click.option("--budget", "-b", default=DEFAULT_BUDGET_USD, show_default=True, type=float, callback=_positive_finite_budget, help=f"Maximum budget limit in USD (up to ${MAX_CLI_BUDGET_USD:.0f}).")
+@click.option(
+    "--price",
+    "prices",
+    multiple=True,
+    callback=_parse_prices,
+    metavar="MODEL=IN,OUT[,CACHED]",
+    help="Price for a model Argus does not know, in USD per 1M tokens (repeatable). Argus refuses to guess prices for paid models.",
+)
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path (overrides the global -w; default: current directory).")
 @click.option("--enable-tier4", "--allow-tier4", is_flag=True, default=False, help="Enable experimental Tier 4 anchor-based patch matching (disabled by default).")
 @click.option("--apply", is_flag=True, default=False, help="Apply a verified patch only when --yes-reviewed is also supplied.")
 @click.option(
@@ -338,75 +537,62 @@ def run(
     no_adaptive: bool,
     attempts: int,
     budget: float,
+    prices: Dict[str, ModelCost],
     workspace: Optional[str],
     enable_tier4: bool,
     apply: bool,
     yes_reviewed: bool,
     json_events: bool,
 ):
-    """Run the Argus non-destructive code recovery loop on a failing file."""
-    ws_root = Path(workspace).resolve() if workspace else Path.cwd().resolve()
-    storage = ProviderStorage()
-    p_name = (provider or "").strip().lower()
+    """Run the Argus non-destructive code recovery loop on a failing file.
 
-    if p_name == "auto":
-        # 'auto' is an explicit request for deterministic discovery: prefer the
-        # stored active provider, then the host runtime. Never infer from keys.
-        p_cfg = storage.get_active_provider()
-        if not p_cfg:
-            from argus.providers.antigravity import find_antigravity_cli
-            if find_antigravity_cli() is not None:
-                p_cfg = ProviderConfig.from_preset("antigravity", model=model)
-        if not p_cfg:
-            console.print(
-                "[bold red]No discoverable provider for '--provider auto'.[/bold red] "
-                "Configure one or select 'antigravity' explicitly."
-            )
-            sys.exit(1)
-        console.print(f"[dim]Auto-selected provider: {p_cfg.name}[/dim]")
-    elif p_name == "antigravity":
-        p_cfg = ProviderConfig.from_preset("antigravity", model=model)
-    elif provider:
-        p_cfg = storage.get_provider(provider)
-        if not p_cfg:
-            console.print(f"[bold red]Provider '{provider}' not configured.[/bold red] Run 'argus provider set' first.")
-            sys.exit(1)
-    else:
-        p_cfg = storage.get_active_provider()
-        if not p_cfg:
-            console.print(
-                "[bold red]No LLM provider configured.[/bold red] Run 'argus provider set' first, "
-                "specify '--provider <name>', or explicitly request '--provider auto'."
-            )
-            sys.exit(1)
+    The supplied test command runs on THIS machine with your user permissions (it is not
+    sandboxed). A passing result means that command passed on the patched copy: it is not a
+    proof of semantic correctness, so review the diff before applying.
+    """
+    ws_arg = _workspace_arg(workspace)
+    target_arg = _resolve_input_file(target_file, ws_arg, "--file")
+    test_file_arg = _resolve_input_file(test_file, ws_arg, "--test-file")
+    # The same root the controller will use, so candidates are looked up where they are saved.
+    ws_root = RecoveryController._resolve_workspace_root(target_arg, ws_arg)
 
-    if model:
-        p_cfg.model = model
+    p_cfg = _resolve_provider(provider, model, ProviderStorage(), "run")
 
-    bounded_attempts = max(1, min(attempts, 3))
-
-    config = ArgusConfig(
-        provider=p_cfg.name,
-        model=p_cfg.model,
-        max_attempts=bounded_attempts,
-        budget_limit_usd=budget,
-        provider_config=p_cfg,
-        effort=effort,
-        adaptive_routing=not no_adaptive,
-        enable_tier4=enable_tier4,
-    )
+    try:
+        config = ArgusConfig(
+            provider=p_cfg.name,
+            model=p_cfg.model,
+            max_attempts=attempts,
+            budget_limit_usd=budget,
+            provider_config=p_cfg,
+            effort=effort,
+            adaptive_routing=not no_adaptive,
+            enable_tier4=enable_tier4,
+            model_prices=prices,
+        )
+    except ValueError as ex:
+        _fail(f"[bold red]Configuration error:[/bold red] {ex}")
     controller = RecoveryController(config=config)
+
+    if json_events:
+        sys.stderr.write(f"NOTICE: {HOST_EXECUTION_WARNING}\n")
+    else:
+        console.print(f"[yellow]Notice:[/yellow] [dim]{HOST_EXECUTION_WARNING}[/dim]\n")
 
     # If --json-events is requested, output purely machine-readable JSON Lines to stdout
     if json_events:
         emitter = JsonLinesEmitter(sys.stdout)
-        outcome: RecoveryOutcome = controller.run(
-            target_file=target_file,
-            test_command=test_command,
-            test_file=test_file,
-            workspace_root=ws_root,
-            event_emitter=emitter,
-        )
+        try:
+            outcome: RecoveryOutcome = controller.run(
+                target_file=target_arg,
+                test_command=test_command,
+                test_file=test_file_arg,
+                workspace_root=ws_arg,
+                event_emitter=emitter,
+            )
+        except KeyboardInterrupt:
+            sys.stderr.write("Interrupted. Original files were not modified.\n")
+            sys.exit(130)
         if apply and outcome.status == "SUCCESS" and outcome.run_id:
             if not yes_reviewed:
                 sys.stderr.write(
@@ -414,19 +600,23 @@ def run(
                     f"Review the diff, then run 'argus approve {outcome.run_id}' followed by 'argus apply'.\n"
                 )
                 sys.exit(1)
-            CandidateArtifactStore.set_approval(
-                outcome.run_id,
-                approved=True,
-                workspace_root=ws_root,
-                approved_by="automation:--yes-reviewed",
-                approval_source="cli-run-json-apply",
-            )
-            apply_res = AuthoritativePatchApplier.apply(
-                run_id=outcome.run_id,
-                workspace_root=ws_root,
-                expected_target=outcome.target_file or target_file,
-                require_approval=True,
-            )
+            try:
+                CandidateArtifactStore.set_approval(
+                    outcome.run_id,
+                    approved=True,
+                    workspace_root=ws_root,
+                    approved_by="automation:--yes-reviewed",
+                    approval_source="cli-run-json-apply",
+                )
+                apply_res = AuthoritativePatchApplier.apply(
+                    run_id=outcome.run_id,
+                    workspace_root=ws_root,
+                    expected_target=outcome.target_file or target_arg,
+                    require_approval=True,
+                )
+            except CandidateApplicationError as ex:
+                sys.stderr.write(f"{ex.error_code}: {ex.message}\n")
+                sys.exit(1)
             if not apply_res.success:
                 sys.exit(1)
         if outcome.status not in ("SUCCESS", "ALREADY_PASSING"):
@@ -436,41 +626,43 @@ def run(
     effort_label = effort.upper() if effort else ("disabled" if no_adaptive else "adaptive")
     display_file = target_file or "(auto-localizing from test)"
     console.print(f"[bold]argus run[/bold]: {test_command}")
-    if target_file:
-        console.print(f"  target:   {target_file}")
-    else:
-        console.print(f"  target:   {display_file}")
+    console.print(f"  target:   {display_file}")
     console.print(f"  provider: {p_cfg.name} ({p_cfg.model}, effort: {effort_label})\n")
 
     def on_attempt_start(attempt: int, max_att: int):
         pass
 
     def on_attempt_end(record: AttemptRecord):
-        tier_label = f"tier {record.tier_used}" if record.tier_used else "turn"
         tier_model = getattr(record, "model_used", None) or p_cfg.model
         if record.test_passed:
             status_text = f"[green]ok[/green] ({record.duration_ms:.0f}ms, ${record.cost_usd:.4f})"
         else:
             status_text = f"[red]failed[/red] ({record.duration_ms:.0f}ms)"
 
-        console.print(f"  [{record.attempt}/{bounded_attempts}] {tier_label} ({tier_model})... {status_text}")
+        patch_label = f", patch: {record.patch_strategy}" if getattr(record, "patch_strategy", "") else ""
+        console.print(f"  [{record.attempt}/{attempts}] model {tier_model}{patch_label}... {status_text}")
         if not record.test_passed and record.error_summary:
             first_err_line = record.error_summary.strip().splitlines()[0][:85]
             console.print(f"      [dim]{first_err_line}[/dim]")
 
-    with console.status("[dim]Running recovery loop in isolated workspace...[/dim]"):
-        outcome: RecoveryOutcome = controller.run(
-            target_file=target_file,
-            test_command=test_command,
-            test_file=test_file,
-            workspace_root=ws_root,
-            on_attempt_start=on_attempt_start,
-            on_attempt_end=on_attempt_end,
-        )
+    try:
+        with console.status("[dim]Running recovery loop in isolated workspace...[/dim]"):
+            outcome = controller.run(
+                target_file=target_arg,
+                test_command=test_command,
+                test_file=test_file_arg,
+                workspace_root=ws_arg,
+                on_attempt_start=on_attempt_start,
+                on_attempt_end=on_attempt_end,
+            )
+    except KeyboardInterrupt:
+        _fail("\n[yellow]Interrupted.[/yellow] Original files were not modified.", code=130)
 
     console.print()
+    _print_run_notes(outcome)
     if outcome.status == "SUCCESS":
-        console.print(f"[bold green]✓ Verified passing[/bold green] ({outcome.total_attempts} attempts, {outcome.total_duration_ms:.0f}ms, ${outcome.total_cost_usd:.4f})")
+        console.print(f"[bold green]✓ Test command passes on the patched copy[/bold green] ({outcome.total_attempts} attempts, {outcome.total_duration_ms:.0f}ms, ${outcome.total_cost_usd:.4f})")
+        console.print("  [dim]Applied to a copy only; syntax-checked and test-verified, not reviewed for semantic correctness.[/dim]")
         console.print(f"  Candidate: [dim]{outcome.run_id}[/dim]")
         if outcome.target_file:
             console.print(f"  Target:    {outcome.target_file}")
@@ -493,28 +685,32 @@ def run(
                     f"[dim]Review the diff, then run 'argus approve {outcome.run_id}' and "
                     "'argus apply', or pass --yes-reviewed for reviewed non-interactive use.[/dim]\n"
                 )
+                sys.exit(1)
             elif apply:
                 console.print(f"[dim]Applying patch from {outcome.run_id}...[/dim]")
-                CandidateArtifactStore.set_approval(
-                    outcome.run_id,
-                    approved=True,
-                    workspace_root=ws_root,
-                    approved_by="automation:--yes-reviewed",
-                    approval_source="cli-run-apply",
-                )
-                apply_result = AuthoritativePatchApplier.apply(
-                    run_id=outcome.run_id,
-                    workspace_root=ws_root,
-                    expected_target=outcome.target_file or target_file,
-                    require_approval=True,
-                )
+                try:
+                    CandidateArtifactStore.set_approval(
+                        outcome.run_id,
+                        approved=True,
+                        workspace_root=ws_root,
+                        approved_by="automation:--yes-reviewed",
+                        approval_source="cli-run-apply",
+                    )
+                    apply_result = AuthoritativePatchApplier.apply(
+                        run_id=outcome.run_id,
+                        workspace_root=ws_root,
+                        expected_target=outcome.target_file or target_arg,
+                        require_approval=True,
+                    )
+                except CandidateApplicationError as ex:
+                    _fail(_candidate_error(outcome.run_id, ex))
                 if apply_result.success:
                     console.print(f"[green]✓ {apply_result.message}[/green]")
                 else:
-                    console.print(f"[red]✗ Patch rejected: {apply_result.message}[/red]")
+                    _fail(f"[red]✗ Patch rejected: {apply_result.message}[/red]")
             else:
                 console.print(f"[dim]To approve: argus approve {outcome.run_id}[/dim]")
-                console.print(f"[dim]To apply:   argus apply[/dim]\n")
+                console.print("[dim]To apply:   argus apply[/dim]\n")
 
     elif outcome.status == "ALREADY_PASSING":
         console.print(f"[green]✓ Test already passes[/green] without modifications. ({outcome.total_duration_ms:.0f}ms)\n")
@@ -537,11 +733,12 @@ def run(
 @main.command("exec")
 @click.argument("task_prompt", required=False)
 @click.option("--prompt", "-p", "flag_prompt", default=None, help="Task prompt or query.")
-@click.option("--file", "-f", "target_file", default=None, type=click.Path(exists=True), help="Optional target source file for context.")
+@click.option("--file", "-f", "target_file", default=None, type=str, help="Optional file sent to the provider as context.")
 @click.option("--effort", "-e", type=click.Choice(["low", "medium", "high"], case_sensitive=False), default=None, help="Explicit reasoning effort override.")
 @click.option("--no-adaptive", is_flag=True, default=False, help="Disable adaptive difficulty routing.")
-@click.option("--provider", default=None, help="Provider name (defaults to 'antigravity').")
+@click.option("--provider", default=None, help="Provider name (defaults to the active provider; use 'antigravity' to select the host runtime explicitly).")
 @click.option("--model", "-m", default=None, help="Override model ID.")
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Directory that --file is resolved against (default: current directory).")
 def exec_task(
     task_prompt: Optional[str],
     flag_prompt: Optional[str],
@@ -550,18 +747,27 @@ def exec_task(
     no_adaptive: bool,
     provider: Optional[str],
     model: Optional[str],
+    workspace: Optional[str],
 ):
-    """Execute a coding or analysis task through Antigravity's authenticated runtime with adaptive reasoning effort."""
+    """Send a one-off task to your configured provider (a direct inference call, not a recovery run).
+
+    The prompt and any --file contents are sent to the active (or named) provider. Without a
+    configured provider this command fails; it never falls back to the host runtime.
+    """
     full_prompt = flag_prompt or task_prompt
     if not full_prompt:
-        console.print("[bold red]Error:[/bold red] Please provide a task prompt as an argument or with -p/--prompt.")
-        sys.exit(1)
+        _fail("[bold red]Error:[/bold red] Please provide a task prompt as an argument or with -p/--prompt.")
 
+    ws_arg = _workspace_arg(workspace)
     code_content = None
     if target_file:
-        tf_path = Path(target_file)
-        if tf_path.is_file():
-            code_content = tf_path.read_text(encoding="utf-8", errors="replace")
+        tf_path = Path(_resolve_input_file(target_file, ws_arg, "--file") or target_file)
+        if not tf_path.is_absolute():
+            tf_path = Path.cwd() / tf_path
+        code_content = tf_path.read_text(encoding="utf-8", errors="replace")
+
+    # Resolve the provider first: no provider means no work and no classification.
+    p_cfg = _resolve_provider(provider, model, ProviderStorage(), "exec")
 
     # 1. Difficulty Classification
     from argus.routing.difficulty import DifficultyClassifier
@@ -574,28 +780,7 @@ def exec_task(
         disable_adaptive=no_adaptive,
     )
 
-    # 2. Resolve Provider (Antigravity by default or configured provider)
-    storage = ProviderStorage()
-    p_name = (provider or "").strip().lower()
-    if p_name == "antigravity":
-        p_cfg = ProviderConfig.from_preset("antigravity", model=model)
-    elif provider:
-        p_cfg = storage.get_provider(provider)
-        if not p_cfg:
-            console.print(f"[bold red]Unknown provider '{provider}'.[/bold red]")
-            sys.exit(1)
-        if model:
-            p_cfg.model = model
-    else:
-        active = storage.get_active_provider()
-        if active:
-            p_cfg = active
-            if model:
-                p_cfg.model = model
-        else:
-            p_cfg = ProviderConfig.from_preset("antigravity", model=model)
-
-    console.print(f"[bold]argus exec[/bold]: {p_cfg.name} ({p_cfg.model}, effort: {decision.effort})")
+    console.print(f"[bold]argus exec[/bold]: {p_cfg.name} (requested model: {p_cfg.model}, effort: {decision.effort})")
     if target_file:
         console.print(f"  context:  {target_file}")
     if decision.reasons:
@@ -603,6 +788,8 @@ def exec_task(
     console.print()
 
     # Build prompt messages
+    from argus.utils.redaction import scrub_prompt
+
     messages = [
         {
             "role": "system",
@@ -615,14 +802,13 @@ def exec_task(
     user_body = full_prompt
     if code_content and target_file:
         user_body = f"Context file: {target_file}\n```\n{code_content}\n```\n\nTask: {full_prompt}"
-    messages.append({"role": "user", "content": user_body})
+    messages.append({"role": "user", "content": scrub_prompt(user_body, keys=[p_cfg.api_key] if p_cfg.api_key else None)})
 
     # Execute via adapter
     if p_cfg.name.lower() == "antigravity":
         from argus.providers.antigravity import AntigravityHostAdapter
         adapter = AntigravityHostAdapter(config=p_cfg)
     else:
-        from argus.providers.adapter import OpenAICompatibleAdapter
         adapter = OpenAICompatibleAdapter(config=p_cfg)
 
     with console.status(f"[dim]Executing task through {p_cfg.name}...[/dim]"):
@@ -638,7 +824,7 @@ def exec_task(
     console.print(resp.content)
     console.print()
     console.print(
-        f"[dim]{resp.model} · {resp.duration_ms:.0f}ms · "
+        f"[dim]answered by {resp.model} · {resp.duration_ms:.0f}ms · "
         f"~{resp.prompt_tokens} in / ~{resp.completion_tokens} out[/dim]\n"
     )
 
@@ -650,10 +836,10 @@ def exec_task(
 @main.command("candidates")
 @click.option("--limit", "-n", default=10, type=int, help="Maximum number of candidates to list (default 10).")
 @click.option("--all", "-a", "show_all", is_flag=True, default=False, help="List all candidate runs.")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path.")
-def candidates_cmd(limit: int, show_all: bool, workspace: str):
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path.")
+def candidates_cmd(limit: int, show_all: bool, workspace: Optional[str]):
     """List recent recovery candidate patches with verification and approval status."""
-    ws_root = Path(workspace).resolve()
+    ws_root = _workspace_or_cwd(workspace)
     candidates = CandidateArtifactStore.list_candidates(workspace_root=ws_root)
 
     if not candidates:
@@ -708,81 +894,88 @@ def candidates_cmd(limit: int, show_all: bool, workspace: str):
 
 @main.command("inspect")
 @click.argument("run_id")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path.")
-def inspect_cmd(run_id: str, workspace: str):
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path.")
+def inspect_cmd(run_id: str, workspace: Optional[str]):
     """Inspect candidate patch details and view its unified diff."""
-    ws_root = Path(workspace).resolve()
+    ws_root = _workspace_or_cwd(workspace)
     try:
         metadata, _ = CandidateArtifactStore.load_candidate(run_id, workspace_root=ws_root)
         diff_text = CandidateArtifactStore.get_candidate_diff(run_id, workspace_root=ws_root)
+    except CandidateApplicationError as ex:
+        _fail(f"[red]Failed to inspect candidate '{run_id}':[/red]\n  {_candidate_error(run_id, ex)}")
+    except (OSError, ValueError) as ex:
+        _fail(f"[red]Failed to inspect candidate '{run_id}':[/red] {ex}")
 
-        ver_str = "[green]verified (passed)[/green]" if metadata.verified else "[red]unverified (failed)[/red]"
-        app_str = "[green]approved[/green]" if metadata.approved else "[yellow]pending[/yellow]"
+    ver_str = "[green]verified: the test command passed on the patched copy[/green]" if metadata.verified else "[red]unverified (failed)[/red]"
+    app_str = "[green]approved[/green]" if metadata.approved else "[yellow]pending[/yellow]"
 
-        console.print(f"\n[bold]Candidate:[/bold] {metadata.run_id}")
-        console.print(f"  Target File:  {metadata.target_file}")
-        console.print(f"  Test Command: {metadata.test_command}")
-        console.print(f"  Status:       {ver_str}")
-        console.print(f"  Approval:     {app_str}")
-        console.print(f"  Applied:      {metadata.applied}")
-        console.print(f"  Attempts:     {metadata.attempts} (${metadata.cost_usd:.4f})")
-        console.print(f"  Created:      {metadata.created_at}\n")
+    console.print(f"\n[bold]Candidate:[/bold] {metadata.run_id}")
+    console.print(f"  Target File:  {metadata.target_file}")
+    console.print(f"  Test Command: {metadata.test_command}")
+    console.print(f"  Status:       {ver_str}")
+    console.print(f"  Approval:     {app_str}")
+    console.print(f"  Applied:      {metadata.applied}")
+    if metadata.tier_used is not None:
+        console.print(f"  Patch tier:   {metadata.tier_used} (SEARCH/REPLACE matcher tier)")
+    console.print(f"  Attempts:     {metadata.attempts} (${metadata.cost_usd:.4f})")
+    console.print(f"  Created:      {metadata.created_at}\n")
 
-        if diff_text:
-            console.print("[bold]Candidate Diff:[/bold]")
-            syntax = Syntax(diff_text, "diff", theme="monokai", line_numbers=False)
-            console.print(syntax)
-        else:
-            console.print("[dim]No diff recorded for this candidate.[/dim]")
-    except Exception as ex:
-        console.print(f"[red]Failed to inspect candidate '{run_id}':[/red] {ex}")
+    if diff_text:
+        console.print("[bold]Candidate Diff:[/bold]")
+        syntax = Syntax(diff_text, "diff", theme="monokai", line_numbers=False)
+        console.print(syntax)
+    else:
+        console.print("[dim]No diff recorded for this candidate.[/dim]")
 
 
 @main.command()
 @click.argument("run_id", required=False, default=None)
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path.")
-def diff(run_id: Optional[str], workspace: str):
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path.")
+def diff(run_id: Optional[str], workspace: Optional[str]):
     """Display the unified diff for a candidate run (defaults to last run)."""
-    ws_root = Path(workspace).resolve()
+    ws_root = _workspace_or_cwd(workspace)
     target_id = run_id or CandidateArtifactStore.get_last_run_id(workspace_root=ws_root)
     if not target_id:
-        diff_file = Path(".argus/last_run.diff")
+        diff_file = ws_root / ".argus" / "last_run.diff"
         if diff_file.is_file():
             diff_content = diff_file.read_text(encoding="utf-8")
             syntax = Syntax(diff_content, "diff", theme="monokai", line_numbers=False)
             console.print(syntax)
             return
-        console.print("[yellow]No recent candidate runs found.[/yellow]")
-        return
+        _fail("[yellow]No recent candidate runs found.[/yellow]")
 
-    diff_text = CandidateArtifactStore.get_candidate_diff(target_id, workspace_root=ws_root)
+    try:
+        diff_text = CandidateArtifactStore.get_candidate_diff(target_id, workspace_root=ws_root)
+    except CandidateApplicationError as ex:
+        _fail(_candidate_error(target_id, ex))
     if diff_text:
         syntax = Syntax(diff_text, "diff", theme="monokai", line_numbers=False)
         console.print(syntax)
     else:
-        console.print(f"[yellow]No diff recorded for run '{target_id}'.[/yellow]")
+        _fail(f"[yellow]No diff recorded for run '{target_id}'.[/yellow]")
 
 
 @main.command("approve")
 @click.argument("run_id")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path.")
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path.")
 @click.option("--yes", "-y", is_flag=True, default=False, help="Trusted-automation bypass: skip interactive confirmation (for non-interactive CI/scripts only; not a human approval boundary).")
 @click.option("--force", is_flag=True, default=False, help="Allow approving an unverified candidate.")
-def approve_cmd(run_id: str, workspace: str, yes: bool, force: bool):
+def approve_cmd(run_id: str, workspace: Optional[str], yes: bool, force: bool):
     """Grant approval for a candidate patch after reviewing its diff.
-    
+
     Security note:
     The --yes flag is a trusted-automation bypass intended for scripted/CI environments.
     It does not constitute a human-approval boundary.
     """
-    ws_root = Path(workspace).resolve()
+    ws_root = _workspace_or_cwd(workspace)
 
     # 1. Load candidate metadata
     try:
         metadata, _ = CandidateArtifactStore.load_candidate(run_id, workspace_root=ws_root)
-    except Exception as ex:
-        console.print(f"[red]Candidate '{run_id}' not found:[/red] {ex}")
-        sys.exit(1)
+    except CandidateApplicationError as ex:
+        _fail(f"[red]Cannot approve candidate '{run_id}':[/red]\n  {_candidate_error(run_id, ex)}")
+    except (OSError, ValueError) as ex:
+        _fail(f"[red]Cannot approve candidate '{run_id}':[/red] {ex}")
 
     # 2. Check verification status
     if not metadata.verified and not force:
@@ -793,7 +986,7 @@ def approve_cmd(run_id: str, workspace: str, yes: bool, force: bool):
     # 3. Present formatted review summary
     console.print(f"\n[bold]Candidate Review:[/bold] {run_id}")
     console.print(f"  Target File: {metadata.target_file}")
-    ver_status = "[green]VERIFIED PASSING[/green]" if metadata.verified else "[red]UNVERIFIED / FAILING[/red]"
+    ver_status = "[green]TEST COMMAND PASSED (copy)[/green]" if metadata.verified else "[red]UNVERIFIED / FAILING[/red]"
     console.print(f"  Status:      {ver_status}")
     console.print(f"  Attempts:    {metadata.attempts} (${metadata.cost_usd:.4f})")
     console.print(f"  Created:     {metadata.created_at}")
@@ -809,20 +1002,14 @@ def approve_cmd(run_id: str, workspace: str, yes: bool, force: bool):
 
     # 5. Interactive confirmation flow
     if not yes:
-        if sys.stdin.isatty():
+        try:
             confirmed = click.confirm("\nDo you want to approve this patch candidate?", default=False)
-            if not confirmed:
-                console.print("[yellow]Approval cancelled by user.[/yellow]")
-                return
-        else:
-            try:
-                confirmed = click.confirm("\nDo you want to approve this patch candidate?", default=False)
-                if not confirmed:
-                    console.print("[yellow]Approval cancelled by user.[/yellow]")
-                    return
-            except Exception:
-                console.print("[yellow]Non-interactive environment detected. Pass '-y' / '--yes' to confirm approval.[/yellow]")
-                sys.exit(1)
+        except click.Abort:
+            console.print("[yellow]Non-interactive environment or cancelled. Pass '-y' / '--yes' to confirm approval in scripts.[/yellow]")
+            sys.exit(1)
+        if not confirmed:
+            console.print("[yellow]Approval cancelled by user.[/yellow]")
+            sys.exit(1)
 
     # 6. Persist approval state
     try:
@@ -833,32 +1020,36 @@ def approve_cmd(run_id: str, workspace: str, yes: bool, force: bool):
             approved_by="automation:--yes" if yes else "interactive:cli",
             approval_source="cli-approve-yes" if yes else "cli-approve-interactive",
         )
-        console.print(f"\n[green]✓ [APPROVED] Candidate {run_id}[/green]")
-        console.print(f"  Target File: {updated.target_file}")
-        console.print(f"  Approved At: {updated.approved_at}")
-        console.print(f"  To apply:    argus apply --run-id {run_id}\n")
-    except Exception as ex:
-        console.print(f"[red]Approval failed:[/red] {ex}")
-        sys.exit(1)
+    except CandidateApplicationError as ex:
+        _fail(f"[red]Approval failed:[/red]\n  {_candidate_error(run_id, ex)}")
+    except OSError as ex:
+        _fail(f"[red]Approval failed:[/red] {ex}")
+    console.print(f"\n[green]✓ [APPROVED] Candidate {run_id}[/green]")
+    console.print(f"  Target File: {updated.target_file}")
+    console.print(f"  Approved At: {updated.approved_at}")
+    console.print(f"  To apply:    argus apply --run-id {run_id}\n")
 
 
 @main.command("reject")
 @click.argument("run_id")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path.")
-def reject_cmd(run_id: str, workspace: str):
-    """Reject a candidate patch, revoking approval."""
-    ws_root = Path(workspace).resolve()
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path.")
+def reject_cmd(run_id: str, workspace: Optional[str]):
+    """Reject a candidate patch, revoking approval. This does not undo an already applied patch."""
+    ws_root = _workspace_or_cwd(workspace)
     try:
-        CandidateArtifactStore.set_approval(run_id, approved=False, workspace_root=ws_root)
-        console.print(f"[yellow][REJECTED] Candidate {run_id} approval revoked.[/yellow]")
-    except Exception as ex:
-        console.print(f"[red]Rejection failed:[/red] {ex}")
-        sys.exit(1)
+        meta = CandidateArtifactStore.set_approval(run_id, approved=False, workspace_root=ws_root)
+    except CandidateApplicationError as ex:
+        _fail(f"[red]Rejection failed:[/red]\n  {_candidate_error(run_id, ex)}")
+    except OSError as ex:
+        _fail(f"[red]Rejection failed:[/red] {ex}")
+    console.print(f"[yellow][REJECTED] Candidate {run_id} approval revoked.[/yellow]")
+    if meta.applied:
+        console.print("[dim]Note: this candidate was already applied; rejecting does not revert the file. Restore it from version control.[/dim]")
 
 
 @main.command("apply")
 @click.option("--run-id", "-r", default=None, help="Specific recovery run ID to apply. If omitted, uses last run.")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path.")
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path.")
 @click.option("--file", "-f", "target_file", default=None, help="Optional assertion that candidate targets this file.")
 @click.option(
     "--force",
@@ -866,22 +1057,29 @@ def reject_cmd(run_id: str, workspace: str):
     default=False,
     help="Bypass the approval gate only. Candidate hash, baseline hash, containment and AST checks still apply.",
 )
-def apply_cmd(run_id: Optional[str], workspace: str, target_file: Optional[str], force: bool):
+def apply_cmd(run_id: Optional[str], workspace: Optional[str], target_file: Optional[str], force: bool):
     """Authoritatively apply a verified patch candidate to the source file."""
-    ws_root = Path(workspace).resolve()
+    ws_root = _workspace_or_cwd(workspace)
     resolved_run_id = run_id or CandidateArtifactStore.get_last_run_id(ws_root)
     if not resolved_run_id:
-        console.print("[red]No candidate run found. Specify --run-id or execute 'argus run' first.[/red]")
-        sys.exit(1)
+        _fail("[red]No candidate run found. Specify --run-id or execute 'argus run' first.[/red]")
 
-    # When run directly by the user via CLI, require_approval is enforced unless --force is passed
-    # or the user has already approved it.
-    result = AuthoritativePatchApplier.apply(
-        run_id=resolved_run_id,
-        workspace_root=ws_root,
-        expected_target=target_file,
-        require_approval=not force,
-    )
+    try:
+        metadata, _ = CandidateArtifactStore.load_candidate(resolved_run_id, workspace_root=ws_root)
+        if metadata.applied:
+            console.print(f"[green]✓[/green] Candidate {metadata.run_id} was already applied at {metadata.applied_at}. Nothing to do.")
+            return
+
+        # When run directly by the user via CLI, require_approval is enforced unless --force is passed
+        # or the user has already approved it.
+        result = AuthoritativePatchApplier.apply(
+            run_id=resolved_run_id,
+            workspace_root=ws_root,
+            expected_target=target_file,
+            require_approval=not force,
+        )
+    except CandidateApplicationError as ex:
+        _fail(f"[red]✗ [REJECTED][/red]\n  {_candidate_error(resolved_run_id, ex)}")
     if result.success:
         console.print(f"[green]✓ [APPLIED][/green] {result.message}")
     else:
@@ -911,15 +1109,15 @@ def mcp_run():
 @mcp_group.command("install")
 @click.argument("target", required=False, default="all", type=click.Choice(["antigravity", "opencode", "gemini", "all"]))
 @click.option("--global/--workspace", "global_mode", default=True, help="Install globally in user profile or locally in current workspace.")
-@click.option("--workspace-path", default=".", type=click.Path(exists=True), help="Target workspace path if using --workspace.")
-def mcp_install(target: str, global_mode: bool, workspace_path: str):
+@click.option("--workspace-path", default=None, type=click.Path(exists=True, file_okay=False), help="Target workspace path if using --workspace (default: the active workspace).")
+def mcp_install(target: str, global_mode: bool, workspace_path: Optional[str]):
     """Install Argus MCP server configuration into host agents (Antigravity, OpenCode, Gemini CLI)."""
     from argus.mcp.installer import (
         install_antigravity,
         install_gemini,
         install_opencode,
     )
-    ws = Path(workspace_path).resolve()
+    ws = _workspace_or_cwd(workspace_path)
     results = []
 
     if target in ("antigravity", "all"):
@@ -976,8 +1174,8 @@ def mcp_verify():
 @click.option("--list", "-l", "list_all", is_flag=True, default=False, help="List all available client presets.")
 @click.option("--print", "-p", "print_only", is_flag=True, default=False, help="Print configuration to stdout instead of writing file.")
 @click.option("--overwrite", "-o", is_flag=True, default=False, help="Overwrite existing configuration file.")
-@click.option("--dir", "-d", "target_dir", default=".", type=click.Path(file_okay=False), help="Target directory to write configuration.")
-def init_cmd(client: Optional[str], list_all: bool, print_only: bool, overwrite: bool, target_dir: str):
+@click.option("--dir", "-d", "target_dir", default=None, type=click.Path(file_okay=False), help="Target directory to write configuration (default: the active workspace).")
+def init_cmd(client: Optional[str], list_all: bool, print_only: bool, overwrite: bool, target_dir: Optional[str]):
     """Generate integration presets for external coding tools (Aider, Claude, OpenCode, Continue, Cursor)."""
     from argus.adapters.presets import export_preset, get_preset, list_presets
 
@@ -998,8 +1196,7 @@ def init_cmd(client: Optional[str], list_all: bool, print_only: bool, overwrite:
 
     preset = get_preset(client)
     if not preset:
-        console.print(f"[red]✗[/red] Unknown client preset '{client}'. Run 'argus init --list' to see options.")
-        return
+        _fail(f"[red]✗[/red] Unknown client preset '{client}'. Run 'argus init --list' to see options.")
 
     if print_only:
         console.print(f"\n[bold]Configuration for {preset.display_name}:[/bold]")
@@ -1009,25 +1206,25 @@ def init_cmd(client: Optional[str], list_all: bool, print_only: bool, overwrite:
         return
 
     try:
-        exported_path = export_preset(preset.key, target_dir=target_dir, overwrite=overwrite)
+        exported_path = export_preset(preset.key, target_dir=target_dir or str(_workspace_or_cwd(None)), overwrite=overwrite)
         console.print(f"[green]✓[/green] Created preset for {preset.display_name}")
         console.print(f"  file:         {exported_path}")
         console.print(f"  instructions: {preset.instructions}")
         console.print(f"  run:          {preset.cli_command}\n")
     except FileExistsError as ex:
-        console.print(f"[yellow]![/yellow] File exists: {ex}")
-    except Exception as ex:
-        console.print(f"[red]✗[/red] Failed to export preset: {ex}")
+        _fail(f"[yellow]![/yellow] File exists: {ex} (pass --overwrite to replace it)")
+    except OSError as ex:
+        _fail(f"[red]✗[/red] Failed to export preset: {ex}")
 
 
 @main.command("setup")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path.")
-@click.option("--all", "-a", "connect_all", is_flag=True, default=False, help="Automatically connect all detected clients without prompting.")
-def setup_cmd(workspace: str, connect_all: bool):
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path.")
+@click.option("--all", "-a", "connect_all", is_flag=True, default=False, help="Connect all detected clients without prompting (required when no terminal is attached).")
+def setup_cmd(workspace: Optional[str], connect_all: bool):
     """Auto-detect installed IDEs & agents and connect them with zero manual configuration."""
     from argus.adapters.discovery import connect_all_detected, discover_clients
 
-    ws_root = Path(workspace).resolve()
+    ws_root = _workspace_or_cwd(workspace)
     clients = discover_clients(ws_root)
 
     console.print("\n[bold]Argus Client Auto-Discovery & Zero-Friction Setup[/bold]\n")
@@ -1062,7 +1259,10 @@ def setup_cmd(workspace: str, connect_all: bool):
                 console.print("[yellow]Setup cancelled by user.[/yellow]")
                 return
         else:
-            connect_all = True
+            _fail(
+                "[red]✗[/red] 'argus setup' modifies other tools' configuration files and needs a terminal to confirm. "
+                "Pass --all to connect every detected tool non-interactively."
+            )
 
     results = connect_all_detected(ws_root)
     for k, (ok, msg) in results.items():
@@ -1074,28 +1274,25 @@ def setup_cmd(workspace: str, connect_all: bool):
     console.print("\n[bold green]✓ Auto-setup complete![/bold green] Launch the gateway with [bold]argus gateway[/bold] or use tools directly.\n")
 
 
-@main.command("gateway")
-@click.option("--port", "-p", default=8000, type=int, help="Port to bind Argus Gateway proxy.")
-@click.option("--host", "-h", default="127.0.0.1", type=str, help="Host address to bind.")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path for streaming patch healing.")
-@click.option("--config", "-c", default=None, type=click.Path(), help="Path to custom argus.yaml configuration.")
-@click.option("--allow-remote", is_flag=True, default=False, help="Allow non-loopback network exposure. Requires ARGUS_GATEWAY_API_KEY. WARNING: Exposes gateway to external network.")
-def gateway_cmd(port: int, host: str, workspace: str, config: Optional[str], allow_remote: bool):
-    """Launch local OpenAI-compatible inference proxy with streaming patch healing."""
-    serve(port=port, host=host, workspace=workspace, config=config, allow_remote=allow_remote)
+def _gateway_options(func):
+    """Shared options for the ``gateway`` and ``serve`` commands."""
+    options = [
+        click.option("--port", "-p", default=8000, type=click.IntRange(1, 65535), help="Port to bind Argus Gateway proxy."),
+        click.option("--host", "-h", default="127.0.0.1", type=str, help="Host address to bind."),
+        click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Active workspace path for streaming patch healing."),
+        click.option("--config", "-c", default=None, type=click.Path(), help="Path to custom argus.yaml configuration."),
+        click.option("--allow-remote", is_flag=True, default=False, help="Allow non-loopback network exposure. Requires ARGUS_GATEWAY_API_KEY. WARNING: Exposes gateway to external network."),
+    ]
+    for option in reversed(options):
+        func = option(func)
+    return func
 
 
-@main.command()
-@click.option("--port", "-p", default=8000, type=int, help="Port to bind Argus Gateway proxy.")
-@click.option("--host", "-h", default="127.0.0.1", type=str, help="Host address to bind.")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Active workspace path for streaming patch healing.")
-@click.option("--config", "-c", default=None, type=click.Path(), help="Path to custom argus.yaml configuration.")
-@click.option("--allow-remote", is_flag=True, default=False, help="Allow non-loopback network exposure. Requires ARGUS_GATEWAY_API_KEY. WARNING: Exposes gateway to external network.")
-def serve(port: int, host: str, workspace: str, config: Optional[str], allow_remote: bool):
-    """Launch local OpenAI-compatible inference proxy with streaming patch healing."""
+def _start_gateway(port: int, host: str, workspace: Optional[str], config: Optional[str], allow_remote: bool) -> None:
+    """Start the gateway proxy. A plain function, shared by ``gateway`` and ``serve``."""
     try:
         import uvicorn
-        import fastapi
+        import fastapi  # noqa: F401
     except ImportError:
         console.print("[red]The Argus Gateway proxy requires the optional 'gateway' dependencies.[/red]")
         console.print('Please install them with: [bold]pip install "argus-recovery\\[gateway]"[/bold]\n')
@@ -1103,6 +1300,8 @@ def serve(port: int, host: str, workspace: str, config: Optional[str], allow_rem
 
     from argus.gateway.config import GatewayConfig
     from argus.gateway.server import app, init_gateway
+
+    ws_root = _workspace_or_cwd(workspace)
 
     # Enforce loopback binding by default
     loopback_hosts = {"127.0.0.1", "localhost", "::1"}
@@ -1121,7 +1320,7 @@ def serve(port: int, host: str, workspace: str, config: Optional[str], allow_rem
         console.print("Unauthenticated gateway execution is strictly prohibited. Please set ARGUS_GATEWAY_API_KEY.\n")
         sys.exit(1)
 
-    init_gateway(config=cfg, workspace=workspace)
+    init_gateway(config=cfg, workspace=str(ws_root))
 
     if allow_remote:
         console.print("[bold yellow]WARNING: Gateway is exposed to non-loopback network interfaces. Mandatory authentication is active.[/bold yellow]")
@@ -1129,18 +1328,32 @@ def serve(port: int, host: str, workspace: str, config: Optional[str], allow_rem
     console.print(f"[bold]argus gateway[/bold] listening on http://{host}:{port}/v1")
     console.print(f"  health:    http://{host}:{port}/health")
     console.print(f"  models:    http://{host}:{port}/v1/models")
-    console.print(f"  workspace: {Path(workspace).resolve()}\n")
+    console.print(f"  workspace: {ws_root}\n")
 
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
+@main.command("gateway")
+@_gateway_options
+def gateway_cmd(port: int, host: str, workspace: Optional[str], config: Optional[str], allow_remote: bool):
+    """Launch local OpenAI-compatible inference proxy with streaming patch healing."""
+    _start_gateway(port=port, host=host, workspace=workspace, config=config, allow_remote=allow_remote)
+
+
+@main.command("serve")
+@_gateway_options
+def serve(port: int, host: str, workspace: Optional[str], config: Optional[str], allow_remote: bool):
+    """Alias of 'argus gateway'."""
+    _start_gateway(port=port, host=host, workspace=workspace, config=config, allow_remote=allow_remote)
+
+
 @main.command("app")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Target workspace path.")
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Target workspace path.")
 @click.option("--install-shortcut", is_flag=True, default=False, help="Install Windows desktop shortcut launcher.")
-def app_cmd(workspace: str, install_shortcut: bool):
+def app_cmd(workspace: Optional[str], install_shortcut: bool):
     """Launch dedicated Argus standalone terminal application window."""
     try:
-        import textual
+        import textual  # noqa: F401
     except ImportError:
         console.print("[red]The Argus Terminal UI requires the optional 'tui' dependencies.[/red]")
         console.print('Please install them with: [bold]pip install "argus-recovery\\[tui]"[/bold]\n')
@@ -1153,11 +1366,11 @@ def app_cmd(workspace: str, install_shortcut: bool):
         console.print(f"[bold green]Successfully installed desktop shortcut:[/bold green] {sc_path}")
         return
 
-    launch_terminal_app(dedicated=True, workspace=workspace)
+    launch_terminal_app(dedicated=True, workspace=str(_workspace_or_cwd(workspace)))
 
 
 @main.command("tui")
-@click.option("--workspace", "-w", default=".", type=click.Path(exists=True), help="Target workspace path.")
+@click.option("--workspace", "-w", default=None, type=click.Path(exists=True, file_okay=False), help="Target workspace path.")
 @click.option(
     "--renderer",
     "-r",
@@ -1165,10 +1378,10 @@ def app_cmd(workspace: str, install_shortcut: bool):
     default=None,
     help="Logo rendering strategy (halfblock, text, braille).",
 )
-def tui_cmd(workspace: str, renderer: Optional[str] = None):
+def tui_cmd(workspace: Optional[str], renderer: Optional[str] = None):
     """Launch Argus interactive Terminal User Interface (TUI) in foreground."""
     try:
-        import textual
+        import textual  # noqa: F401
     except ImportError:
         console.print("[red]The Argus Terminal UI requires the optional 'tui' dependencies.[/red]")
         console.print('Please install them with: [bold]pip install "argus-recovery\\[tui]"[/bold]\n')
@@ -1178,7 +1391,7 @@ def tui_cmd(workspace: str, renderer: Optional[str] = None):
         os.environ["ARGUS_LOGO_RENDERER"] = renderer.lower()
 
     from argus.launcher import launch_terminal_app
-    launch_terminal_app(dedicated=False, workspace=workspace)
+    launch_terminal_app(dedicated=False, workspace=str(_workspace_or_cwd(workspace)))
 
 
 @main.command("logo-preview")

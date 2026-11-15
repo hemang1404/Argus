@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -23,10 +22,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from argus.config import ArgusConfig
 from argus.gateway.budget import BudgetConfig, BudgetGuard
 from argus.gateway.config import GatewayConfig, ProviderConfig, TierDefinition
-from argus.gateway.retry import FailureClassification, classify_exception, is_retryable, is_uncertain_execution
 from argus.gateway.router import GatewayRouter, NoEligibleProviderError
 from argus.gateway.server import app, init_gateway, validate_upstream_url
 from argus.gateway.telemetry import TelemetryRegistry
@@ -34,7 +31,6 @@ from argus.mcp.server import create_mcp_server
 from argus.patch.ast_checker import ASTChecker
 from argus.providers.adapter import ProviderError
 from argus.providers.antigravity import AntigravityHostAdapter, find_antigravity_cli
-from argus.providers.storage import scrub_secrets
 
 
 @pytest.fixture(autouse=True)
@@ -890,7 +886,7 @@ def test_recovery_safety_candidate_applier_rejections_preserve_target(tmp_path):
     base_hash = hashlib.sha256(original_code.encode("utf-8")).hexdigest()
 
     # 1. Invalid syntax in candidate -> refused with SYNTAX_VALIDATION_FAILED
-    run_dir = CandidateArtifactStore.save_run_artifact(
+    CandidateArtifactStore.save_run_artifact(
         run_id="run-bad-syntax",
         target_file="calc.py",
         test_command="pytest",
@@ -912,7 +908,7 @@ def test_recovery_safety_candidate_applier_rejections_preserve_target(tmp_path):
 
     # 2. Stale target modification -> refused with STALE_TARGET_CONFLICT
     target.write_text("def add(a, b):\n    # modified concurrently\n    return a + b\n", encoding="utf-8")
-    run_dir2 = CandidateArtifactStore.save_run_artifact(
+    CandidateArtifactStore.save_run_artifact(
         run_id="run-stale",
         target_file="calc.py",
         test_command="pytest",

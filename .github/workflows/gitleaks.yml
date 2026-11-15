@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   gitleaks:
@@ -20,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run Gitleaks action
         uses: gitleaks/gitleaks-action@v2

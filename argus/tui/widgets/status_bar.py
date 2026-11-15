@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import importlib.metadata
 from pathlib import Path
 
 from rich.cells import cell_len
 from rich.text import Text
 from textual.widget import Widget
 
-try:
-    _DEFAULT_VERSION = f"v{importlib.metadata.version('argus-recovery')}"
-except Exception:
-    _DEFAULT_VERSION = "v0.2.0"
+from argus import __version__
+
+_DEFAULT_VERSION = f"v{__version__}"
 
 
 class StatusBar(Widget):

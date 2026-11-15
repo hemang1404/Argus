@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import pytest
 
 from argus.adapters.protocol import (
     anthropic_to_openai_request,
-    format_anthropic_sse,
     openai_to_anthropic_response,
     transform_openai_stream_to_anthropic,
 )

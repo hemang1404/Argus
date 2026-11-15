@@ -1,9 +1,10 @@
-"""Argus: Adaptive Inference Routing & Resilient Code Recovery Runtime.
+"""Argus: a bounded, test-gated code recovery runtime.
 
-Argus is an execution-feedback-driven code recovery runtime and inference optimizer.
-It reconciles LLM-generated code edits using a 5-tier resilient fuzzy patch engine,
-validates syntax with full-file AST checks, and iteratively tests fixes in an isolated
-workspace.
+Argus asks a user-authorized model for a SEARCH/REPLACE fix, reconciles it with a tiered
+patch engine (exact, whitespace-tolerant, token-equal; an opt-in Tier 4), checks the result
+with a syntactic gate, runs the project's tests in a copied workspace, and only writes a
+candidate for explicit approval. The version below is the single source of truth: the
+packaging metadata reads it.
 """
 
 __version__ = "0.2.0b1"

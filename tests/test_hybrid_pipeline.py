@@ -1,11 +1,10 @@
 """Unit tests for Argus Deterministic Hybrid Pipeline (Localizer and FrameSlicer)."""
 
-import tempfile
 from pathlib import Path
 import pytest
 
-from argus.localization.localizer import DeterministicLocalizer, LocalizationCandidate
-from argus.runtime.frame_slicer import FrameSlicer, FrameSlice
+from argus.localization.localizer import DeterministicLocalizer
+from argus.runtime.frame_slicer import FrameSlicer
 
 
 @pytest.fixture

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import sys
-from typing import Optional
 
 from rich.table import Table
 from textual.app import ComposeResult
@@ -92,24 +90,30 @@ class DoctorModal(ModalScreen[None]):
         else:
             table.add_row("Pytest", f"[bold {_ORANGE}]WARN[/]", "Pytest not found in PATH")
 
-        # 4. Inference Provider & Host
+        # 4. Host runtime (binary discovery only: nothing is executed or authenticated here)
         from argus.providers.antigravity import find_antigravity_cli
         cli_path = find_antigravity_cli()
         if cli_path:
-            table.add_row("Host Integration", f"[bold {_GREEN}]ATTACHED[/]", "Antigravity CLI host")
+            table.add_row("Antigravity CLI", f"[bold {_BLUE}]BINARY FOUND[/]", f"{cli_path} (not an authenticated check)")
         else:
-            table.add_row("Host Integration", f"[{_MUTED}]STANDALONE[/]", "Direct API / Local gateway")
+            table.add_row("Antigravity CLI", f"[{_MUTED}]NOT FOUND[/]", "Direct API / local gateway only")
 
-        active_provider = self.config.provider or ("antigravity" if cli_path else "Not Configured")
-        if active_provider in ("antigravity", "ollama") or os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or self.config.deepseek_api_key:
-            table.add_row("Active Provider", f"[bold {_GREEN}]READY[/]", active_provider)
-        elif active_provider == "Not Configured":
-            table.add_row("Active Provider", f"[bold {_ORANGE}]SETUP NEEDED[/]", "Run 'argus setup' or 'argus provider set'")
+        # 5. Active provider: only what is actually configured, never inferred from the host binary or env keys
+        provider_cfg = getattr(self.config, "provider_config", None)
+        active_provider = self.config.provider or (provider_cfg.name if provider_cfg else None)
+        if not active_provider:
+            table.add_row("Active Provider", f"[bold {_ORANGE}]SETUP NEEDED[/]", "Run 'argus provider set'")
         else:
-            table.add_row("Active Provider", f"[bold {_BLUE}]CONFIGURED[/]", active_provider)
+            has_key = bool(getattr(provider_cfg, "api_key", None) or self.config.deepseek_api_key)
+            key_note = "key stored" if has_key else "no stored key (host/local provider or key missing)"
+            table.add_row(
+                "Active Provider",
+                f"[bold {_BLUE}]CONFIGURED[/]",
+                f"{active_provider} ({key_note}); connectivity not tested: run 'argus provider test'",
+            )
 
-        # 5. Active Model
-        active_model = self.config.model or "argus/auto (dynamic)"
-        table.add_row("Active Model", f"[bold {_BLUE}]ACTIVE[/]", active_model)
+        # 6. Active model
+        active_model = self.config.model or "(provider default)"
+        table.add_row("Active Model", f"[bold {_BLUE}]SET[/]", active_model)
 
         self.query_one("#doctor-content", Static).update(table)

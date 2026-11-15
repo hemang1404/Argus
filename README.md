@@ -10,12 +10,12 @@
   <a href="#quickstart">Quickstart</a> ·
   <a href="https://pypi.org/project/argus-recovery/">PyPI</a> ·
   <a href="docs/ARCHITECTURE.md">Architecture</a> ·
-  <a href="#interactive-terminal-cockpit">TUI Cockpit</a> ·
+  <a href="#interactive-terminal-cockpit">TUI</a> ·
   <a href="#model-context-protocol-mcp">MCP Server</a> ·
-  <a href="#local-gateway-proxy">Gateway</a> ·
+  <a href="#local-gateway-proxy-experimental">Gateway</a> ·
   <a href="docs/SECURITY_MODEL.md">Security</a> ·
+  <a href="docs/RESEARCH_STATUS.md">Research status</a> ·
   <a href="examples/">Examples</a> ·
-  <a href="benchmarks/">Benchmarks</a> ·
   <a href="https://argus.hemangsharrma.workers.dev">Documentation Site</a>
 </p>
 
@@ -27,333 +27,244 @@
 </p>
 
 <p align="center">
-  <strong>The missing bounded, test-gated recovery runtime for AI coding agents.</strong>
+  <strong>A bounded, test-gated recovery runtime for model-generated code edits.</strong>
 </p>
 
 ---
 
-Most autonomous coding agents and IDE assistants generate raw patch edits directly into your live working tree and leave you to manually untangle syntax breaks, whitespace rejections, merge conflicts, or test regressions.
+When a failing test is handed to a model, the model's edit often fails for reasons that have nothing to do with the bug: the search text has drifted, the indentation is off, the match is ambiguous, or the result no longer parses. Argus is the runtime around that step. You give it a failing test command. It copies the project into a temporary workspace, asks **your own configured model** for an edit, reconciles that edit against the file, re-runs your test command in the copy, and, if it passes, stores the result as a **candidate**. Nothing touches your real files until you approve the candidate and apply it.
 
-**Argus is the other half:** a local, bounded, test-gated recovery runtime that intercepts failing tests, virtualizes workspaces in transient git worktrees, reconciles drifted patch blocks using bounded fuzzy sliding-window matching, and guarantees that candidate repairs pass your test suite before a single byte touches your active repository.
+Argus is a local tool, not a service. It has no Argus-owned keys and no hidden fallback: it only calls a provider you configured, and with none configured it stops with an actionable error.
 
-- **5-tier resilient patch reconciler (Tiers 1–5):** Exact byte match, indentation/whitespace normalization, character-level sliding-window fuzzy matching (0.82 similarity threshold, 0.10 ambiguity margin), anchor matching, and safe refusal. Verified across our 500-case synthetic adversarial patch corpus with zero incorrect applications.
-- **Transient worktree & ephemeral sandbox isolation:** Runs test executions in isolated Git worktrees or temporary filesystem mirrors (`$TEMP/.argus-worktrees/`). Your uncommitted changes and active branch are completely protected during recovery loops.
-- **Authoritative approval-gated patch application:** Cryptographic SHA-256 pre- and post-condition hashes protect against Time-of-Check to Time-of-Use (TOCTOU) race conditions. Approved patches are committed to disk atomically (`os.replace`).
-- **Dynamic tier-based model routing & budget ceilings:** Configurable escalation across T1 Fast (`gemini-2.5-flash`), T2 Strong (`claude-3-7-sonnet` / `gemini-2.5-pro`), and T3 Frontier (`claude-3-opus`) with strict per-task and per-session hard dollar caps. Prohibited providers (Groq) are strictly refused at runtime.
-- **Interactive Textual TUI Cockpit (`argus tui`):** A keyboard-driven terminal cockpit featuring real-time execution timelines, phase spinners, model tier switcher, and a side-by-side / unified diff reviewer with approval gates.
-- **Model Context Protocol (FastMCP) server:** 4 native recovery tools (`argus_status`, `argus_recover`, `argus_get_candidate`, `argus_apply_candidate`) exposing Argus recovery directly to Claude Code, Cursor, Windsurf, or custom agent frameworks via stdio.
-- **Local OpenAI & Anthropic compatible gateway:** A loopback proxy (`127.0.0.1:8000/v1`) with two-phase budget reservation, exponential backoff retries, and hardened SSRF / DNS rebinding defenses.
-- **100% local execution & privacy first:** Runs entirely on your machine. Zero cloud telemetry, zero prompt tracking, MIT-licensed, with native Antigravity host integration or standard Bring-Your-Own-Key (BYOK) APIs.
+## What it does
 
-**Who this is for:** Developers, engineers, and teams running autonomous coding agents (Claude Code, Cursor, Aider, OpenCode, Antigravity) who need reliable, test-verified patch repairs without letting an LLM break their working tree or blow through API quotas.
+- **Tiered patch reconciliation.** SEARCH/REPLACE blocks are located in the file through exact matching, then whitespace/indentation-tolerant matching, then (default on) a token-equal match that may differ only in whitespace and comments. Tier 4 (anchor matching) is experimental and off unless you pass `--enable-tier4`. Anything ambiguous or not found is refused, never guessed. See [the tier table](#the-patch-engine).
+- **Syntax gate, not a correctness proof.** Every result must parse (`ast.parse` plus `compile`) before it is tried. That only means "valid Python syntax". Whether the change is right is decided by your tests, and even they are only test-relative.
+- **Isolated attempts.** Each run works in a temporary copy of your project (by default), so failed attempts never touch your working tree. The copy is not a security sandbox; see [Trust model](#trust-model-read-this-first).
+- **Feedback loop with a bounded budget.** Failed attempts feed the test output back to the model. Attempts, time, output size and spend all have ceilings. A model with no known price is refused rather than assumed free, unless the provider is local.
+- **Approval-gated apply.** Candidates are stored under `.argus/runs/<run_id>/` with baseline and candidate SHA-256 hashes and an HMAC signature. `argus apply` refuses unless the candidate is verified, approved, unmodified, and the target file still matches its baseline.
+- **Interfaces.** CLI, a Textual TUI, an MCP stdio server for agents, and an experimental local gateway.
 
-**Who this is NOT for:** Argus is not an LLM chat agent, an IDE autocomplete widget, or an open-ended autonomous software developer. If you just want a chatbot in your terminal, Argus is the wrong layer.
+### Success levels, kept separate
+
+Argus reports four different things. They are not interchangeable:
+
+| Level | Meaning | Who establishes it |
+| :--- | :--- | :--- |
+| Applied | The edit was located and written into the workspace copy | Patch engine |
+| Syntactic | The patched file parses as Python | `ast.parse` + `compile`; says nothing about behaviour |
+| Tests pass | The single test command you supplied passed in the copy | Your test command ("verified" in Argus output) |
+| Semantically correct | The change does what you meant | You, by reading the diff. Argus does not claim this |
+
+"Verified" in Argus output always means *tests pass* for the command you gave it, nothing more.
+
+### Who this is for
+
+Developers and agent builders who want model edits to fail safely: bounded, reviewable, never applied silently. It is not an LLM chat agent, not an IDE autocomplete tool and not an autonomous developer. Scope today is single-file, Python-source recovery.
 
 ---
 
-## Start Here
+## Trust model (read this first)
 
-If you are new to the repository, use this decision tree to find the right path:
+> **Argus runs your test command, including any model-generated code it exercises, directly on your machine with your user permissions. It is not sandboxed.** The temporary workspace copy protects your working tree from half-applied edits; it does not stop a test (or a malicious repository) from reading your files, using the network or deleting things you own. Only run it on repositories you trust. `argus run` prints this warning before it starts.
 
-| I want to... | Use this path |
-| :--- | :--- |
-| **Fix a failing test right now** | Use `argus recover "pytest tests/..."` from the [Quickstart](#quickstart) below. |
-| **Launch an interactive terminal dashboard** | Run `argus tui` to launch the Textual cockpit with visual diff reviews and model routing. |
-| **Connect Argus to Cursor, Claude Code, or Aider** | Run `argus setup` or `/connect` in the TUI, or run `argus init <client>`. |
-| **Expose recovery tools to my agent via MCP** | Run `argus mcp install` or configure `argus mcp` as a stdio server in your agent's config. |
-| **Run the local OpenAI/Anthropic gateway proxy** | Use `argus gateway` to route agent traffic through Argus budget and rate guards. |
-| **Inspect the technical architecture & security model** | Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md). |
-| **Explore the developer documentation portal** | Visit the live site at [argus.hemangsharrma.workers.dev](https://argus.hemangsharrma.workers.dev) or inspect [`argus-website/`](argus-website/). |
+Argus also never sends anything to a provider you did not configure, and never applies a candidate you did not approve. Provider credentials live in your OS keyring (with a restricted-permission fallback file). See [SECURITY.md](SECURITY.md) and [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md).
 
 ---
 
 ## Quickstart
 
-### 1. Installation
+### 1. Install
 
-Install `argus-recovery` directly from [PyPI](https://pypi.org/project/argus-recovery/) using your preferred Python package manager (requires Python `>=3.11`):
+Requires Python 3.11 or newer.
 
 ```bash
-# Using uv (recommended)
-uv pip install argus-recovery
-
-# Using pip
-pip install argus-recovery
-
-# With optional interactive terminal UI cockpit
-pip install "argus-recovery[all]"
-
-# Using pipx (isolated standalone CLI application)
-pipx install argus-recovery
+pip install argus-recovery            # CLI, MCP server, Python API
+pip install "argus-recovery[tui]"     # adds the Textual terminal UI
+pip install "argus-recovery[gateway]" # adds the experimental local gateway
+pip install "argus-recovery[tokens]"  # optional exact token counting (downloads a vocabulary once)
+# or, isolated: pipx install argus-recovery
 ```
 
-### 2. Verify Your Environment
+The `0.2.0b1` release on PyPI predates the audit remediation described in [CHANGELOG.md](CHANGELOG.md). To get the current behaviour documented here, install from the repository:
 
-Run `argus doctor` to verify system prerequisites, local Git installation, test runners, and active LLM provider connectivity:
+```bash
+pip install "git+https://github.com/hemang1404/Argus.git"
+```
+
+### 2. Configure a provider you own
+
+Argus uses only a provider you configure. The hidden prompt keeps the key out of your shell history:
+
+```bash
+argus provider set --preset openai      # prompts for the API key (hidden input)
+argus provider list
+```
+
+Presets: `antigravity` (host CLI, no key), `ollama`, `lmstudio`, `openai`, `deepseek`, `gemini`, `openrouter`, `custom` (any OpenAI-compatible endpoint). Anthropic models are reachable through `openrouter` or a `custom` endpoint; there is no dedicated Anthropic preset. Groq is refused.
+
+### 3. Check the environment
 
 ```bash
 argus doctor
 ```
 
-Output:
-```text
-argus doctor (v0.2.0b1)
+`doctor` reports Python, Git, pytest, the Antigravity CLI, a local Ollama endpoint and the active provider. Note that it makes a live request to the active provider, which can be billable.
 
-  ✓ Python          3.14.2
-  ✓ Git             C:\Program Files\Git\cmd\git.EXE
-  ✓ Pytest          .venv\Scripts\pytest.EXE
-  ✓ Antigravity     C:\Users\dell\AppData\Local\agy\bin\agy.exe
-  - Ollama          not detected on localhost:11434
-  ✓ Provider        antigravity (gemini-3.8-flash-medium)
-  ✓ Credentials     host/local (key not required)
-  ✓ Connectivity    3679.5ms (gemini-3.8-flash-medium)
-```
+### 4. Run a recovery
 
-### 3. Run Test-Gated Recovery
-
-Point Argus at a failing test command. Argus intercepts the failure, parses the stack trace, spins up an isolated Git worktree, iterates on a patch candidate, verifies it passes tests, and stages an approved diff:
+Give Argus the failing test command. `--file` names the file to repair; omit it to let Argus localize the file from the traceback.
 
 ```bash
-# Run recovery on a failing test suite
-argus recover "pytest tests/test_payment.py"
+argus run --test "pytest tests/test_payment.py" --file src/payment.py
 ```
 
-Once verified, inspect the generated patch and authoritatively apply it to your repository:
+`recover` is an alias of `run`. The test command is run without a shell: operators such as `&&`, `|`, `;`, `>` are rejected.
+
+### 5. Review, approve, apply
+
+A successful run prints a run ID. Nothing has changed in your repository yet.
 
 ```bash
-# Inspect recent recovery candidates
-argus candidates
-
-# View unified diff for the latest candidate
-argus diff
-
-# Apply the approved candidate to your working copy
-argus apply
+argus candidates                  # list recent runs
+argus inspect <run_id>            # metadata, patch tier used, diff
+argus diff <run_id>               # the unified diff
+argus approve <run_id>            # records your approval (asks for confirmation)
+argus apply --run-id <run_id>     # re-checks hashes and syntax, then writes atomically
 ```
 
-### 4. Python SDK Quickstart
+`argus apply` without `--run-id` uses the most recent run. Approval is recorded separately from verification, and a candidate whose target file changed since the run started is refused (`STALE_TARGET_CONFLICT`). A second `apply` reports that the run was already applied. Run directories under `.argus/` are not cleaned up automatically; Argus writes `.argus/.gitignore` so they stay out of `git status`, but they can contain source context, so delete old runs yourself.
 
-You can also embed the Argus recovery controller directly inside your own tools or agent scripts:
+### 6. Python API
+
+The same controller backs every interface. The example below is a real, runnable script that uses a stub provider so it works offline; see [`examples/quickstart_recovery.py`](examples/quickstart_recovery.py).
 
 ```python
-import asyncio
 from pathlib import Path
-from argus.runtime.controller import RecoveryController
 from argus.config import ArgusConfig
+from argus.runtime.controller import RecoveryController
+from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
 
-async def main():
-    # Configure budget ceiling, attempt limits, and sandbox strategy
-    config = ArgusConfig(
-        max_budget_usd=0.03,
-        max_attempts=3,
-        similarity_threshold=0.82,
-    )
-    controller = RecoveryController(config=config, workspace_root=Path("."))
+config = ArgusConfig(max_attempts=3, budget_limit_usd=0.03)   # uses your stored active provider
+controller = RecoveryController(config=config)
+outcome = controller.run(
+    test_command="pytest tests/test_calculator.py",
+    target_file="src/calculator.py",          # omit to auto-localize
+    workspace_root=Path.cwd(),
+)
+print(outcome.status, outcome.verified, outcome.run_id, outcome.tier_used)
+print(outcome.unified_diff)
 
-    # Execute recovery inside an isolated temporary worktree
-    candidate = await controller.recover_async(
-        test_command="pytest tests/test_calculator.py"
-    )
-
-    if candidate.verified:
-        print(f"✓ Recovery succeeded (Run ID: {candidate.run_id})")
-        print(f"Cost: ${candidate.cost_usd:.4f} | Turns: {candidate.turns}")
-        print(candidate.diff)
-
-        # Authoritatively apply the patch with SHA-256 pre-condition checks
-        candidate.apply()
-    else:
-        print(f"✗ Recovery refused: {candidate.failure_reason}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+if outcome.status == "SUCCESS":
+    CandidateArtifactStore.set_approval(outcome.run_id, approved=True, workspace_root=Path.cwd())
+    result = AuthoritativePatchApplier.apply(outcome.run_id, workspace_root=Path.cwd())
+    print(result.success, result.error_code)
 ```
+
+`run()` returns a `RecoveryOutcome`. Only `status == "SUCCESS"` yields an applicable candidate, and `verified` means the test command passed in the copy.
+
+---
+
+## Model selection and cost
+
+- **A model you name is the model Argus uses.** `--model X` (or `ArgusConfig(model=X)`) pins one model for every attempt, with no substitution and no escalation.
+- **Cheap-first cascade, only when you name no model.** For providers with a documented ladder, attempts 1-2 use the cheaper model and attempt 3 the stronger one: `openai` gpt-4o-mini then gpt-4o; `deepseek` deepseek-flash then deepseek-chat; `gemini` gemini-2.5-flash then gemini-2.5-pro; `antigravity` gemini-3.8-flash-low then gemini-3.8-flash-high. Other providers use their default model with no escalation. You can set `small_model`/`large_model` explicitly.
+- **Prices are never guessed.** A model that is not in the built-in price table, and is not served by a local provider, is refused with `CONFIG_ERROR` until you supply a price (`--price MODEL=IN,OUT` in USD per 1M tokens on the CLI, or `ArgusConfig.model_prices`). Spend that cannot be established after a failed call is quarantined against the budget.
+- **Limits.** Defaults: 3 attempts (1 to 10 allowed), `$0.03` budget (at most `$10` on the CLI), 30 s per test run, 300 s task deadline. The per-run summary shows the model ladder that was actually used.
+- **Precedence.** Caller values (CLI flags, API/MCP arguments) win. A project file (`argus.yaml`, `.argus.yaml`, or `[tool.argus]` in `pyproject.toml` in the **workspace root**) may only tighten limits (lower attempts, budget or timeout; turn escalation off); it cannot choose a model or provider or raise a cap, and Argus prints what it applied or ignored. Environment variables supply credentials and, as a last resort, the provider name.
+
+---
+
+## The patch engine
+
+| Tier | Strategy | Default | What it accepts |
+| :--- | :--- | :--- | :--- |
+| 1 | Exact | on | The search text occurs verbatim at a line or token boundary; never inside a longer identifier, comment or string it does not fully cover. Whole-line matches are preferred. |
+| 2 | Whitespace/indentation | on | Whole lines that match after normalizing indentation and trailing whitespace. |
+| 3 | Token-equal | on (`enable_tier3=False` to disable) | A unique region whose identifier, operator, number and string tokens are **identical** to the search block; only whitespace and comments may differ. `<` vs `<=`, `return a` vs `return b`, `3` vs `5` are refused. |
+| 4 | Anchor | **off** | Experimental. Prefix/suffix anchors around a drifted interior. Opt in with `--enable-tier4`. |
+| 5 | Refusal | n/a | Not an algorithm: the outcome when nothing unambiguous matches. The file is left unchanged. |
+
+Line endings (LF, CRLF, CR, mixed), UTF-8 BOMs and PEP 263 encodings are preserved; undecodable files are refused instead of rewritten. A malformed or truncated response applies nothing, and the model is told which block was damaged.
+
+What the evidence supports about these tiers is on the [research status page](docs/RESEARCH_STATUS.md). In short: most of the gain over a plain exact matcher comes from Tiers 1-2; Tier 3 (in its earlier fuzzy form) produced one extra solve and one wrong-location application on a 99-task sample, which is why it is now token-equal rather than similarity-based; Tier 4 has shown no benefit.
 
 ---
 
 ## Interactive Terminal Cockpit
 
-Argus includes a dedicated, full-screen Terminal User Interface (TUI) built on Textual:
-
 ```bash
+pip install "argus-recovery[tui]"
 argus tui
 ```
 
-```text
- ┌────────────────────────────────────────────────────────────────────────┐
- │ ARGUS                                                                  │
- ├────────────────────────────────────────────────────────────────────────┤
- │ ❯ Run test command... "pytest tests/test_auth.py" or "/" for palette   │
- │   Recover · argus/auto · $0.03 cap        tab policy   ctrl+p commands │
- └────────────────────────────────────────────────────────────────────────┘
-```
-
-### Key Cockpit Features
-- **Real-Time Execution Timeline:** Watch live subprocess execution, frame localization, candidate generation, and verification test phases with spinner status.
-- **Side-by-Side & Unified Diff Viewer:** Review patch candidates with syntax highlighting, line numbers, and token change counts before accepting.
-- **Model Policy Modal (`Tab`):** Dynamically pin execution tiers (`1` Fast, `2` Strong, `3` Frontier), configure per-run budget caps, and toggle worktree sandbox isolation.
-- **Command Palette (`/` or `Ctrl+P`):** Fast keyboard navigation to connect IDEs, run doctor diagnostics, inspect session telemetry, or check for updates.
-- **Authoritative Apply Gate (`Enter`):** One-key atomic application guarded by pre-computed SHA-256 baseline hashes.
-
----
-
-## The 5-Tier Resilient Patch Engine
-
-When coding models emit patches, formatting shifts (tabs vs spaces, modified line wraps, or surrounding code drift) frequently cause standard `diff` and `git apply` tools to fail. Argus resolves this with a 5-tier matching engine:
-
-| Tier | Matching Strategy | Description | Safety Gate |
-| :--- | :--- | :--- | :--- |
-| **Tier 1** | **Exact Match** | Character-for-character byte match against the source file. | Exact byte boundary |
-| **Tier 2** | **Indentation & Whitespace** | Normalizes leading indentation and trailing line whitespace while preserving block structure. | AST syntax validation |
-| **Tier 3** | **Sliding-Window Fuzzy** | Character-level sliding-window similarity (threshold 0.82) with an ambiguity margin check (0.10) to reject ambiguous matches. | AST syntax validation + margin check |
-| **Tier 4** | **Anchor-Based Matching** | Matches surrounding prefix and suffix code anchors when intermediate code has drifted. | Explicit `--enable-tier4` opt-in required |
-| **Tier 5** | **Safe Refusal** | **Not an algorithm.** When active tiers fail or multiple ambiguous matches exist, Argus refuses to modify code. | Fail-closed defense |
-
-> [!NOTE]
-> Every candidate patch accepted by Tiers 1–4 must successfully parse into a valid Python Abstract Syntax Tree (`ast.parse`) before being dispatched to the test verification runner. Malformed syntax is discarded immediately.
+A keyboard-driven Textual interface: enter a test command, watch the attempt timeline, review the diff, and approve. Approving and applying from the diff screen goes through the same signed-candidate checks as the CLI. The command palette (`/` or `Ctrl+P`) reaches provider setup, `/connect`, diagnostics and update checks.
 
 ---
 
 ## Model Context Protocol (MCP)
 
-Argus includes a built-in FastMCP stdio server that exposes code recovery capabilities as native tools to any MCP-compliant coding assistant (Claude Code, Cursor, Windsurf, OpenCode):
+`argus mcp run` starts a stdio MCP server so an agent can request recoveries:
 
 ```bash
-# Verify MCP server handshake and tools
-argus mcp verify
-
-# Auto-install Argus into detected client configs (Claude Desktop, Cursor, etc.)
-argus mcp install
+argus mcp verify      # check the handshake and tool list
+argus mcp run         # start the stdio server
+argus mcp install     # write config for: antigravity, opencode, gemini (or all)
 ```
 
-### Exposed MCP Tools
-1. `argus_status`: Query active workspace status, detected test runners, and recent recovery candidates.
-2. `argus_recover`: Execute non-destructive, test-gated recovery on a failing test command.
-3. `argus_get_candidate`: Inspect a candidate's unified diff, verification status, and SHA-256 provenance hashes.
-4. `argus_apply_candidate`: Authoritatively apply an approved candidate patch to the live working tree.
+Manual configuration for any MCP client:
 
-### Client Configuration
-
-Add Argus to your assistant's MCP configuration:
-
-**Claude Desktop (`claude_desktop_config.json`) / Cursor (`cursor.json`):**
 ```json
-{
-  "mcpServers": {
-    "argus": {
-      "command": "argus",
-      "args": ["mcp", "serve"]
-    }
-  }
-}
+{ "mcpServers": { "argus": { "command": "argus", "args": ["mcp", "run"] } } }
 ```
+
+`mcp install` currently knows three hosts: Antigravity, OpenCode and Gemini CLI. For other MCP clients (Claude Desktop, Cursor and so on) use the manual entry above.
+
+Tools: `argus_status`, `argus_recover`, `argus_get_candidate`, `argus_apply_candidate`. There is deliberately **no approval tool**: an agent can propose and request apply, but a human records approval with `argus approve`, and approval records are signed so an agent cannot forge one by editing files. The server confines its workspace to the directory it was started in (or `ARGUS_MCP_WORKSPACE_ROOT`) and caps an agent-supplied budget at `$0.25` (override ceiling with `ARGUS_MCP_MAX_BUDGET_USD`). MCP responses carry the host-execution notice.
 
 ---
 
-## Local Gateway Proxy
+## Local Gateway Proxy (experimental)
 
-Argus provides an authenticated, local inference proxy that speaks both the **OpenAI** (`/v1/chat/completions`) and **Anthropic** (`/v1/messages`) protocols:
-
-```bash
-# Launch the gateway on localhost
-argus gateway --port 8000
-```
-
-### Gateway Architecture & Safety
-- **Dual-Protocol Translation:** Transparently translates requests between OpenAI and Anthropic message formats based on the target upstream provider.
-- **Two-Phase Budget Reservation:** Pre-calculates token costs against published model pricing sheets, locks budget before dispatch, and releases unspent reservations on failure.
-- **SSRF & DNS Rebinding Protection:** Actively blocks link-local addresses, IPv6 representations (`[::ffff:169.254.169.254]`), and cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`).
-- **Loopback Enforcement:** Binds strictly to `127.0.0.1` and validates the `Host` header to protect against browser-based local port rebinding attacks.
+`argus gateway` (alias `argus serve`) starts a loopback OpenAI- and Anthropic-compatible proxy with budget reservation and streaming patch healing. It needs the `gateway` extra and `ARGUS_GATEWAY_API_KEY`; it refuses to start without a key, binds to `127.0.0.1` by default, validates `Host`/`Origin`, and needs `--allow-remote` for non-loopback binding. Unknown models are priced fail-closed. It is outside the recovery loop and is not required for anything else.
 
 ---
 
-## What's in This Repo
+## What is in this repository
 
-This repository is organized into distinct, focused modules:
-
-| Directory / Package | What it is |
+| Path | What it is |
 | :--- | :--- |
-| [`argus/`](argus/) (`argus-recovery` on PyPI) | **The Core Runtime:** Recovery controller, workspace sandbox, 5-tier patch engine, provider adapters, Textual TUI, local gateway, and FastMCP server. |
-| [`argus-website/`](argus-website/) | **Documentation Website:** Production documentation portal deployed at [argus.hemangsharrma.workers.dev](https://argus.hemangsharrma.workers.dev), built with Astro & Starlight, featuring custom monochromatic design, TUI simulator, and dark/light modes. |
-| [`docs/`](docs/) | **Architectural Blueprints:** Technical specifications for [Architecture](docs/ARCHITECTURE.md), [Security Model](docs/SECURITY_MODEL.md), and [Benchmark Methodology](docs/BENCHMARK_METHODOLOGY.md). |
-| [`examples/`](examples/) | **Runnable Cookbook:** Ready-to-run examples for [quickstart recovery](examples/quickstart_recovery.py) and [custom provider configuration](examples/custom_provider_config.py). |
-| [`benchmarks/`](benchmarks/) | **Benchmark Suites:** Evaluation harnesses, verified task runners, and reproducible benchmark configurations. |
-| [`tests/`](tests/) | **Verification Test Suite:** 489 passing offline tests, 0 failures, 500-case adversarial patch corpus, and cross-platform quality gates. |
+| [`argus/`](argus/) | The package (`argus-recovery`): controller, workspace manager, patch engine, providers, CLI, TUI, MCP server, gateway. |
+| [`argus-website/`](argus-website/) | Source of the documentation site at [argus.hemangsharrma.workers.dev](https://argus.hemangsharrma.workers.dev) (Astro/Starlight). |
+| [`docs/`](docs/) | [Architecture](docs/ARCHITECTURE.md), [security model](docs/SECURITY_MODEL.md), [benchmark methodology](docs/BENCHMARK_METHODOLOGY.md), [research status](docs/RESEARCH_STATUS.md). |
+| [`examples/`](examples/) | Runnable offline examples (`quickstart_recovery.py`, `custom_provider_config.py`). |
+| [`tests/`](tests/) | The offline test suite, including a 500-case synthetic patch corpus. |
+
+The experiment data and reports behind the research claims are **not** in this repository; see [docs/RESEARCH_STATUS.md](docs/RESEARCH_STATUS.md).
 
 ---
 
-## Security Model
+## Research status in one paragraph
 
-Because Argus executes reproduction test commands and edits code, security is designed as layered defense in depth:
-
-1. **Transient Worktree Sandboxing:** All recovery attempts execute in ephemeral git worktrees created in temporary directories. The live repository is never modified during generation or validation.
-2. **Authoritative TOCTOU Gate:** Each candidate patch records `baseline_sha256` and `candidate_sha256`. The applier refuses to touch the target file if its on-disk hash has changed since the recovery run started.
-3. **Subprocess Argument Validation:** Shell chaining operators (`&&`, `||`, `;`, `|`), backgrounding (`&`), and redirections (`>`, `<`) are strictly rejected. Commands execute without `shell=True`.
-4. **Strict Credential Redaction:** Sensitive API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, tokens) are scrubbed before subprocess dispatch and sanitized from error tracebacks.
-5. **Provider Prohibition:** Prohibited providers (specifically Groq) are rejected at configuration, CLI, and network levels to prevent unmetered rate-limit failures and maintain reproducible environments.
-
-See [`SECURITY.md`](SECURITY.md) for full vulnerability reporting procedures and threat boundary disclosures.
+Argus's patch-apply layer is a tolerant SEARCH/REPLACE matcher. In a separate, preregistered evaluation under official SWE-bench Verified grading (99 design tasks, target file given to the model, temperature 1.0), it raised gpt-oss-20b from 31 to 38 resolved tasks (7 gained, 0 lost, exact McNemar p = 0.016; +5.7 points, 95% CI 2.7-9.1), gpt-oss-120b by 2 tasks (not significant), and Qwen3.8 by about zero. Most of that gain comes from exact and indentation-tolerant matching that other edit tools also provide. Feeding test output back beat blind re-draws for gpt-oss-20b; a 20B-then-120B cascade matched or beat 120B alone at about 1.1x spend in an offline replay. No learned router is shipped or supported. "Resolved" means the target test and graded suite pass, not that the patch is correct. The raw data lives outside this repository, so none of this is reproducible from a clone; the per-claim table, with what is verified, partial, unsupported or incorrect, is in [docs/RESEARCH_STATUS.md](docs/RESEARCH_STATUS.md).
 
 ---
 
-## Published Packages & Supported Platforms
+## Platforms and testing
 
-| Distribution Package | Registry | Description |
-| :--- | :--- | :--- |
-| **`argus-recovery`** | [PyPI](https://pypi.org/project/argus-recovery/) | Complete Argus CLI, TUI cockpit, MCP server, and Python SDK. |
-
-### Platform Matrix
-
-| Operating System | Architectures | Status |
-| :--- | :--- | :--- |
-| **Linux** (Ubuntu, Debian, Fedora, Arch) | `x86_64`, `aarch64` | Verified |
-| **macOS** (Ventura, Sonoma, Sequoia) | Apple Silicon (`arm64`), Intel (`x86_64`) | Verified |
-| **Windows** (10, 11 via PowerShell / Terminal) | `x86_64` | Verified |
-
-- **Python Requirements:** Python `>=3.11`, `3.12`, `3.13`, `3.14`.
-- **Tested Model Providers:** Google Antigravity Host (`agy`), Google Gemini (`gemini-2.5-flash`, `gemini-2.5-pro`), Anthropic Claude (`claude-3-5-haiku`, `claude-3-7-sonnet`, `claude-3-opus`), OpenAI (`gpt-4o`, `gpt-4o-mini`), and Local Ollama.
-
----
-
-## Testing & Verification
-
-Argus is verified against a rigorous offline test suite:
+Python 3.11 to 3.14. Argus is developed and exercised mainly on Windows; the CI workflow runs the offline suite on Linux, Windows and macOS (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Behaviour on POSIX that is not covered by CI (process-group termination, file modes) has had less real-world use.
 
 ```bash
-# Run core security and isolation quality gates
-pytest tests/test_runtime_and_workspace_safety.py \
-       tests/test_gateway_security.py \
-       tests/test_wp6_deep_verification.py \
-       tests/test_wp7_deep_verification.py -v
-
-# Run the 500-case synthetic adversarial patch corpus
-pytest tests/test_patch_adversarial_corpus.py -v
-
-# Run the complete offline verification suite (489 tests)
-pytest -q --ignore=tests/test_real_host_integration.py
+pip install -e ".[dev,tui,gateway]"
+pytest -q --ignore=tests/test_real_host_integration.py     # offline suite; no network, no model calls
+ruff check .
 ```
 
-```text
-.................................................................sssss.. [ 14%]
-............................s........................................... [ 28%]
-...............................sss...................................... [ 42%]
-......................s...............................ss................ [ 57%]
-........................................................................ [ 71%]
-................................................s....................... [ 85%]
-.....s.................................................................  [100%]
-489 passed, 15 skipped in 175.09s
-```
-
----
+`tests/test_real_host_integration.py` calls a locally installed Antigravity CLI and makes real inference calls; it is excluded on purpose. The 500-case adversarial patch corpus (`tests/test_patch_adversarial_corpus.py`) is synthetic (seven templated mutation families): "zero incorrect applications" is a statement about that corpus, and one wrong-location application has been observed on real model output.
 
 ## Contributing
 
-Contributions are welcome! Please review:
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) for local development setup, coding standards, and test guidelines.
-- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community standards.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for deep dive into the runtime architecture.
-
----
+See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Security issues: [`SECURITY.md`](SECURITY.md).
 
 ## License
 

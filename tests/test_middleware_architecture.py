@@ -23,8 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from argus.config import ArgusConfig
-from argus.gateway.config import GatewayConfig, ProviderConfig, TierDefinition
-from argus.gateway.router import GatewayRouter, NoEligibleProviderError
+from argus.gateway.config import GatewayConfig, ProviderConfig
 from argus.gateway.server import app, init_gateway
 from argus.mcp.server import create_mcp_server
 from argus.providers.storage import scrub_secrets

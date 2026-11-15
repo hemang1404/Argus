@@ -11,7 +11,6 @@ Validates that external AI developer tools (Aider, Cursor, Claude Code, OpenCode
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -40,7 +39,7 @@ def isolated_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         ],
         tiers={
             "cheap": TierDefinition(provider="mock_deepseek", model="deepseek-chat"),
-            "strong": TierDefinition(provider="mock_deepseek", model="deepseek-coder"),
+            "strong": TierDefinition(provider="mock_deepseek", model="deepseek-chat"),  # priced: the gateway refuses unpriced models
             "frontier": TierDefinition(provider="mock_openai", model="gpt-4o"),
         },
         budget=BudgetConfig(per_session_usd=1.00, per_task_usd=0.50),

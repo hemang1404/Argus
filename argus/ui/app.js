@@ -52,6 +52,15 @@
   function initSession() {
     activePortEl.textContent = activePort;
 
+    // Show the real package version reported by the server (no hard-coded string).
+    fetch('/api/v1/health')
+      .then((r) => r.json())
+      .then((h) => {
+        const badge = document.getElementById('version-badge');
+        if (badge && h.version) badge.textContent = 'v' + h.version;
+      })
+      .catch(() => {});
+
     // Extract ephemeral Bearer token from URL hash (#token=xyz)
     if (window.location.hash.startsWith('#token=')) {
       sessionToken = window.location.hash.replace('#token=', '').trim();

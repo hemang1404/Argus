@@ -14,10 +14,10 @@ an **apply error code** for candidate application. They are not interchangeable.
 | `ALREADY_PASSING` | The reproduction passed before editing | No recovery needed |
 | `FAILED_MAX_ATTEMPTS` | No attempt verified within the turn limit | Improve context, model, or test scope |
 | `LOCALIZATION_FAILED` | No target file identified from the traceback | Pass `--file` |
-| `INVALID_TARGET` | Target failed path or relationship validation | Use a workspace-relative regular file |
+| `INVALID_TARGET` | Target failed path validation, is missing, or lies outside an explicit workspace root | Use a workspace-relative regular file |
 | `TEST_SETUP_ERROR` | The test command could not run correctly | Fix the command or environment |
-| `CONFIG_ERROR` | No provider, or invalid provider configuration | Configure a provider |
-| `BUDGET_EXCEEDED` | Spend ceiling reached | Raise the budget deliberately |
+| `CONFIG_ERROR` | No provider, unknown provider, a model with no known price, an invalid budget, or an adapter that cannot take a model | Configure a provider; use a priced model or `--price` |
+| `BUDGET_EXCEEDED` | Spend ceiling reached (no substitute model is tried) | Raise the budget deliberately |
 | `DEADLINE_EXCEEDED` | Task deadline elapsed | Reduce scope or raise the deadline |
 | `PROVIDER_RATE_LIMITED` | Provider refused after bounded backoff | Wait or switch provider |
 | `CONTAINER_SETUP_ERROR` | Container isolation requested but unavailable | Install an engine or avoid container mode |
@@ -29,17 +29,21 @@ A failed status never produces an applyable candidate.
 
 | Code | Meaning | What to do |
 | --- | --- | --- |
+| `INVALID_RUN_ID` | The run ID is malformed (separators, `..`, bad characters) | Copy the ID from `argus candidates` |
 | `CANDIDATE_NOT_FOUND` | No artifact exists for that run ID | Check `argus candidates` |
+| `CANDIDATE_SIGNATURE_INVALID` | Metadata is unsigned (older version) or was altered | Re-run recovery |
 | `CANDIDATE_NOT_VERIFIED` | Verification flag is false | Rerun recovery |
 | `CANDIDATE_NOT_APPROVED` | Approval is missing | `argus approve <run_id>` |
 | `CANDIDATE_CONTENT_MISSING` | Stored patched content is absent | Rerun; artifact is incomplete |
 | `CONTENT_HASH_MISMATCH` | Candidate content changed after verification | Rerun; never edit artifacts |
-| `SYNTAX_VALIDATION_FAILED` | Patched file does not parse as Python | Rerun |
+| `SYNTAX_VALIDATION_FAILED` | Patched file does not parse as Python (syntactic check) | Rerun |
+| `UNSUPPORTED_ENCODING` | Target is not decodable (UTF-8, BOM, PEP 263) | Convert the file; Argus will not rewrite it lossily |
 | `PATH_TRAVERSAL_REJECTED` | Target escapes the workspace or is non-canonical | Use an in-workspace path |
 | `TARGET_FILE_MISMATCH` | Candidate targets a different file | Apply the correct candidate |
 | `TARGET_NOT_FOUND` | Target file no longer exists | Restore the file or rerun |
 | `UNSAFE_TARGET_TYPE` | Target is not a regular file | Choose a regular source file |
-| `STALE_TARGET_CONFLICT` | Live file differs from the recorded baseline | Rerun recovery |
+| `STALE_TARGET_CONFLICT` | Live file differs from the recorded baseline, or the run was already applied (message says so) | Rerun recovery, unless it was already applied |
+| `APPLY_IN_PROGRESS` | Another process is applying this run | Wait; check `argus candidates` |
 | `CONCURRENT_MODIFICATION_DETECTED` | File changed during the apply sequence | Inspect the file, then rerun |
 | `PERMISSION_PRESERVATION_FAILED` | File mode could not be preserved | Fix permissions |
 | `READ_ERROR` | Target could not be read | Fix permissions or path |
@@ -49,7 +53,10 @@ A failed status never produces an applyable candidate.
 
 Application failures are returned as a result object with `success: false`,
 `error_code`, and `message`. The CLI prints both and exits non-zero. Treat the
-code as stable enough for routing, and the message as human-oriented.
+code as stable enough for routing, and the message as human-oriented. Patch-engine
+refusals (`REFUSED_NO_MATCH`, `REFUSED_AMBIGUOUS_*`, `REFUSED_SYNTAX_ERROR`,
+`REFUSED_ALREADY_APPLIED`, and so on) appear in per-attempt output and
+`attempts.json`, not as run statuses.
 
 ```text
 ✗ [REJECTED: STALE_TARGET_CONFLICT] Target file has changed on disk since baseline was captured.
@@ -66,7 +73,9 @@ code as stable enough for routing, and the message as human-oriented.
 
 ## Exit status
 
-The CLI exits non-zero when a recovery does not end in `SUCCESS` or
-`ALREADY_PASSING`, when an approval is refused, and when an apply is rejected.
+The CLI exits `1` when a recovery does not end in `SUCCESS` or `ALREADY_PASSING`,
+when an approval is refused, when an apply is rejected, and for any other error
+(unknown provider or run ID, missing file, failed provider test); `2` for usage
+errors.
 Scripts should not parse localized human output for control flow; use
 `--json-events` for recovery progress and check the process status.

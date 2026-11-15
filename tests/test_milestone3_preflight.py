@@ -30,32 +30,26 @@ import json
 import os
 import subprocess
 import tempfile
-import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
+from typing import Any, Dict, List
 
 import pytest
 
 from argus.config import ArgusConfig, ModelCost
-from argus.providers.adapter import CompletionResponse, ProviderAdapter, ProviderError
-from argus.providers.models import ProviderConfig
+from argus.providers.adapter import CompletionResponse, ProviderAdapter
 from argus.runtime.budget import (
-    ARGUS_SYSTEM_PROMPT,
     GlobalExperimentBudget,
     TaskConditionBudget,
     count_prompt_tokens,
-    is_conclusive_provider_refusal,
 )
 from argus.runtime.container import (
     BaseCommitMismatchError,
     CandidateIntegrityError,
     ContainerConfig,
     ContainerEvaluator,
-    ContainerExecutionResult,
     is_container_engine_available,
 )
-from argus.runtime.controller import RecoveryController, RecoveryOutcome
+from argus.runtime.controller import RecoveryController
 
 
 # ==============================================================================

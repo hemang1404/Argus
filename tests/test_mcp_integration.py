@@ -3,7 +3,6 @@
 import json
 import tempfile
 from pathlib import Path
-import pytest
 
 from argus.mcp.installer import (
     install_antigravity,
@@ -12,7 +11,6 @@ from argus.mcp.installer import (
     verify_mcp_handshake,
 )
 from argus.mcp.server import create_mcp_server
-from argus.runtime.candidate import CandidateArtifactStore
 
 
 def test_host_installers_and_backups():

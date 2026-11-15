@@ -17,10 +17,14 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from argus.config import ArgusConfig
+from argus.config import DEFAULT_BUDGET_USD, DEFAULT_MAX_ATTEMPTS, ArgusConfig
 from argus.providers.models import ProviderConfig
 from argus.providers.storage import ProviderStorage
-from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
+from argus.runtime.candidate import (
+    AuthoritativePatchApplier,
+    CandidateApplicationError,
+    CandidateArtifactStore,
+)
 from argus.runtime.runner import HOST_EXECUTION_WARNING
 from argus.runtime.controller import RecoveryController, RecoveryOutcome, validate_target_file
 
@@ -166,8 +170,8 @@ def create_mcp_server() -> FastMCP:
         target_file: Optional[str] = None,
         test_file: Optional[str] = None,
         workspace: Optional[str] = None,
-        max_attempts: int = 3,
-        budget: float = 0.05,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+        budget: float = DEFAULT_BUDGET_USD,
         model: Optional[str] = None,
         provider: Optional[str] = None,
     ) -> str:
@@ -178,8 +182,8 @@ def create_mcp_server() -> FastMCP:
             target_file: Optional path to the buggy source file to repair. If omitted, Argus auto-localizes the file from test failures.
             test_file: Optional path to the test file to copy to the isolated workspace.
             workspace: Optional root path of the project. Defaults to current working directory.
-            max_attempts: Maximum recovery turns (capped at 3).
-            budget: Maximum dollar budget for inference (e.g. 0.05).
+            max_attempts: Maximum recovery turns (capped at the Argus default of 3).
+            budget: Maximum dollar budget for inference (capped by the user's policy ceiling).
             model: Optional model ID to use (e.g. 'gemini-2.5-pro' or 'claude-3-5-sonnet'). Defaults to platform model.
             provider: Optional provider name (e.g. 'antigravity', 'openai', 'deepseek').
         """
@@ -216,8 +220,8 @@ def create_mcp_server() -> FastMCP:
                     "message": f"SECURITY REFUSAL: {target_validation_err}",
                 }, indent=2)
 
-            # Cap max_attempts to at most 3 turns
-            bounded_attempts = max(1, min(int(max_attempts), 3))
+            # The caller is an untrusted agent: it may lower, never raise, the default turn count.
+            bounded_attempts = max(1, min(int(max_attempts), DEFAULT_MAX_ATTEMPTS))
 
             storage = ProviderStorage()
             active_cfg: Optional[ProviderConfig] = None
@@ -288,6 +292,7 @@ def create_mcp_server() -> FastMCP:
                 "verified": outcome.verified,
                 "effort_used": outcome.effort_used,
                 "routing_reasons": outcome.routing_reasons,
+                "config_notes": outcome.config_notes,
                 "attempts": outcome.total_attempts,
                 "cost_usd": outcome.total_cost_usd,
                 "duration_ms": outcome.total_duration_ms,
@@ -334,6 +339,8 @@ def create_mcp_server() -> FastMCP:
                 "diff": diff_text,
             }
             return json.dumps(payload, indent=2)
+        except CandidateApplicationError as ex:
+            return json.dumps({"error": f"Failed to load candidate '{run_id}': {ex.message}", "error_code": ex.error_code}, indent=2)
         except Exception as ex:
             return json.dumps({"error": f"Failed to load candidate '{run_id}': {ex}"}, indent=2)
 
@@ -364,6 +371,8 @@ def create_mcp_server() -> FastMCP:
                 "applied_at": apply_res.applied_at,
             }
             return json.dumps(payload, indent=2)
+        except CandidateApplicationError as ex:
+            return json.dumps({"success": False, "error": ex.message, "error_code": ex.error_code}, indent=2)
         except Exception as ex:
             logger.error(f"Error in argus_apply_candidate: {ex}")
             return json.dumps({"success": False, "error": str(ex)}, indent=2)

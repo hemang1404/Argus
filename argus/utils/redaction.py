@@ -38,6 +38,9 @@ TOKEN_PATTERNS = [
     (r"\b(xox[baprs]-[A-Za-z0-9_\-]{10,})\b", "[REDACTED_SECRET]"),
     # Groq API keys (decommissioned/prohibited)
     (r"\b(gsk_[A-Za-z0-9_\-]{16,})\b", "[REDACTED_SECRET]"),
+    # Bearer credentials in HTTP-header form: a JWT-shaped (dotted) token or a long opaque one.
+    # Short words after "Bearer" (prose, ``Bearer {token}`` templates) are left alone.
+    (r"(\bBearer\s+)(?:[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-\.]+|[A-Za-z0-9_\-\.]{24,})", r"\1[REDACTED_SECRET]"),
 ]
 
 # Context-dependent patterns: they redact whatever follows ``password=``, ``api_key:``,

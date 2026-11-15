@@ -59,9 +59,13 @@ Diff review:
 
 | Key | Action |
 | --- | --- |
-| `a` or `Enter` | Approve and apply |
+| `a` | Arm approval (asks for confirmation; nothing is written yet) |
+| `y` | Confirm: record approval and apply |
 | `d` | Discard |
-| `Esc` | Back |
+| `Esc` | Cancel a pending confirmation, otherwise go back |
+
+`Enter` never approves, and the Discard button is focused when the screen opens, so
+a stray key press cannot modify a file.
 
 Execution:
 
@@ -72,9 +76,9 @@ Execution:
 | `Esc` | Back / cancel |
 | `Ctrl+C` | Cancel execution |
 
-Approval from the diff screen is a real approval: it writes the approval record
-and then applies the patch through the same authoritative applier used by the
-CLI. It is not a shortcut around the integrity checks.
+Approval from the diff screen writes the same signed approval record the CLI does
+and then applies the patch through the same authoritative applier. It is not a
+shortcut around the integrity checks (signature, hashes, syntax, containment).
 
 ## Command palette
 

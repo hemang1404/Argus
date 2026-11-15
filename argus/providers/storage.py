@@ -15,6 +15,12 @@ from argus.utils.redaction import scrub_secrets  # noqa: F401  (re-exported for 
 SERVICE_NAME = "argus_ai_inference"
 
 
+def get_keyring_service() -> str:
+    """Keyring service name. ``ARGUS_KEYRING_SERVICE`` isolates test/CI/alternate profiles from
+    the user's real credential entries; unset means the default shared service."""
+    return (os.getenv("ARGUS_KEYRING_SERVICE") or "").strip() or SERVICE_NAME
+
+
 def get_config_dir() -> Path:
     """Return the user-level configuration directory outside the repository."""
     override = os.getenv("ARGUS_CONFIG_DIR")
@@ -79,22 +85,21 @@ class ProviderStorage:
         """Retrieve API key for a provider.
         
         Resolution order:
-        1. OS Keyring (service: 'argus_ai_inference')
+        1. OS Keyring (service: 'argus_ai_inference', or ARGUS_KEYRING_SERVICE)
         2. Local user fallback file (secrets.json with 0600 permissions)
         3. Explicitly enabled .env file (if ARGUS_LOAD_DOTENV=1 or ARGUS_DOTENV_PATH is set)
         4. Provider-specific system environment variables:
            - openai:     OPENAI_API_KEY
            - openrouter: OPENROUTER_API_KEY
            - deepseek:   DEEPSEEK_API_KEY
-           - custom:     ARGUS_API_KEY
-           - fallback:   ARGUS_API_KEY
+           - custom:     ARGUS_API_KEY (only for the 'custom' provider; never another provider)
         """
         maybe_load_dotenv()
 
         # 1. Check OS Keyring
         try:
             import keyring
-            key = keyring.get_password(SERVICE_NAME, provider_name)
+            key = keyring.get_password(get_keyring_service(), provider_name)
             if key:
                 return key.strip()
         except Exception:
@@ -123,10 +128,8 @@ class ProviderStorage:
         if env_var and os.getenv(env_var):
             return os.getenv(env_var, "").strip()
 
-        # Generic ARGUS_API_KEY fallback
-        if os.getenv("ARGUS_API_KEY"):
-            return os.getenv("ARGUS_API_KEY", "").strip()
-
+        # ARGUS_API_KEY is scoped to provider 'custom' above. It is deliberately NOT a generic
+        # fallback: a key meant for one endpoint must never be sent to another provider.
         return None
 
     def set_api_key(self, provider_name: str, api_key: str) -> bool:
@@ -136,7 +139,7 @@ class ProviderStorage:
         saved_in_keyring = False
         try:
             import keyring
-            keyring.set_password(SERVICE_NAME, provider_name, api_key.strip())
+            keyring.set_password(get_keyring_service(), provider_name, api_key.strip())
             saved_in_keyring = True
         except Exception:
             saved_in_keyring = False
@@ -150,20 +153,30 @@ class ProviderStorage:
                 except Exception:
                     secrets = {}
             secrets[provider_name] = api_key.strip()
-            self.fallback_secrets_file.write_text(json.dumps(secrets, indent=2), encoding="utf-8")
-            try:
-                # Restrict permissions to user read/write only on POSIX
-                os.chmod(self.fallback_secrets_file, stat.S_IRUSR | stat.S_IWUSR)
-            except Exception:
-                pass
+            self._write_secrets_file(secrets)
 
         return True
+
+    def _write_secrets_file(self, secrets: Dict[str, str]) -> None:
+        """Write secrets.json created with mode 0600 from the start (no world-readable window)."""
+        self.fallback_secrets_file.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(
+            self.fallback_secrets_file,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            stat.S_IRUSR | stat.S_IWUSR,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(secrets, indent=2))
+        try:
+            os.chmod(self.fallback_secrets_file, stat.S_IRUSR | stat.S_IWUSR)  # pre-existing file
+        except OSError:
+            pass
 
     def delete_api_key(self, provider_name: str) -> None:
         """Remove API key from Keyring and fallback file."""
         try:
             import keyring
-            keyring.delete_password(SERVICE_NAME, provider_name)
+            keyring.delete_password(get_keyring_service(), provider_name)
         except Exception:
             pass
 
@@ -172,7 +185,7 @@ class ProviderStorage:
                 secrets = json.loads(self.fallback_secrets_file.read_text(encoding="utf-8"))
                 if provider_name in secrets:
                     del secrets[provider_name]
-                    self.fallback_secrets_file.write_text(json.dumps(secrets, indent=2), encoding="utf-8")
+                    self._write_secrets_file(secrets)
             except Exception:
                 pass
 

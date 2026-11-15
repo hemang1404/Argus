@@ -16,7 +16,7 @@ from argus.runtime.candidate import (
     AuthoritativePatchApplier,
     CandidateArtifactStore,
 )
-from argus.runtime.controller import RecoveryOutcome
+from argus.runtime.controller import RecoveryController, RecoveryOutcome
 
 
 def _hash_file(path: Path) -> str:
@@ -158,6 +158,7 @@ class _FakeController:
     """Returns a verified outcome without any provider or subprocess activity."""
 
     outcome = None
+    _resolve_workspace_root = staticmethod(RecoveryController._resolve_workspace_root)
 
     def __init__(self, config=None) -> None:
         self.config = config
@@ -199,7 +200,7 @@ def test_run_apply_requires_explicit_review_flag(tmp_path: Path, monkeypatch: py
         "--apply",
     ]
     blocked = CliRunner().invoke(main, args)
-    assert blocked.exit_code == 0
+    assert blocked.exit_code == 1
     assert "Refusing to apply" in blocked.output
     assert target.read_text(encoding="utf-8") == baseline
 

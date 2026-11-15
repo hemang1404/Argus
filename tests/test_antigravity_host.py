@@ -3,18 +3,17 @@
 import os
 import shutil
 import subprocess
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from argus.config import ArgusConfig
-from argus.providers.adapter import CompletionResponse, ConnectionTestResult, OpenAICompatibleAdapter, ProviderError
-from argus.providers.antigravity import AntigravityHostAdapter, find_antigravity_cli
+from argus.providers.adapter import CompletionResponse, OpenAICompatibleAdapter, ProviderError
+from argus.providers.antigravity import AntigravityHostAdapter
 from argus.providers.models import ProviderConfig
-from argus.routing.difficulty import DifficultyClassifier, DifficultyDecision
+from argus.routing.difficulty import DifficultyClassifier
 from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
-from argus.runtime.controller import RecoveryController, RecoveryOutcome
+from argus.runtime.controller import RecoveryController
 
 
 # =============================================================================
@@ -166,11 +165,25 @@ def test_antigravity_cli_missing_raises_clear_error(monkeypatch):
     assert "not found" in res.message.lower()
 
 
+def _bat_shim(tmp_path, script: str = "import sys\nsys.exit(0)\n"):
+    """A Windows-style ``.bat`` shim with its companion ``.py``.
+
+    Argus never lets cmd.exe parse the prompt, so a shim is only runnable through the
+    companion script (started directly with sys.executable).
+    """
+    shim = tmp_path / "fake_agy.bat"
+    shim.write_text("@echo off\r\n")
+    shim.with_suffix(".py").write_text(script, encoding="utf-8")
+    return shim
+
+
 def test_antigravity_cli_unauthenticated(tmp_path):
     """Verify unauthenticated host CLI reports 401 and guides user to authenticate."""
     if os.name == "nt":
-        fake_cli = tmp_path / "fake_agy.bat"
-        fake_cli.write_text("@echo off\necho Error: unauthenticated. Login required to access Antigravity.\nexit /b 1\n")
+        fake_cli = _bat_shim(
+            tmp_path,
+            "import sys\nprint('Error: unauthenticated. Login required to access Antigravity.')\nsys.exit(1)\n",
+        )
     else:
         fake_cli = tmp_path / "fake_agy.sh"
         fake_cli.write_text("#!/bin/sh\necho 'Error: unauthenticated. Login required to access Antigravity.'\nexit 1\n")
@@ -194,8 +207,7 @@ def test_antigravity_cli_unauthenticated(tmp_path):
 
 def test_invocation_argument_safety_and_no_shell(tmp_path):
     """Verify subprocess is invoked as an argument list with shell=False and effort flag."""
-    fake_cli = tmp_path / "fake_agy.bat"
-    fake_cli.write_text("@echo off\necho Success response\n")
+    fake_cli = _bat_shim(tmp_path)
 
     adapter = AntigravityHostAdapter(cli_path=fake_cli)
 
@@ -221,7 +233,7 @@ def test_invocation_argument_safety_and_no_shell(tmp_path):
         # Arguments must be a list
         args_passed = call_args[0]
         assert isinstance(args_passed, list)
-        assert str(fake_cli) in args_passed[0]
+        assert str(fake_cli.with_suffix(".py")) in args_passed
         assert "--effort" in args_passed
         assert "high" in args_passed
         assert "-p" in args_passed
@@ -230,8 +242,7 @@ def test_invocation_argument_safety_and_no_shell(tmp_path):
 
 def test_invocation_timeout_handling(tmp_path):
     """Verify timeout produces ProviderError with status 504 and sanitized message."""
-    fake_cli = tmp_path / "fake_agy.bat"
-    fake_cli.write_text("@echo off\n")
+    fake_cli = _bat_shim(tmp_path)
 
     adapter = AntigravityHostAdapter(cli_path=fake_cli, timeout_seconds=2.0)
 
@@ -244,8 +255,7 @@ def test_invocation_timeout_handling(tmp_path):
 
 def test_antigravity_cli_non_zero_exit_returns_failure(tmp_path):
     """Verify test_connection returns success=False and 502 if CLI exits with non-zero code."""
-    fake_cli = tmp_path / "fake_agy.bat"
-    fake_cli.write_text("@echo off\n")
+    fake_cli = _bat_shim(tmp_path)
 
     adapter = AntigravityHostAdapter(cli_path=fake_cli)
 
@@ -265,8 +275,7 @@ def test_antigravity_cli_non_zero_exit_returns_failure(tmp_path):
 
 def test_effort_fallback_when_unsupported_by_cli(tmp_path):
     """Verify graceful fallback when CLI reports unknown flag for --effort."""
-    fake_cli = tmp_path / "fake_agy.bat"
-    fake_cli.write_text("@echo off\n")
+    fake_cli = _bat_shim(tmp_path)
 
     adapter = AntigravityHostAdapter(cli_path=fake_cli)
 
@@ -300,8 +309,7 @@ def test_effort_fallback_when_unsupported_by_cli(tmp_path):
 
 def test_response_normalization(tmp_path):
     """Verify response is normalized to standard CompletionResponse with token estimation."""
-    fake_cli = tmp_path / "fake_agy.bat"
-    fake_cli.write_text("@echo off\n")
+    fake_cli = _bat_shim(tmp_path)
 
     adapter = AntigravityHostAdapter(cli_path=fake_cli)
 
@@ -508,8 +516,7 @@ def test_direct_api_provider_remains_functional():
 
 def test_tool_permission_boundary_and_worktree_isolation(tmp_path):
     """Verify that AntigravityHostAdapter strictly injects safety flags and isolates cwd."""
-    fake_cli = tmp_path / "fake_agy.bat"
-    fake_cli.write_text("@echo off\necho {}\n")
+    fake_cli = _bat_shim(tmp_path)
 
     worktree_dir = tmp_path / "isolated_worktree"
     worktree_dir.mkdir()
@@ -545,8 +552,7 @@ def test_tool_permission_boundary_and_worktree_isolation(tmp_path):
 
 def test_stream_chat_completion_real_time_incremental_deltas(tmp_path):
     """Verify that stream_chat_completion extracts incremental text deltas from stream-json events."""
-    fake_cli = tmp_path / "fake_agy.bat"
-    fake_cli.write_text("@echo off\n")
+    fake_cli = _bat_shim(tmp_path)
 
     adapter = AntigravityHostAdapter(cli_path=fake_cli)
 

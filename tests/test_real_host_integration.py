@@ -4,14 +4,11 @@ Labels: real-host integration test.
 Exercises end-to-end task execution and test repair against the installed Antigravity CLI.
 """
 
-import os
-from pathlib import Path
 
 import pytest
 
 from argus.config import ArgusConfig
 from argus.providers.antigravity import AntigravityHostAdapter, find_antigravity_cli
-from argus.providers.models import ProviderConfig
 from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
 from argus.runtime.controller import RecoveryController
 

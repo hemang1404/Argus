@@ -15,7 +15,6 @@ import pytest
 
 from argus.patch.fuzzy_engine import (
     PatchBlock,
-    PatchResult,
     RefusalReason,
     ResilientPatchEngine,
 )
@@ -127,11 +126,11 @@ def test_tier2_normalized_whitespace_match(flask_blueprints_source: str):
 
 def test_tier4_unique_boundary_anchors_succeed(flask_blueprints_source: str):
     """When boundary anchors are genuinely unique (head: 1, tail: 1), Tier 4 applies safely."""
-    engine = ResilientPatchEngine()
+    ResilientPatchEngine()
 
     # Head anchor: 'class Blueprint(Scaffold):' (line 117, strictly 1x in source)
     # Tail anchor: 'self.cli_group = cli_group' (line 205, strictly 1x in source)
-    unique_anchor_block = PatchBlock(
+    PatchBlock(
         search_text=(
             "class Blueprint(Scaffold):\n"
             "    # Approximate interior with some differences\n"
@@ -157,8 +156,8 @@ def test_tier4_unique_boundary_anchors_succeed(flask_blueprints_source: str):
     # Note: Tier 4 requires span similarity >= 0.60
     # Here we verify the anchor resolution logic
     source_lines = flask_blueprints_source.split("\n")
-    head_matches = [i for i, l in enumerate(source_lines) if l.strip() == "class Blueprint(Scaffold):"]
-    tail_matches = [i for i, l in enumerate(source_lines) if l.strip() == "self.cli_group = cli_group"]
+    head_matches = [i for i, line in enumerate(source_lines) if line.strip() == "class Blueprint(Scaffold):"]
+    tail_matches = [i for i, line in enumerate(source_lines) if line.strip() == "self.cli_group = cli_group"]
     assert len(head_matches) == 1
     assert len(tail_matches) == 1
 
@@ -226,8 +225,6 @@ def test_forensic_artifacts_preserved_on_failed_attempt(flask_blueprints_source:
     from argus.config import ArgusConfig
     from argus.providers.adapter import CompletionResponse
     from argus.runtime.controller import RecoveryController
-    from argus.runtime.candidate import CandidateArtifactStore
-    from argus.patch.parser import PatchParser
 
     # Create workspace file
     target_file = tmp_path / "src" / "flask" / "blueprints.py"

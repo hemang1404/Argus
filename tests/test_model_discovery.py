@@ -1,8 +1,7 @@
 """Tests for dynamic model discovery and tier resolution."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
 from argus.config import ArgusConfig
 from argus.providers.discovery import (

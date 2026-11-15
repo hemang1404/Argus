@@ -5,14 +5,17 @@ description: Supported providers, credential precedence, and how to verify conne
 
 import { Aside } from '@astrojs/starlight/components';
 
-Argus never ships with a model. You configure an authorized provider, and every
-recovery uses that explicit configuration.
+Argus never ships with a model, has no keys of its own, and never picks a provider
+for you. You configure a provider you are authorized to use, and every recovery
+uses that explicit configuration. With none configured, commands stop with an
+actionable error (`CONFIG_ERROR`); there is no hidden fallback to a host CLI or to
+another provider.
 
 ## Supported presets
 
 | Preset | Default endpoint | Default model | Key |
 | --- | --- | --- | --- |
-| `antigravity` | Host CLI (`host://antigravity-cli`) | `gemini-2.5-flash` | Not required |
+| `antigravity` | Host CLI (`host://antigravity-cli`) | `gemini-2.5-flash` (see the ladder below) | Not required |
 | `ollama` | `http://localhost:11434/v1` | `qwen2.5-coder:7b` | Not required |
 | `lmstudio` | `http://localhost:1234/v1` | `local-model` | Not required |
 | `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | Required |
@@ -50,7 +53,9 @@ argus provider set \
 ```
 
 The `custom` preset does not require a key by default. Pass `--api-key` if your
-endpoint authenticates.
+endpoint authenticates. Anthropic models are available through `openrouter` or a
+`custom` endpoint that speaks the OpenAI protocol; there is no dedicated Anthropic
+preset.
 
 ## Manage providers
 
@@ -65,6 +70,45 @@ argus provider delete vllm-local
 provider is marked with `*`. `provider test` performs a live request and reports
 latency or the failure reason.
 
+## Which model is used
+
+The model you name is the model Argus sends, for every attempt:
+
+- **`--model X`** (or `ArgusConfig(model=X)`) pins one model. There is no
+  substitution and no escalation. If the adapter cannot accept a model argument the
+  run stops with `CONFIG_ERROR` instead of silently dropping it.
+- **No model named, and the provider has a documented ladder, and escalation is
+  on:** attempts 1-2 use the cheaper model and attempt 3 the stronger one.
+
+  | Provider | Attempts 1-2 | Attempt 3 |
+  | --- | --- | --- |
+  | `openai` | `gpt-4o-mini` | `gpt-4o` |
+  | `deepseek` | `deepseek-flash` | `deepseek-chat` |
+  | `gemini` | `gemini-2.5-flash` | `gemini-2.5-pro` |
+  | `antigravity` | `gemini-3.8-flash-low` | `gemini-3.8-flash-high` |
+
+- **Any other provider** (`ollama`, `lmstudio`, `openrouter`, `custom`): the
+  provider's default model, no escalation. Set `small_model` and `large_model` in
+  `ArgusConfig` for an explicit two-rung ladder.
+
+The ladder and the model each attempt actually ran are reported with the outcome
+and recorded in `attempts.json`. If a host runtime answers with a different model
+than requested, that is recorded too.
+
+The cheap-first cascade is an engineering default, not a measured result: an
+offline replay of a 20B-then-120B cascade did well, but the provider ladders above
+have not been evaluated. See [Research and benchmarks](/project/research/).
+
+## Prices and budgets
+
+Argus will not guess what a call costs. Every model on the ladder must have a known
+price (built-in table or one you supply through `ArgusConfig.model_prices`, USD per
+1M tokens), unless the provider is local (`ollama`, `lmstudio`, a loopback
+endpoint) or host-native (`antigravity`). Otherwise the run ends with
+`CONFIG_ERROR` before any call is made, naming the models to price. A call whose
+spend cannot be established is quarantined against the budget. Budgets must be
+finite and positive.
+
 ## Credential precedence
 
 When resolving a key, Argus checks, in order:
@@ -76,7 +120,10 @@ When resolving a key, Argus checks, in order:
 
 Provider-specific variables currently recognized include `OPENAI_API_KEY`,
 `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, and `GOOGLE_API_KEY`. The generic
-`ARGUS_API_KEY` applies to custom providers.
+`ARGUS_API_KEY` applies to the `custom` provider only. The keyring service name can be
+changed with `ARGUS_KEYRING_SERVICE` (useful for isolated test environments). When
+no keyring backend is available, keys go to a `secrets.json` file created with mode
+0600 in the Argus configuration directory.
 
 To load a workspace `.env`:
 
@@ -104,9 +151,11 @@ argus run --test "pytest tests/test_calculator.py" --provider antigravity
 ```
 
 `auto` is an explicit discovery request: Argus prefers the stored active
-provider, then a detected Antigravity host CLI. It does not infer a provider from
-the presence of an API key. Without an explicit provider, a missing configuration
-is an error, not a silent fallback.
+provider, then a detected Antigravity host CLI, and reports which one it chose.
+It does not infer a provider from the presence of an API key. Without an explicit
+provider, a missing configuration is an error, not a silent fallback. The same
+holds for `argus exec`: with no provider stored it exits with an error instead of
+using a host CLI.
 
 ## Reasoning effort
 
@@ -126,7 +175,8 @@ argus run --test "pytest tests/test_calculator.py" --no-adaptive
 argus doctor
 ```
 
-A healthy provider section looks like:
+`doctor` sends a live request to the active provider (this can be billable). A
+healthy provider section looks like:
 
 ```text
 ✓ Provider        ollama (qwen2.5-coder:7b)

@@ -1,6 +1,8 @@
 # Argus Benchmark Methodology and Research Validation
 
-This document formalizes the evaluation framework, statistical methodology, baseline definitions, oracle criteria, and threat analysis for the Argus code recovery runtime.
+> **Historical document.** This describes the early evaluation design: a 500-case synthetic patch corpus and a single 50-task tournament on one Gemini model through the Antigravity host (HumanEval/MBPP-style tasks, one run, `$0.00` metered spend). It is kept for the definitions (four-way application classification, significant-line oracle, paired bootstrap), **not** as evidence of recovery quality. The tournament has no power to rank policies (very different routers scored 92/89/93/93 of 100), shows no SWE-bench resolution, and its raw data is not in this repository. The current, audited statement of what the evidence supports is [RESEARCH_STATUS.md](RESEARCH_STATUS.md). "Resolved" in the newer SWE-bench work means the target test and graded suite pass, not that the patch is correct.
+
+This document formalizes the evaluation framework, statistical methodology, baseline definitions, oracle criteria, and threat analysis used in that early work.
 
 ---
 
@@ -53,7 +55,7 @@ To rigorously measure the value of closed-loop recovery against simpler mitigati
 - **Mechanism:** Closed-loop recovery runtime.
 - **Attempts:** Up to 3 attempts ($N \le 3$).
 - **Feedback:** Execution tracebacks, failed assertion line numbers, and error classifications (`assertion_error`, `runtime_error`, `syntax_error`) are extracted from the isolated subprocess test runner and structured into diagnostic repair prompts.
-- **Escalation:** Can dynamically escalate to `gemini-3.8-flash-medium` when heuristic thresholds detect stubborn or complex failures.
+- **Escalation:** In that experiment the controller could escalate to `gemini-3.8-flash-medium` on heuristic thresholds. The shipped controller no longer uses a heuristic router: a named model is pinned, and the only automatic escalation is the documented provider ladder when no model is named.
 - **Purpose:** Measures the net recovery gain of iterative error feedback and tier-based patch reconciliation.
 
 ---
@@ -125,7 +127,7 @@ Argus does not misrepresent compute utilization:
 
 ## 6. Threats to Validity
 
-1. **Synthetic vs. In-the-Wild Drift:** The 500-case synthetic patch corpus tests 7 structured mutation variants (whitespace, indentation, blank-line, duplicate match, anchor conflict, multi-file). Real-world LLM patches may exhibit compound drift patterns not fully covered by these 7 archetypes.
+1. **Synthetic vs. In-the-Wild Drift:** The 500-case synthetic patch corpus tests 7 structured mutation variants (whitespace, indentation, blank-line, duplicate match, anchor conflict, multi-file). Real-world LLM patches may exhibit compound drift patterns not fully covered by these 7 archetypes. One wrong-location application of the earlier fuzzy Tier 3 was observed on real model output despite zero incorrect applications on this corpus.
 2. **Benchmark Contamination:** Canonical HumanEval and MBPP tasks are widely published in public repositories. Foundation models may have memorized reference solutions, potentially inflating zero-shot pass rates.
 3. **Provider Specificity:** Benchmark validation was executed on Google Gemini models via Antigravity Host Adapter. Performance characteristics may differ on other model families or smaller local models.
 4. **Stochastic Sampling Variance:** Resampling baselines depend on sampling temperature ($T=0.7$). Even with 50 tasks, random variation affects whether resamples hit correct solutions without feedback.

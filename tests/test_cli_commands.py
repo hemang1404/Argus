@@ -1,6 +1,5 @@
 """Tests for Argus CLI Commands: Provider, Candidates, Approval, and MCP."""
 
-import json
 import tempfile
 from pathlib import Path
 from click.testing import CliRunner
@@ -149,8 +148,6 @@ def test_cli_provider_interactive_prompt_and_secret_redaction(monkeypatch: pytes
     """Verify that omitting --api-key triggers interactive hidden input and redaction."""
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmp_dir:
-        import os
-        from unittest.mock import patch
         monkeypatch.setenv("ARGUS_CONFIG_DIR", str(tmp_dir))
 
         # 1. Interactive hidden prompt when --api-key is omitted

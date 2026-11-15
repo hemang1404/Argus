@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from argus.runtime.controller import RecoveryController, extract_context_frame
 
 

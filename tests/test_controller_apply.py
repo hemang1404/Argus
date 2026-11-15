@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from argus.config import ArgusConfig
-from argus.runtime.controller import RecoveryController, RecoveryOutcome
+from argus.runtime.controller import RecoveryController
 
 
 def test_controller_populates_patched_content_on_success():

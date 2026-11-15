@@ -9,14 +9,15 @@ Thank you for contributing to Argus. As an open-source code recovery runtime, we
 ### Prerequisites
 - Python 3.11, 3.12, 3.13, or 3.14.
 - Git.
-- Optional: Docker / Podman (for container evaluation harness).
+- Optional: Docker / Podman (only for the library-level container evaluator; the offline test suite does not need it).
+- No network, API key or model access is needed to run the tests.
 
 ### Local Workspace Setup
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/argus-org/argus.git
-cd argus
+git clone https://github.com/hemang1404/Argus.git
+cd Argus
 
 # 2. Create and activate a dedicated virtual environment
 python -m venv .venv
@@ -33,19 +34,20 @@ pip install -e ".[dev,tui,gateway]"
 
 ## 2. Testing & Quality Gates
 
-Every contribution must pass the offline regression test suite before submission:
+Every contribution must pass the offline regression test suite before submission. `tests/test_real_host_integration.py` is excluded on purpose: it calls a locally installed Antigravity CLI and makes real, possibly billable, inference calls. Tests must not touch the real OS keyring, your real `~/.argus` / `ARGUS_CONFIG_DIR`, or write into the repository root; use `tmp_path` and the fixtures in `tests/conftest.py`.
 
 ```bash
-# 1. Run core safety, isolation, and lifecycle gates
-pytest tests/test_runtime_and_workspace_safety.py tests/test_gateway_security.py tests/test_wp6_deep_verification.py tests/test_wp7_deep_verification.py
-
-# 2. Run the 500-case synthetic adversarial patch corpus
-pytest -v tests/test_patch_adversarial_corpus.py
-
-# 3. Run the full offline test suite
+# 1. Run the full offline test suite (no network, no model calls)
 pytest -q --ignore=tests/test_real_host_integration.py
 
-# 4. Verify Python syntax and bytecode compilation across the codebase
+# 2. Focused gates: runtime/workspace safety, gateway security, patch engine, signed candidates
+pytest tests/test_runtime_and_workspace_safety.py tests/test_gateway_security.py        tests/test_patch_remediation.py tests/test_candidate_signing.py
+
+# 3. The 500-case synthetic adversarial patch corpus
+pytest -v tests/test_patch_adversarial_corpus.py
+
+# 4. Lint and compile check
+ruff check .
 python -m compileall -q argus tests
 ```
 
@@ -62,7 +64,8 @@ python -m compileall -q argus tests
    - Every module must have a clear module-level docstring explaining its architectural responsibility.
 3. **No Unsolicited Side Effects:**
    - The developer's live working tree must remain untouched until a candidate is explicitly approved and applied via `AuthoritativePatchApplier`.
-   - Never write to or pollute `.git/` without isolated worktrees or cleanup handlers.
+   - Never write to `.git/`. Recovery runs in a temporary copy, not a worktree.
+   - Never choose a provider or model for the user: only a configured provider is called, a named model is never substituted, and an unpriced model is refused.
 4. **Security & Secrets:**
    - Never commit API keys, tokens, or private credentials.
    - Scrub sensitive environment variables and tokens before executing child subprocesses.
@@ -97,7 +100,8 @@ Every pull request is reviewed against the core Argus review priorities:
 4. **Is failure and recovery handled correctly (fail-closed, bounded outputs, tree killing)?**
 5. **Are relevant automated tests present?**
 6. **Does it affect host security or credential confidentiality?**
-7. **Does it alter matching tier definitions or baseline experimental conditions?**
+7. **Does it alter matching tier definitions or baseline experimental conditions?** Patch-engine changes need regression tests for the refusal cases (ambiguity, near-miss tokens, line endings), not only the success cases.
+8. **Do the docs match?** Update README, website pages and CHANGELOG for any CLI flag, default or behaviour you change. Claims about research results need an evidence pointer in `docs/RESEARCH_STATUS.md`.
 
 ---
 

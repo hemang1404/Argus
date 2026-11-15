@@ -112,7 +112,7 @@ def test_complete_toy_repo_recovery_workflow(monkeypatch):
                 "--attempts", "3",
             ])
             assert run_res.exit_code == 0
-            assert "Verified passing" in run_res.output
+            assert "passes on the patched copy" in run_res.output
             assert "2 attempts" in run_res.output
 
             # 6. Verify isolation invariant: original file MUST NOT have been modified during recovery!

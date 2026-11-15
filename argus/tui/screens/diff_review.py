@@ -7,6 +7,7 @@ from typing import Optional
 
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.css.query import NoMatches
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Static
@@ -23,9 +24,11 @@ from argus.tui.widgets.status_bar import StatusBar
 class DiffReviewScreen(Screen[None]):
     """Screen for inspecting verified candidate patches in clean full-width layout."""
 
+    # Applying needs two deliberate steps: arm with `a` (or the Approve button), then
+    # confirm with `y`. Enter never approves, so a stray keypress cannot modify a file.
     BINDINGS = [
-        Binding("a", "approve_and_apply", "Approve & Apply"),
-        Binding("enter", "approve_and_apply", "Approve & Apply"),
+        Binding("a", "approve_and_apply", "Approve"),
+        Binding("y", "confirm_apply", "Confirm apply"),
         Binding("d", "discard_patch", "Discard"),
         Binding("escape", "discard_patch", "Back"),
     ]
@@ -48,6 +51,7 @@ class DiffReviewScreen(Screen[None]):
         self.verified = verified
         self.baseline_hash = baseline_hash
         self.run_id = run_id
+        self._confirming = False
 
     def compose(self) -> ComposeResult:
         has_diff = bool(self.diff_text.strip())
@@ -106,8 +110,8 @@ class DiffReviewScreen(Screen[None]):
                             id="diff-empty-command",
                         )
                     yield Static(
-                        "Argus reproduces the failure in an isolated git worktree, then stages "
-                        "the candidate patch here for verification and approval.",
+                        "Argus reproduces the failure in a temporary copy of your project, then stages "
+                        "the candidate patch here for review and approval.",
                         id="diff-empty-note",
                     )
                     yield Static(
@@ -118,15 +122,13 @@ class DiffReviewScreen(Screen[None]):
             with Horizontal(id="diff-actions-bar"):
                 yield Button("Discard (Esc)", id="btn-discard")
                 if has_diff:
-                    yield Button("Approve & Apply (a)", variant="primary", id="btn-approve")
+                    yield Button("Approve... (a)", variant="primary", id="btn-approve")
 
-        yield StatusBar(workspace=self.workspace, version="v0.2.0")
+        yield StatusBar(workspace=self.workspace)
 
     def on_mount(self) -> None:
-        if self.diff_text.strip() and self.verified:
-            self.query_one("#btn-approve", Button).focus()
-        else:
-            self.query_one("#btn-discard", Button).focus()
+        # Discard is the safe default: a stray Enter on arrival must not approve anything.
+        self.query_one("#btn-discard", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-approve":
@@ -135,33 +137,79 @@ class DiffReviewScreen(Screen[None]):
             self.action_discard_patch()
 
     def action_discard_patch(self) -> None:
-        """Discard the patch and return to the main screen."""
+        """Cancel a pending confirmation first; otherwise discard the patch and go back."""
+        if self._confirming:
+            self._disarm()
+            self._report("[dim]Approval cancelled. Nothing was changed.[/dim]")
+            return
         self.app.pop_screen()
+
+    def _disarm(self) -> None:
+        self._confirming = False
+        try:
+            self.query_one("#btn-approve", Button).label = "Approve... (a)"
+        except NoMatches:
+            pass
 
     def _report(self, markup: str) -> None:
         feedback = self.query_one("#diff-feedback", Static)
         feedback.add_class("-active")
         feedback.update(markup)
 
+    def action_confirm_apply(self) -> None:
+        """Second step: confirm the armed approval."""
+        if self._confirming:
+            self._apply_patch()
+
     def action_approve_and_apply(self) -> None:
-        """Safely and atomically apply the verified patch to the target file."""
+        """First step: validate and ask for explicit confirmation; a second call applies."""
         if not self.diff_text.strip():
             self.app.pop_screen()
             return
 
-        if not self.target_file:
-            self._report("[bold red]Error: No target file is associated with this candidate.[/bold red]")
+        if self._confirming:
+            self._apply_patch()
             return
 
-        target_path = Path(self.target_file).resolve()
+        if self._validate_for_apply() is None:
+            return
+
+        self._confirming = True
+        try:
+            self.query_one("#btn-approve", Button).label = "Confirm: apply (y)"
+        except NoMatches:
+            pass
+        self._report(
+            f"[bold]Apply this patch to[/bold] {self._resolved_target()}? "
+            "Press [bold]y[/bold] to approve and apply, or Esc to cancel."
+        )
+
+    def _resolved_target(self) -> Path:
+        """Resolve the target against the workspace, not the process working directory."""
+        path = Path(self.target_file)
+        return path.resolve() if path.is_absolute() else (Path(self.workspace) / path).resolve()
+
+    def _apply_patch(self) -> None:
+        target_path = self._validate_for_apply()
+        self._disarm()
+        if target_path is not None:
+            self._apply_via_artifact_store(target_path)
+
+    def _validate_for_apply(self) -> Optional[Path]:
+        """Return the resolved target when the candidate may be applied, else report why not."""
+        if not self.target_file:
+            self._report("[bold red]Error: No target file is associated with this candidate.[/bold red]")
+            return None
+
+        target_path = self._resolved_target()
 
         if not target_path.exists():
             self._report(f"[bold red]Error: Target file '{target_path}' does not exist.[/bold red]")
-            return
+            return None
 
         if not self.patched_content:
             self._report("[bold red]Error: No patched content is available for this candidate.[/bold red]")
-            return
+            return None
 
         if not self.verified:
             self._report(
@@ -169,7 +217,7 @@ class DiffReviewScreen(Screen[None]):
                 "its test suite, so writing it could break the workspace. Re-run recovery, or use "
                 "'argus approve <run-id> --force' from the CLI if you have reviewed it manually."
             )
-            return
+            return None
 
         if not self.run_id:
             self._report(
@@ -177,16 +225,17 @@ class DiffReviewScreen(Screen[None]):
                 "artifact. Re-run recovery so the patch can be applied through the "
                 "authoritative applier."
             )
-            return
+            return None
 
-        self._apply_via_artifact_store(target_path)
+        return target_path
 
     def _apply_via_artifact_store(self, target_path: Path) -> None:
         """Apply through the authoritative applier (hash, AST, containment, audit)."""
         root = Path(self.workspace).resolve()
         try:
-            # The keypress is the human review action. Record it as interactive
-            # approval; the applier still performs every integrity check.
+            # The explicit two-step confirmation is the human review action. Record it as
+            # interactive approval; the applier still performs every integrity check
+            # (including the run-id and signature checks surfaced below).
             CandidateArtifactStore.set_approval(
                 self.run_id or "",
                 approved=True,

@@ -12,7 +12,7 @@ import logging
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import AsyncGenerator, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -23,27 +23,47 @@ from argus.api.auth import (
     require_session_token,
     validate_path_within_workspace,
 )
-from argus.config import ArgusConfig
+from argus.config import (
+    DEFAULT_BUDGET_USD,
+    DEFAULT_MAX_ATTEMPTS,
+    MAX_ATTEMPTS_CEILING,
+    ArgusConfig,
+)
 from argus.runtime.candidate import (
     AuthoritativePatchApplier,
     CandidateApplicationError,
     CandidateArtifactStore,
 )
 from argus.runtime.controller import AttemptRecord, RecoveryController, RecoveryOutcome
+from argus.utils.redaction import scrub_secrets
 
 logger = logging.getLogger("argus.api.recovery")
 
 router = APIRouter(prefix="/api/v1/recovery", tags=["recovery"])
 
 
+# Upper bound for a single API-submitted task's spend (matches the CLI and TUI policy limits).
+MAX_API_BUDGET_USD = 10.0
+
+# asyncio keeps only weak references to tasks: a worker with no other reference can be
+# garbage-collected mid-run and the SSE stream then never sees RECOVERY_COMPLETE.
+_background_tasks: set[asyncio.Task] = set()
+
+
 class RecoveryTaskRequest(BaseModel):
     target_file: str = Field(..., description="Relative or absolute path to target file.")
     test_command: str = Field(..., description="Command to execute test suite.")
     test_file: Optional[str] = Field(None, description="Optional path to test file.")
-    model: str = Field("argus/auto", description="Model tier or model identifier.")
+    model: Optional[str] = Field(None, description="Explicit model identifier. Omit to use the provider's configured model.")
     provider: Optional[str] = Field(None, description="Explicit provider name, or 'auto' to request host discovery.")
-    max_attempts: int = Field(4, ge=1, le=8, description="Maximum recovery attempts.")
-    budget: float = Field(0.05, gt=0.0, description="Cost limit in USD.")
+    max_attempts: int = Field(DEFAULT_MAX_ATTEMPTS, ge=1, le=MAX_ATTEMPTS_CEILING, description="Maximum recovery attempts.")
+    budget: float = Field(
+        DEFAULT_BUDGET_USD,
+        gt=0.0,
+        le=MAX_API_BUDGET_USD,
+        allow_inf_nan=False,
+        description="Cost limit in USD.",
+    )
 
 
 class TaskState:
@@ -119,8 +139,10 @@ async def start_recovery_task(
     state = task_manager.create_task(req, workspace_root)
     state.baseline_hash = calculate_file_hash(target_path)
 
-    # 3. Spawn background execution thread
-    asyncio.create_task(_run_task_worker(state, target_path, test_path))
+    # 3. Spawn background execution thread (strong reference kept until it finishes)
+    worker = asyncio.create_task(_run_task_worker(state, target_path, test_path))
+    _background_tasks.add(worker)
+    worker.add_done_callback(_background_tasks.discard)
 
     return {
         "task_id": state.task_id,
@@ -178,6 +200,7 @@ async def _run_task_worker(
             target_file=target_path,
             test_command=state.request.test_command,
             test_file=test_path,
+            workspace_root=state.workspace_root,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
         )
@@ -195,6 +218,8 @@ async def _run_task_worker(
                 "message": outcome.message,
                 "target_file": str(target_path),
                 "selected_provider": outcome.selected_provider,
+                "config_notes": outcome.config_notes,
+                "routing_reasons": outcome.routing_reasons,
             },
         }
         await state.event_queue.put(completion_event)
@@ -208,7 +233,7 @@ async def _run_task_worker(
                 "total_cost_usd": 0.0,
                 "total_duration_ms": 0.0,
                 "unified_diff": "",
-                "message": f"Execution error: {str(ex)}",
+                "message": f"Execution error: {scrub_secrets(str(ex))}",
                 "target_file": str(target_path),
             },
         }
@@ -382,7 +407,8 @@ async def apply_verified_patch(
             require_approval=True,
         )
     except CandidateApplicationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message)
+        # Includes INVALID_RUN_ID and CANDIDATE_SIGNATURE_INVALID: surface the code so clients can tell them apart.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{exc.error_code}: {exc.message}")
 
     if not result.success:
         is_conflict = result.error_code in (

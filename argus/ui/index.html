@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Argus — Adaptive Code Recovery Runtime</title>
   <link rel="stylesheet" href="app.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body class="dark-theme">
   <!-- Top Navigation Bar -->
@@ -16,11 +13,11 @@
       <div class="logo-group">
         <span class="logo-icon">🛡️</span>
         <span class="logo-title">Argus</span>
-        <span class="logo-badge">v0.2.0</span>
+        <span class="logo-badge" id="version-badge"></span>
       </div>
       <div class="status-indicator" id="connection-status">
         <span class="status-pulse"></span>
-        <span class="status-text" id="status-text">Connected</span>
+        <span class="status-text" id="status-text">Connecting...</span>
       </div>
     </div>
     <div class="header-right">

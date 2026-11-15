@@ -1,4 +1,4 @@
-"""Regression Test Suite for Confirmatory Study Remediations.
+"""Regression tests for evaluator/localization/provider-error remediations.
 
 Validates fixes for known issues identified during the 30-task pilot:
 1. Evaluator setup patch application (regression test for pydata__xarray-4629 evaluator failure).
@@ -9,21 +9,14 @@ Validates fixes for known issues identified during the 30-task pilot:
 
 from __future__ import annotations
 
-import io
-import json
-import tarfile
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import MagicMock, patch
+from typing import List, Optional, Tuple
+from unittest.mock import MagicMock
 
 import pytest
-
-pytestmark = pytest.mark.research
 
 from argus.runtime.container import (
     ContainerConfig,
     ContainerEvaluator,
-    ContainerExecutionResult,
 )
 from argus.runtime.controller import (
     RecoveryController,
@@ -201,7 +194,7 @@ def test_provider_http_error_does_not_charge_attempt():
     and does not increment successful LLM completion counts or settle unearned
     spend.
     """
-    from argus.providers.adapter import ProviderError, CompletionResponse
+    from argus.providers.adapter import ProviderError
 
     mock_adapter = MagicMock()
     # Simulate Groq HTTP 413 token overflow
@@ -227,88 +220,8 @@ def test_provider_http_error_does_not_charge_attempt():
     assert mock_budget.settle_attempt.call_count == 0
 
 
-def test_exact_mcnemar_binomial_arithmetic():
-    """Verify that exact two-sided binomial p-value for Nd=22, k=18 is approximately 0.0043435.
-
-    Confirms correct sum of combinations:
-    comb(22, 18) = 7315, comb(22, 19) = 1540, comb(22, 20) = 231, comb(22, 21) = 22, comb(22, 22) = 1.
-    Sum = 9109. Two-sided p = 2 * 9109 / 2^22 = 18218 / 4194304 = 0.00434351...
-    """
-    import math
-    try:
-        from src.analysis.reproduce_pilot_30_analysis import compute_mcnemar_paired
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research analysis module not present in release repository')
-
-    n_d = 22
-    k_min = 4  # discordant failures (arm2 wins)
-    k_max = 18 # discordant successes (arm1 wins)
-
-    # Pure arithmetic check
-    comb_sum = sum(math.comb(n_d, k) for k in range(k_min + 1))
-    assert comb_sum == 9109
-    p_exact_calc = 2.0 * comb_sum / (2 ** n_d)
-    assert abs(p_exact_calc - 0.00434351) < 1e-7
-
-    # Verification via analysis module
-    matrix = {}
-    for i in range(18):
-        matrix[f"t_win_{i}"] = {"arm1": True, "arm2": False}
-    for i in range(4):
-        matrix[f"t_loss_{i}"] = {"arm1": False, "arm2": True}
-    for i in range(98):
-        matrix[f"t_tie_{i}"] = {"arm1": True, "arm2": True}
-
-    res = compute_mcnemar_paired(matrix, "arm1", "arm2")
-    assert res["b_arm1_wins"] == 18
-    assert res["c_arm2_wins"] == 4
-    assert res["n_discordant"] == 22
-    assert res["p_exact"] == 0.0043
 
 
-def test_holm_bonferroni_step_down_ranking():
-    """Verify that Holm-Bonferroni sorts observed p-values in ascending order
-
-    and evaluates step-down thresholds alpha / (m - i + 1), rather than permanently
-    assigning fixed thresholds to named contrast labels upfront.
-    """
-    try:
-        from src.analysis.reproduce_pilot_30_analysis import apply_holm_bonferroni
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research analysis module not present in release repository')
-
-    # Provide p-values out of order
-    results = [
-        {"p_exact": 0.0350, "contrast": "Contrast_3"},
-        {"p_exact": 0.0040, "contrast": "Contrast_1"},
-        {"p_exact": 0.0600, "contrast": "Contrast_4"},
-        {"p_exact": 0.0150, "contrast": "Contrast_2"},
-    ]
-
-    adjusted = apply_holm_bonferroni(results, p_key="p_exact", alpha=0.05)
-
-    # Ranks must be 1 to 4 sorted by raw p
-    assert [r["contrast"] for r in adjusted] == [
-        "Contrast_1",
-        "Contrast_2",
-        "Contrast_3",
-        "Contrast_4",
-    ]
-    assert adjusted[0]["rank"] == 1
-    assert adjusted[0]["p_adjusted"] == round(0.0040 * 4, 4)  # 0.0160
-    assert adjusted[0]["significant_alpha_0.05"] is True
-
-    assert adjusted[1]["rank"] == 2
-    assert adjusted[1]["p_adjusted"] == round(0.0150 * 3, 4)  # 0.0450
-    assert adjusted[1]["significant_alpha_0.05"] is True
-
-    assert adjusted[2]["rank"] == 3
-    # Step 3 raw p = 0.0350 * 2 = 0.0700 > 0.05 (Not significant)
-    assert adjusted[2]["p_adjusted"] == round(0.0350 * 2, 4)  # 0.0700
-    assert adjusted[2]["significant_alpha_0.05"] is False
-
-    assert adjusted[3]["rank"] == 4
-    assert adjusted[3]["significant_alpha_0.05"] is False
 
 
 def test_global_budget_ceiling_hard_stop():
@@ -343,83 +256,10 @@ def test_global_budget_ceiling_hard_stop():
     assert gb.total_committed == 4.495000  # Global state untouched
 
 
-def test_task_arm_order_counterbalancing_determinism():
-    """Verify that get_task_arm_order produces deterministic, balanced permutations
-
-    keyed to manifest_sha256, task_id, and seed.
-    """
-    try:
-        from src.experiments.run_confirmatory_120_study import get_task_arm_order
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research runner not present in release repository')
-
-    manifest_hash = "2b6581e2e91ceb3c3ca9d7ec05112ff036b2facd600e3a37e9c423cd02665ae8"
-    order1 = get_task_arm_order("django__django-11119", manifest_hash, seed=42)
-    order2 = get_task_arm_order("django__django-11119", manifest_hash, seed=42)
-
-    assert order1 == order2
-    assert set(order1) == {"A", "B", "C", "D", "E"}
-    assert len(order1) == 5
-
-    # Different task should produce a different permutation
-    order3 = get_task_arm_order("humaneval_21", manifest_hash, seed=42)
-    assert set(order3) == {"A", "B", "C", "D", "E"}
 
 
-def test_rejection_region_cutoffs_nd15_and_nd20():
-    """Verify that exact two-sided binomial rejection cutoffs at alpha=0.0125 are:
-
-    - Nd=15: k <= 2 and k >= 13 (two-sided p = 0.007385 <= 0.0125)
-    - Nd=20: k <= 4 and k >= 16 (two-sided p = 0.011818 <= 0.0125)
-    """
-    pytest.importorskip("scipy", reason="install 'argus-recovery[research]'")
-    try:
-        from src.analysis.compute_confirmatory_power_tables import (
-            exact_two_sided_binomial_p,
-            get_rejection_region,
-        )
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research analysis module not present in release repository')
-
-    # Nd = 15
-    rej15, k_low15, k_high15 = get_rejection_region(15, 0.0125)
-    assert k_low15 == 2
-    assert k_high15 == 13
-    assert exact_two_sided_binomial_p(15, 13) == pytest.approx(0.00738525, abs=1e-6)
-    assert exact_two_sided_binomial_p(15, 12) > 0.0125  # k=12 not rejected
-
-    # Nd = 20
-    rej20, k_low20, k_high20 = get_rejection_region(20, 0.0125)
-    assert k_low20 == 4
-    assert k_high20 == 16
-    assert exact_two_sided_binomial_p(20, 16) == pytest.approx(0.0118179, abs=1e-6)
-    assert exact_two_sided_binomial_p(20, 15) > 0.0125  # k=15 not rejected
 
 
-def test_unconditional_power_discrepancy_resolved():
-    """Verify exact unconditional power values for p_disc=0.20, theta=0.80 at alpha=0.0167 and 0.0250,
-
-    explicitly comparing them with the previous draft values of 69.8% and 75.3%.
-    """
-    pytest.importorskip("scipy", reason="install 'argus-recovery[research]'")
-    try:
-        from src.analysis.compute_confirmatory_power_tables import generate_unconditional_power_table
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research analysis module not present in release repository')
-
-    uncond = generate_unconditional_power_table()
-    target = [r for r in uncond if r["p_disc"] == 0.20 and r["theta"] == 0.80][0]
-
-    # Exact recalculated values
-    exact_0167 = target["power_0167_pct"]
-    exact_0250 = target["power_0250_pct"]
-
-    assert exact_0167 == pytest.approx(67.271, abs=1e-3)
-    assert exact_0250 == pytest.approx(73.480, abs=1e-3)
-
-    # Reconcile discrepancy: previous draft stated 69.8% and 75.3%
-    assert exact_0167 != 69.8
-    assert exact_0250 != 75.3
 
 
 def test_budget_settlement_and_uncertain_quarantine():
@@ -520,246 +360,14 @@ def test_dispatch_path_refuses_host_fallback_when_isolation_required(tmp_path):
     assert outcome2.status == "CONTAINER_SETUP_ERROR"
 
 
-def test_active_budget_cap_enforced_single_value():
-    """Verify that the selected per-condition reservation cap is uniquely $0.00750,
-
-    guaranteeing that 600 conditions committed cannot exceed $4.500000 in the active
-    experiment process, and lifetime exposure remains bounded below the $5.00 ceiling.
-    """
-    try:
-        from src.experiments.run_confirmatory_120_study import (
-            CONDITION_RESERVATION_CAP_USD,
-            GLOBAL_BUDGET_CEILING_USD,
-        )
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research runner not present in release repository')
-
-    # 1. Uniquely enforced per-condition cap
-    assert CONDITION_RESERVATION_CAP_USD == 0.007500
-    assert GLOBAL_BUDGET_CEILING_USD == 4.500000
-
-    # 2. Maximum concurrent theoretical commitment
-    max_active_commitment = 600 * CONDITION_RESERVATION_CAP_USD
-    assert max_active_commitment == 4.500000
-    assert max_active_commitment <= GLOBAL_BUDGET_CEILING_USD
-
-    # 3. Lifetime accounting
-    historical_settled = 0.0504194
-    quarantined_uncertain = 0.0053980
-    historical_conservative = historical_settled + quarantined_uncertain
-    assert abs(historical_conservative - 0.0558174) < 1e-6
-
-    # Lifetime ceiling check: $5.000000
-    lifetime_cap = 5.000000
-    max_lifetime_exposure = historical_conservative + GLOBAL_BUDGET_CEILING_USD
-    assert max_lifetime_exposure == pytest.approx(4.5558174, abs=1e-6)
-    assert max_lifetime_exposure < lifetime_cap
-    assert (lifetime_cap - max_lifetime_exposure) > 0.44  # Guaranteed >$0.44 margin
 
 
-def test_latent_correlation_simulation_and_binary_phi():
-    """Verify that the 5-arm latent Gaussian model correctly parameterizes latent correlation r
-
-    and produces empirical binary phi correlations phi < r under pilot-calibrated marginals.
-    """
-    pytest.importorskip("scipy", reason="install 'argus-recovery[research]'")
-    try:
-        from src.analysis.compute_confirmatory_power_tables import (
-            PILOT_EMPIRICAL_COUNTS,
-            simulate_coherent_5arm_study,
-        )
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research analysis module not present in release repository')
-
-    # Pilot empirical counts
-    assert PILOT_EMPIRICAL_COUNTS["A"] == (12, 30)
-    assert PILOT_EMPIRICAL_COUNTS["B"] == (13, 30)
-    assert PILOT_EMPIRICAL_COUNTS["C"] == (17, 30)
-    assert PILOT_EMPIRICAL_COUNTS["D"] == (18, 30)
-    assert PILOT_EMPIRICAL_COUNTS["E"] == (11, 30)
-
-    # Run deterministic simulation with K=2000
-    sim = simulate_coherent_5arm_study(n_tasks=120, n_replications=2000, latent_r=0.50, seed=42)
-
-    assert sim["latent_correlation_r"] == 0.50
-    # Binary correlation phi is strictly attenuated relative to latent r
-    assert 0.25 < sim["mean_binary_correlation_phi"] < 0.40
-    assert sim["mean_binary_correlation_phi"] < 0.50
-
-    # Monte Carlo standard error must be small (<= 0.015 for K=2000)
-    assert all(se < 0.015 for se in sim["individual_holm_se"])
-
-    # Contrast 4 (C vs B) has power < 80% (confirming joint Holm power is model-dependent)
-    c_vs_b_power = sim["individual_holm_power"][3]
-    assert c_vs_b_power < 0.80
-    # All four power is < 70%
-    assert sim["all_four_rejection_power"] < 0.70
 
 
-def test_image_lockfile_consumption_by_runtime(tmp_path):
-    """Verify that ConfirmatoryStudyRunner runtime can consume locked immutable digests/IDs
-
-    from confirmatory_120_image_lock.json rather than assuming lockfiles have no effect.
-    """
-    try:
-        from src.experiments.run_confirmatory_120_study import ConfirmatoryStudyRunner
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research runner not present in release repository')
-
-    # 1. Create runner with standard manifest
-    runner = ConfirmatoryStudyRunner(
-        manifest_path=Path("experiments_archive/confirmatory_120_manifest.json"),
-        dry_run=True,
-    )
-
-    # For an unknown unmapped image without SUCCESS lock, falls back to default manifest image
-    unmapped_img = "swebench/sweb.eval.x86_64.custom_unknown-9999:latest"
-    resolved_fallback = runner.resolve_container_image("custom__unknown-9999", unmapped_img)
-    assert resolved_fallback == unmapped_img
-
-    # 2. For a successfully pulled and locked task, runner consumes the locked immutable digest
-    locked_task_id = "django__django-10097"
-    manifest_img = "swebench/sweb.eval.x86_64.django_django-10097:latest"
-    resolved_locked = runner.resolve_container_image(locked_task_id, manifest_img)
-    assert resolved_locked != manifest_img
-    assert "@sha256:" in resolved_locked
-    assert "django_1776_django-10097" in resolved_locked
 
 
-def test_confirmatory_runner_lifecycle_and_checkpointing(tmp_path):
-    """Verify that ConfirmatoryStudyRunner:
-
-    1. Executes randomized within-task arm ordering.
-    2. Writes conditions to outcomes.jsonl.
-    3. Resumes from checkpoint, skipping already-completed conditions without re-execution.
-    """
-    try:
-        from src.experiments.run_confirmatory_120_study import ConfirmatoryStudyRunner
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research runner not present in release repository')
-
-    results_dir = tmp_path / "study_results"
-
-    # Step 1: Initial run with 2 tasks in dry-run mode
-    runner1 = ConfirmatoryStudyRunner(
-        manifest_path=Path("experiments_archive/confirmatory_120_manifest.json"),
-        results_dir=results_dir,
-        dry_run=True,
-        max_tasks=2,
-    )
-    summary1 = runner1.run_study()
-    assert summary1["tasks_processed"] == 2
-    assert summary1["completed_conditions"] == 10  # 2 tasks * 5 arms
-
-    outcomes_file = results_dir / "outcomes.jsonl"
-    assert outcomes_file.exists()
-    with open(outcomes_file, "r", encoding="utf-8") as f:
-        lines = [json.loads(l) for l in f if l.strip()]
-    assert len(lines) == 10
-
-    # Step 2: Resumed run with the same results_dir
-    runner2 = ConfirmatoryStudyRunner(
-        manifest_path=Path("experiments_archive/confirmatory_120_manifest.json"),
-        results_dir=results_dir,
-        dry_run=True,
-        max_tasks=2,
-    )
-    # Checkpoint should load all 10 completed conditions
-    assert len(runner2.completed_conditions) == 10
-
-    summary2 = runner2.run_study()
-    # No new conditions should be appended
-    assert summary2["completed_conditions"] == 10
-    with open(outcomes_file, "r", encoding="utf-8") as f:
-        lines2 = [json.loads(l) for l in f if l.strip()]
-    assert len(lines2) == 10
 
 
-def test_algorithmic_evaluation_harness_delivery_and_assertion_failure():
-    """Verify that ContainerEvaluator with setup_files delivers test_solution.py into disposable containers.
-
-    Proves that:
-    1. Known-correct HumanEval solution passes (exit code 0).
-    2. Known-correct MBPP solution passes (exit code 0).
-    3. Deliberately incorrect solution fails on genuine AssertionError, not a missing-file error.
-    """
-    from argus.runtime.container import is_container_engine_available
-    if not is_container_engine_available("docker"):
-        pytest.skip("Local Docker daemon unavailable")
-
-    try:
-        from src.experiments.run_confirmatory_120_study import format_algorithmic_test
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip('Historical research runner not present in release repository')
-
-    with open("data/candidate_tasks.jsonl", "r", encoding="utf-8") as f:
-        cand_map = {c["task_id"]: c for c in [json.loads(line) for line in f if line.strip()]}
-
-    # 1. HumanEval Known-Correct & Incorrect
-    he_task = cand_map["humaneval_21"]
-    he_test = format_algorithmic_test(he_task["entry_point"], he_task["test_code"])
-    he_cfg = ContainerConfig(
-        image="argus-algorithmic-eval:latest",
-        workdir="/home/sandbox/workspace",
-        timeout_seconds=30,
-        memory_limit="512m",
-        pids_limit=64,
-        network_disabled=True,
-        setup_files={"test_solution.py": he_test},
-    )
-    evaluator_he = ContainerEvaluator(he_cfg)
-
-    res_he_correct = evaluator_he.evaluate(
-        candidate_content=he_task["canonical_solution"],
-        target_rel_path="solution.py",
-        test_command="pytest test_solution.py -q",
-    )
-    assert res_he_correct.passed is True
-    assert res_he_correct.exit_code == 0
-
-    res_he_wrong = evaluator_he.evaluate(
-        candidate_content="def rescale_to_unit(numbers):\n    return numbers\n",
-        target_rel_path="solution.py",
-        test_command="pytest test_solution.py -q",
-    )
-    assert res_he_wrong.passed is False
-    assert res_he_wrong.exit_code == 1
-    assert "AssertionError" in res_he_wrong.stdout
-    assert "file or directory not found" not in res_he_wrong.stdout.lower()
-    assert "file or directory not found" not in res_he_wrong.stderr.lower()
-
-    # 2. MBPP Known-Correct & Incorrect
-    mbpp_task = cand_map["mbpp_75"]
-    mbpp_test = format_algorithmic_test(mbpp_task["entry_point"], mbpp_task["test_code"])
-    mbpp_cfg = ContainerConfig(
-        image="argus-algorithmic-eval:latest",
-        workdir="/home/sandbox/workspace",
-        timeout_seconds=30,
-        memory_limit="512m",
-        pids_limit=64,
-        network_disabled=True,
-        setup_files={"test_solution.py": mbpp_test},
-    )
-    evaluator_mbpp = ContainerEvaluator(mbpp_cfg)
-
-    res_mbpp_correct = evaluator_mbpp.evaluate(
-        candidate_content=mbpp_task["canonical_solution"],
-        target_rel_path="solution.py",
-        test_command="pytest test_solution.py -q",
-    )
-    assert res_mbpp_correct.passed is True
-    assert res_mbpp_correct.exit_code == 0
-
-    res_mbpp_wrong = evaluator_mbpp.evaluate(
-        candidate_content="def find_tuples(test_list, K):\n    return []\n",
-        target_rel_path="solution.py",
-        test_command="pytest test_solution.py -q",
-    )
-    assert res_mbpp_wrong.passed is False
-    assert res_mbpp_wrong.exit_code == 1
-    assert "AssertionError" in res_mbpp_wrong.stdout
-    assert "file or directory not found" not in res_mbpp_wrong.stdout.lower()
-    assert "file or directory not found" not in res_mbpp_wrong.stderr.lower()
 
 
 

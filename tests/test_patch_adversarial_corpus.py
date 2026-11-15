@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from argus.patch.fuzzy_engine import RefusalReason, ResilientPatchEngine
+from argus.patch.fuzzy_engine import ResilientPatchEngine
 from argus.patch.parser import PatchBlock
 from argus.patch.paths import PatchTargetError, validate_patch_blocks
 

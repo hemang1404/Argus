@@ -9,6 +9,8 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
+from argus.config import DEFAULT_BUDGET_USD
+
 # Design tokens matching styles.tcss
 _TEXT = "#e1e4ec"
 _SECONDARY = "#9298a8"
@@ -32,7 +34,7 @@ class UsageModal(ModalScreen[None]):
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
         total_cost_usd: float = 0.0,
-        budget_limit_usd: float = 0.50,
+        budget_limit_usd: float = DEFAULT_BUDGET_USD,
     ) -> None:
         super().__init__()
         self.total_attempts = total_attempts

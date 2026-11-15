@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import copy
 import hashlib
 import inspect
@@ -18,7 +19,9 @@ from typing import Any, Dict, List, Optional
 
 from argus.config import ArgusConfig
 from argus.patch.fuzzy_engine import PatchResult, RefusalReason, ResilientPatchEngine
+from argus.patch.ast_checker import ASTChecker, is_python_filename
 from argus.patch.parser import PatchParser
+from argus.patch.textio import UnsupportedEncodingError
 from argus.patch.paths import PatchTargetError, validate_patch_blocks
 from argus.providers.models import ProviderConfigurationError
 from argus.providers.adapter import OpenAICompatibleAdapter, ProviderAdapter, ProviderError
@@ -32,8 +35,13 @@ from argus.runtime.budget import (
 from argus.runtime.candidate import CandidateArtifactStore
 from argus.runtime.events import JsonLinesEmitter
 from argus.runtime.runner import SubprocessTestRunner
-from argus.runtime.workspace import WorkspaceManager
-from argus.utils.redaction import scrub_secrets
+from argus.runtime.workspace import (
+    SnapshotTooLargeError,
+    TargetNotFoundError,
+    TargetOutsideWorkspaceError,
+    WorkspaceManager,
+)
+from argus.utils.redaction import scrub_prompt, scrub_secrets
 
 
 class LocalizationError(RuntimeError):
@@ -413,6 +421,7 @@ class RecoveryController:
             ambiguity_margin=self.config.ambiguity_margin,
             enforce_ast=True,
             enable_tier4=getattr(self.config, "enable_tier4", False),
+            enable_tier3=getattr(self.config, "enable_tier3", True),
         )
         self.test_runner = SubprocessTestRunner(timeout_seconds=self.config.test_timeout_seconds)
         self.adapter: Optional[ProviderAdapter] = adapter
@@ -1042,9 +1051,39 @@ class RecoveryController:
                 )
             )
 
-        # Step 1: Initialize Workspace
-        use_worktree = kwargs.get("use_worktree", getattr(self.config, "use_worktree", False))
-        with WorkspaceManager(repo_root=ws_root, target_file=target_path, test_file=test_file, use_worktree=use_worktree) as ws:
+        # Step 1: Initialize Workspace (copy-based; setup problems become typed outcomes)
+        with contextlib.ExitStack() as _ws_stack:
+            try:
+                ws = _ws_stack.enter_context(
+                    WorkspaceManager(
+                        repo_root=ws_root,
+                        target_file=target_path,
+                        test_file=test_file,
+                        snapshot_exclude=self.config.snapshot_exclude,
+                        snapshot_respect_gitignore=self.config.snapshot_respect_gitignore,
+                        snapshot_max_bytes=self.config.snapshot_max_bytes,
+                    )
+                )
+            except (TargetNotFoundError, TargetOutsideWorkspaceError, UnsupportedEncodingError) as exc:
+                return _finalize(
+                    RecoveryOutcome(
+                        status="INVALID_TARGET",
+                        total_attempts=0,
+                        total_cost_usd=0.0,
+                        total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                        message=f"{type(exc).__name__}: {exc}",
+                    )
+                )
+            except SnapshotTooLargeError as exc:
+                return _finalize(
+                    RecoveryOutcome(
+                        status="CONFIG_ERROR",
+                        total_attempts=0,
+                        total_cost_usd=0.0,
+                        total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                        message=f"SnapshotTooLargeError: {exc}",
+                    )
+                )
             exec_test_cmd = test_command
             if test_file and ws.test_file_rel:
                 orig_str = str(test_file)
@@ -1535,6 +1574,9 @@ class RecoveryController:
                 # Parse patch blocks
                 curr_raw_response = response_text
                 patch_blocks = PatchParser.parse(response_text)
+                parse_errors = (
+                    PatchParser.parse_search_replace_detailed(response_text).errors if not patch_blocks else []
+                )
                 truncated = (finish_reason or "").lower() in ("length", "max_tokens")
                 if patch_blocks:
                     curr_parsed_patch = "\n".join(
@@ -1555,7 +1597,11 @@ class RecoveryController:
                         error_summary=(
                             "Model output was truncated (finish_reason=length) before a complete SEARCH/REPLACE block."
                             if truncated
-                            else "Model did not produce recognizable SEARCH/REPLACE blocks."
+                            else (
+                                "Malformed SEARCH/REPLACE response: " + " ".join(parse_errors)
+                                if parse_errors
+                                else "Model did not produce recognizable SEARCH/REPLACE blocks."
+                            )
                         ),
                         model_used=tier_model,
                         prompt_tokens_est=p_tokens_est,
@@ -1579,7 +1625,14 @@ class RecoveryController:
                             ast_valid=False,
                             error_summary=record.error_summary,
                         )
-                    if truncated:
+                    if parse_errors and not truncated:
+                        last_error = (
+                            "Malformed SEARCH/REPLACE response, nothing was applied: "
+                            + " ".join(parse_errors)
+                            + " Every block must be complete: '<<<<<<< SEARCH', the exact existing lines, "
+                            "'=======', the replacement, '>>>>>>> REPLACE'."
+                        )
+                    elif truncated:
                         last_error = (
                             "Truncation: your previous response hit the output token limit and was cut off before "
                             "a complete SEARCH/REPLACE block. Respond again with ONE minimal SEARCH/REPLACE block "
@@ -1638,23 +1691,18 @@ class RecoveryController:
                     attempt_idx += 1
                     continue
 
-                # Apply patches sequentially to current workspace code
-                working_code = current_code
-                patch_success = True
-                patch_res: Optional[PatchResult] = None
-
-                for block in patch_blocks:
-                    patch_res = self.patch_engine.apply_patch(
-                        working_code,
-                        block,
-                        filename=str(ws.target_file_rel),
-                    )
-                    if patch_res.success:
-                        patch_res.matched_file = str(ws.target_file_rel)
-                    if not patch_res.success:
-                        patch_success = False
-                        break
-                    working_code = patch_res.patched_code or working_code
+                # Apply all blocks in order; the syntactic gate runs once on the final text.
+                patch_res: Optional[PatchResult] = self.patch_engine.apply_blocks(
+                    current_code,
+                    patch_blocks,
+                    filename=str(ws.target_file_rel),
+                )
+                patch_success = patch_res.success
+                if patch_success:
+                    patch_res.matched_file = str(ws.target_file_rel)
+                    working_code = patch_res.patched_code if patch_res.patched_code is not None else current_code
+                else:
+                    working_code = current_code
 
                 if not patch_success:
                     attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
@@ -1703,12 +1751,23 @@ class RecoveryController:
                     attempt_idx += 1
                     continue
 
-                # Write candidate to workspace
-                ws.write_target_file(working_code)
+                # Write candidate to workspace (strict encoding: no lossy replacement characters)
+                try:
+                    ws.write_target_file(working_code)
+                except UnsupportedEncodingError as exc:
+                    return _finalize(
+                        RecoveryOutcome(
+                            status="INVALID_TARGET",
+                            total_attempts=len(history),
+                            total_cost_usd=round(self.budget_tracker.total_committed, 6),
+                            total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                            history=history,
+                            message=f"UnsupportedEncodingError: {exc}",
+                        )
+                    )
 
                 # Optional AST safety check
-                if ws.target_file_rel.suffix == ".py":
-                    from argus.patch.ast_checker import ASTChecker
+                if is_python_filename(str(ws.target_file_rel)):
                     ast_check = ASTChecker.validate_python_code(working_code, filename=str(ws.target_file_rel))
                     if not ast_check.is_valid:
                         attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
@@ -1948,9 +2007,9 @@ class RecoveryController:
         """Construct the prompt with code context and execution feedback."""
         # Centralized secret scrubbing: ensure credentials in error traces, problem statements,
         # or code context never reach model prompts.
-        safe_error_feedback = scrub_secrets(error_feedback or "")
-        safe_original_failure = scrub_secrets(original_failure or "")
-        safe_problem_statement = scrub_secrets(problem_statement) if problem_statement else None
+        safe_error_feedback = scrub_prompt(error_feedback or "")
+        safe_original_failure = scrub_prompt(original_failure or "")
+        safe_problem_statement = scrub_prompt(problem_statement) if problem_statement else None
 
         total_lines = len(code.splitlines())
         annotated_code, start_line, end_line, target_line = extract_context_frame(
@@ -2034,7 +2093,7 @@ Test Command: `{test_command}`
 4. Do NOT include line numbers or pipe symbols (' | ') in the SEARCH or REPLACE blocks. Output pure code.
 5. Ensure your replacement contains 100% valid Python syntax.
 """
-        return scrub_secrets(full_prompt)
+        return scrub_prompt(full_prompt)
 
     execute_recovery = run
 

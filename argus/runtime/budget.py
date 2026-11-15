@@ -30,22 +30,40 @@ ARGUS_SYSTEM_PROMPT = (
 )
 
 
+_TOKENIZER_CACHE: Dict[str, object] = {}
+_TOKENIZER_LOCK = threading.Lock()
+
+
 def get_gpt_oss_tokenizer(model: str = "openai/gpt-oss-20b"):
-    """Retrieve the native tokenizer for GPT-OSS models.
-    
-    GPT-OSS (20B and 120B) uses the o200k_harmony BPE vocabulary.
-    Falls back gracefully to o200k_base or cl100k_base if harmony is unavailable.
+    """Retrieve the native tokenizer for GPT-OSS models, or None when it is unavailable.
+
+    GPT-OSS (20B and 120B) uses the o200k_harmony BPE vocabulary; falls back to o200k_base or
+    cl100k_base. tiktoken downloads a vocabulary on first use, so the outcome (including
+    "unavailable", e.g. offline) is cached per process: a failed download is attempted once, not
+    on every budget estimate. Set ARGUS_OFFLINE=1 (or ARGUS_TOKENIZER=heuristic) to skip tiktoken
+    entirely and use the conservative byte-based estimate. Callers treat ``None`` as "estimate
+    from bytes", which over-reserves rather than under-reserves.
     """
-    try:
-        import tiktoken
-        for name in ("o200k_harmony", "o200k_base", "cl100k_base"):
-            try:
-                return tiktoken.get_encoding(name)
-            except Exception:
-                continue
-    except Exception:
-        pass
-    return None
+    if os.getenv("ARGUS_OFFLINE", "").strip().lower() in ("1", "true", "yes") or (
+        os.getenv("ARGUS_TOKENIZER", "").strip().lower() == "heuristic"
+    ):
+        return None
+    with _TOKENIZER_LOCK:
+        if "encoding" in _TOKENIZER_CACHE:
+            return _TOKENIZER_CACHE["encoding"]
+        encoding = None
+        try:
+            import tiktoken
+            for name in ("o200k_harmony", "o200k_base", "cl100k_base"):
+                try:
+                    encoding = tiktoken.get_encoding(name)
+                    break
+                except Exception:
+                    continue
+        except ImportError:
+            encoding = None
+        _TOKENIZER_CACHE["encoding"] = encoding
+        return encoding
 
 
 def count_prompt_tokens(

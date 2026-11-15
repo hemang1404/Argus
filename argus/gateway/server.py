@@ -37,7 +37,8 @@ from argus.adapters.protocol import (
     openai_to_anthropic_response,
     transform_openai_stream_to_anthropic,
 )
-from argus.gateway.budget import BudgetGuard
+from argus.config import UnpricedModelError
+from argus.gateway.budget import BudgetGuard, price_for_model
 from argus.gateway.config import GatewayConfig
 from argus.gateway.interceptor import StreamInterceptor, StreamPatchHealer
 from argus.gateway.retry import (
@@ -476,6 +477,9 @@ def estimate_request_cost(body: Dict[str, Any], model: Optional[str] = None) -> 
     max_tokens = body.get("max_tokens") or body.get("max_completion_tokens") or 1000
 
     target_model = model or body.get("model", "argus/auto")
+    # Reservation estimate only (before routing, so the final model may still be unknown): an
+    # unknown or pseudo model ('argus/auto') reserves at a conservative frontier-class rate.
+    # The actual metered price is resolved fail-closed by price_for_model() after routing.
     cost_profile = MODEL_REGISTRY.get(target_model, ModelCost(input_cost_per_m=2.50, output_cost_per_m=10.00))
     est_cost = cost_profile.calculate_cost(est_prompt_tokens, max_tokens)
     return min(0.50, max(0.001, round(est_cost, 4)))
@@ -708,6 +712,16 @@ async def chat_completions(request: Request) -> Response:
             },
         )
 
+    # 3b. Fail closed on unpriced models: cost must be boundable before any paid upstream call.
+    try:
+        price_for_model(target.upstream_model, target.provider_name, target.base_url)
+    except UnpricedModelError as ex:
+        _budget_guard.release(res_id)
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": str(ex), "type": "unpriced_model", "code": "unpriced_model"}},
+        )
+
     # 4. Safe Upstream Credential Resolution & Provider Isolation
     expected_token = _config.get_gateway_key()
     client_supplied_upstream_key, cred_err = resolve_client_upstream_credential(
@@ -885,22 +899,20 @@ async def _handle_host_request(
             out_tokens = max(1, len(full_text) // 4)
             dur_ms = (time.perf_counter() - start_time) * 1000.0
             try:
-                registry = TelemetryRegistry.get()
-                registry.record(
-                    run_id=run_id,
+                TelemetryRegistry.get().record_turn(
                     client=client,
-                    tier=tier,
                     requested_model=requested_model,
-                    actual_model=target_model,
-                    provider="antigravity",
+                    routed_model=target_model,
+                    tier=tier,
+                    prompt_tokens=in_tokens,
+                    completion_tokens=out_tokens,
                     latency_ms=dur_ms,
-                    input_tokens=in_tokens,
-                    output_tokens=out_tokens,
                     cost_usd=0.0,
-                    status_code=200,
+                    usage_source="locally_estimated",
+                    cost_status="zero_subscription",
                 )
-            except Exception:
-                pass
+            except OSError as ex:
+                logger.warning("Telemetry write failed for host stream: %s", ex)
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -931,22 +943,20 @@ async def _handle_host_request(
     total_tokens = in_tokens + out_tokens
 
     try:
-        registry = TelemetryRegistry.get()
-        registry.record(
-            run_id=run_id,
+        TelemetryRegistry.get().record_turn(
             client=client,
-            tier=tier,
             requested_model=requested_model,
-            actual_model=resp.model or target_model,
-            provider="antigravity",
+            routed_model=resp.model or target_model,
+            tier=tier,
+            prompt_tokens=in_tokens,
+            completion_tokens=out_tokens,
             latency_ms=duration_ms,
-            input_tokens=in_tokens,
-            output_tokens=out_tokens,
             cost_usd=0.0,
-            status_code=200,
+            usage_source="provider_reported",
+            cost_status="zero_subscription",
         )
-    except Exception:
-        pass
+    except OSError as ex:
+        logger.warning("Telemetry write failed for host response: %s", ex)
 
     if _budget_guard and res_id:
         _budget_guard.release(res_id)
@@ -1650,6 +1660,19 @@ async def anthropic_messages(request: Request) -> Response:
                     "message": f"Invalid or unsafe upstream base URL: '{target.base_url}'.",
                     "code": "ssrf_protection",
                 },
+            },
+        )
+
+    # 4b. Fail closed on unpriced models (cost must be boundable before a paid upstream call)
+    try:
+        price_for_model(target.upstream_model, target.provider_name, target.base_url)
+    except UnpricedModelError as ex:
+        _budget_guard.release(res_id)
+        return JSONResponse(
+            status_code=400,
+            content={
+                "type": "error",
+                "error": {"type": "unpriced_model", "message": str(ex), "code": "unpriced_model"},
             },
         )
 

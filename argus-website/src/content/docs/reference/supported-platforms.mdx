@@ -24,8 +24,12 @@ description: Verified runtime, operating-system, and execution boundaries for th
 | Windows 10/11 | Supported | Process-tree termination uses `taskkill /F /T`; UTF-8 output is enabled |
 | Linux (glibc) | Supported | Process groups terminated with `os.killpg` |
 | macOS | Supported | POSIX process-group termination |
-| WSL2 | Verified | POSIX process-group and PID start-time verification reported in the 0.2.0b1 changelog |
+| WSL2 | Reported | POSIX process-group and PID start-time checks were reported by the maintainer for 0.2.0b1 |
 | Other POSIX systems | Expected to work | Not independently verified for this documentation |
+
+Argus is developed and exercised mainly on Windows. The CI workflow runs the
+offline suite on Linux, Windows and macOS; behaviour not covered by CI has had less
+real-world use.
 
 The TUI requires a terminal with the capabilities Textual expects. Dedicated
 window mode is Windows-oriented.
@@ -38,20 +42,20 @@ window mode is Windows-oriented.
 | Dedicated terminal window (`argus app`) | `tui` extra |
 | Experimental gateway | `gateway` extra (`fastapi`, `uvicorn`) and `ARGUS_GATEWAY_API_KEY` |
 | Container evaluation harness | Docker or Podman; fails closed when unavailable |
-| Git worktree isolation | Git |
+| Accurate workspace snapshot of a Git project | Git (otherwise every file is copied) |
 | Local providers | Ollama or LM Studio running locally |
 
 ## Source language scope
 
 | Scope | Status |
 | --- | --- |
-| Python (`.py`) single-file patches | Supported, AST-validated |
+| Python (`.py`, `.pyi`, `.pyw`) single-file patches | Supported, syntactically gated (not a correctness check) |
 | Non-Python source patches | Not supported |
 | Multi-file patch sets | Refused by design |
 | File creation or deletion patches | Refused |
 | Paths outside the workspace | Refused |
 
-The AST gate uses Python's `ast.parse`. It cannot validate TypeScript, Rust, Go,
+The gate uses Python's `ast.parse` and `compile()`. It cannot validate TypeScript, Rust, Go,
 or any other language, so those files are outside the recovery scope in this
 release.
 
@@ -73,8 +77,10 @@ executable and arguments that the operating system can launch directly.
 
 Any OpenAI-compatible HTTP endpoint that the adapter can reach is supported in
 principle. The shipped presets cover Antigravity host inference, Ollama, LM
-Studio, OpenAI, DeepSeek, Gemini, OpenRouter, and custom endpoints. Groq is
-prohibited.
+Studio, OpenAI, DeepSeek, Gemini, OpenRouter, and custom endpoints. There is no
+native Anthropic preset (use `openrouter` or a `custom` endpoint). Groq is
+prohibited. No provider has been formally "certified"; the provider ladders are
+defaults, not tested guarantees.
 
 Network access is required only for remote providers. The recovery engine,
 patch reconciliation, artifact store, and candidate review work offline.
@@ -82,7 +88,7 @@ patch reconciliation, artifact store, and candidate review work offline.
 ## Security boundaries by platform
 
 On every platform, host execution runs with your user privileges. Workspace
-copying and Git worktrees isolate files, not processes. Container isolation is an
+copying isolates files, not processes. Container isolation is an
 optional capability and is not presented here as verified against a live daemon.
 For untrusted code, use your own container or VM boundary.
 

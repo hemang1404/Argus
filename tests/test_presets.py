@@ -7,8 +7,6 @@ from pathlib import Path
 import pytest
 
 from argus.adapters.presets import (
-    PRESETS_REGISTRY,
-    Preset,
     export_preset,
     get_preset,
     list_presets,

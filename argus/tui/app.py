@@ -6,14 +6,13 @@ Coordinates screens, global keybindings, and in-process execution state.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from textual.app import App, ComposeResult
+from textual.app import App
 from textual.binding import Binding
 
-from argus.config import ArgusConfig
+from argus.config import DEFAULT_BUDGET_USD, DEFAULT_MAX_ATTEMPTS, ArgusConfig
 from argus.runtime.candidate import CandidateApplicationError, CandidateArtifactStore
 from argus.runtime.controller import RecoveryOutcome
 from argus.tui.modals.config import ConfigModal
@@ -24,7 +23,6 @@ from argus.tui.modals.palette import CommandPaletteModal
 from argus.tui.modals.policy import PolicyModal
 from argus.tui.modals.stats import StatsModal
 from argus.tui.modals.update import UpdateModal
-from argus.tui.modals.usage import UsageModal
 from argus.tui.screens.diff_review import DiffReviewScreen
 from argus.tui.screens.execution import ExecutionTimelineScreen
 from argus.tui.screens.recovery import RecoveryWorkflowScreen
@@ -155,8 +153,8 @@ class ArgusTUIApp(App[None]):
             if not result:
                 return
             tier = result.get("tier", "argus/auto")
-            budget = result.get("budget", 0.50)
-            attempts = result.get("attempts", 3)
+            budget = result.get("budget", DEFAULT_BUDGET_USD)
+            attempts = result.get("attempts", DEFAULT_MAX_ATTEMPTS)
 
             self.current_tier = tier
             self.config.budget_limit_usd = float(budget)

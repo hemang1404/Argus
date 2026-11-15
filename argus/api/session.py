@@ -10,15 +10,14 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from argus.adapters.presets import export_preset, get_preset, list_presets
-from argus.api.auth import require_session_token, validate_path_within_workspace
+from argus.api.auth import require_session_token
 from argus.gateway.budget import BudgetGuard
 from argus.gateway.config import BudgetConfig
 

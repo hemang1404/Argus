@@ -19,7 +19,7 @@ from starlette.testclient import TestClient
 
 from argus.config import ArgusConfig
 from argus.providers.adapter import OpenAICompatibleAdapter
-from argus.gateway.config import GatewayConfig, ProviderConfig as GWProviderConfig, TierDefinition
+from argus.gateway.config import GatewayConfig, ProviderConfig as GWProviderConfig
 from argus.gateway.router import GatewayRouter, NoEligibleProviderError
 from argus.gateway.server import app, init_gateway, validate_upstream_url
 from argus.gateway.transport import SafeAnyIOBackend

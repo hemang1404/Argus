@@ -11,13 +11,16 @@ rendering. They do not replace explicit provider selection.
 | Variable | Purpose |
 | --- | --- |
 | `ARGUS_PROVIDER` | Provider name used when none is stored as active |
-| `ARGUS_API_KEY` | Generic key fallback, primarily for custom providers |
+| `ARGUS_API_KEY` | Key fallback for the `custom` provider only |
+| `ARGUS_KEYRING_SERVICE` | Keyring service name (isolates test or alternate environments) |
 | `OPENAI_API_KEY` | Key for the `openai` provider |
 | `DEEPSEEK_API_KEY` | Key for the `deepseek` provider |
 | `GEMINI_API_KEY` | Key for the `gemini` provider |
 | `GOOGLE_API_KEY` | Alternative Gemini key |
-| `ARGUS_DISABLE_ADAPTIVE_ROUTING` | Disable effort classification |
+| `ARGUS_DISABLE_ADAPTIVE_ROUTING` | Disable reasoning-effort classification |
 | `ARGUS_AGY_BIN` | Explicit Antigravity host CLI path |
+| `ARGUS_OFFLINE` | `1`/`true`/`yes`: never use `tiktoken` (no vocabulary download); budget reservation uses a conservative byte-based estimate |
+| `ARGUS_TOKENIZER` | `heuristic` has the same effect as `ARGUS_OFFLINE` |
 
 Keys resolve in this order: OS keyring, provider-specific environment variable,
 an explicitly enabled `.env`, then `ARGUS_API_KEY`.
@@ -29,6 +32,8 @@ an explicitly enabled `.env`, then `ARGUS_API_KEY`.
 | `ARGUS_CONFIG_DIR` | Override the configuration directory |
 | `ARGUS_LOAD_DOTENV` | Set to `1`/`true`/`yes` to load a workspace `.env` |
 | `ARGUS_DOTENV_PATH` | Load a specific dotenv file |
+| `ARGUS_MCP_WORKSPACE_ROOT` | Root directory the MCP server confines `workspace` to (default: its working directory) |
+| `ARGUS_MCP_MAX_BUDGET_USD` | Ceiling for an agent-supplied MCP budget (default `0.25`) |
 | `XDG_CONFIG_HOME` | Base for the config directory on POSIX |
 | `APPDATA` | Base for the config directory on Windows |
 | `LOCALAPPDATA` | Used by desktop launcher and shortcut paths |
@@ -61,9 +66,10 @@ requires the `gateway` extra.
 | Variable | Status |
 | --- | --- |
 | `GROQ_API_KEY` | Groq is prohibited; do not configure it |
-| `ARGUS_TEST_MODE` | Internal test-mode switch; not for production |
+| `ARGUS_TEST_MODE` | Not read by Argus. Older versions used it as a test switch; it no longer changes authentication or host checks |
+| `ARGUS_FRONTEND` | Launcher selector (`opentui` opts into an alternative front end that is not shipped); leave unset |
 | `ARGUS_SESSION_TOKEN` | Internal desktop/session token; managed by the launcher |
-| `PYTEST_CURRENT_TEST` | Read incidentally by library behaviour; not an Argus setting |
+| `PYTEST_CURRENT_TEST` | Not an Argus setting; no longer consulted by the gateway |
 
 Do not set internal variables to work around a failure. They exist for the test
 suite and the desktop launcher and may change without notice.
@@ -76,7 +82,7 @@ When a key exists in more than one place:
 OS keyring
   → provider-specific environment variable
     → opt-in dotenv file
-      → ARGUS_API_KEY
+      → ARGUS_API_KEY (custom provider only)
 ```
 
 For provider selection, `ARGUS_PROVIDER` applies only when no active provider is

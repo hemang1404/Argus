@@ -19,6 +19,7 @@ from typing import Any, Dict, Iterator, List, Optional
 from argus.providers.adapter import CompletionResponse, ConnectionTestResult, ProviderAdapter, ProviderError
 from argus.providers.models import ProviderConfig
 from argus.providers.storage import scrub_secrets
+from argus.utils.redaction import scrub_prompt
 
 logger = logging.getLogger("argus.providers.antigravity")
 
@@ -37,6 +38,19 @@ def is_antigravity_cli_available(custom_path: Optional[str | Path] = None) -> bo
     return find_antigravity_cli(custom_path) is not None
 
 
+def _which_outside_cwd(name: str) -> Optional[str]:
+    """``shutil.which`` that ignores a hit located in the current working directory."""
+    found = shutil.which(name)
+    if not found:
+        return None
+    try:
+        if Path(found).resolve().parent == Path.cwd().resolve():
+            return None
+    except OSError:
+        return None
+    return found
+
+
 def find_antigravity_cli(custom_path: Optional[str | Path] = None) -> Optional[Path]:
     """Locate the Antigravity CLI ('agy') binary or script.
     
@@ -50,8 +64,9 @@ def find_antigravity_cli(custom_path: Optional[str | Path] = None) -> Optional[P
        - ~/.gemini/bin/agy.cmd (.exe, .bat)
        - ~/AppData/Roaming/npm/agy.cmd
        - ~/.gemini/antigravity-ide/bin/agentapi.bat
-    5. Local repository bin/ directory:
-       - ./bin/agy.cmd or ./bin/agy
+
+    The current working directory is never searched: a repository under analysis must not be
+    able to plant the binary that Argus executes (a PATH hit located in the cwd is skipped).
     """
     if custom_path:
         p = Path(custom_path)
@@ -67,7 +82,7 @@ def find_antigravity_cli(custom_path: Optional[str | Path] = None) -> Optional[P
         return None
 
     for candidate in ("agy", "agy.exe", "agy.cmd", "agy.bat"):
-        found = shutil.which(candidate)
+        found = _which_outside_cwd(candidate)
         if found:
             return Path(found).resolve()
 
@@ -82,8 +97,6 @@ def find_antigravity_cli(custom_path: Optional[str | Path] = None) -> Optional[P
         home / ".gemini" / "bin" / "agy.cmd",
         home / ".gemini" / "bin" / "agy.exe",
         home / "AppData" / "Roaming" / "npm" / "agy.cmd",
-        Path.cwd() / "bin" / "agy.cmd",
-        Path.cwd() / "bin" / "agy",
         home / ".gemini" / "antigravity-ide" / "bin" / "agentapi.bat",
     ]
     for loc in known_locations:
@@ -91,7 +104,7 @@ def find_antigravity_cli(custom_path: Optional[str | Path] = None) -> Optional[P
             return loc.resolve()
 
     for candidate in ("agentapi", "agentapi.bat"):
-        found = shutil.which(candidate)
+        found = _which_outside_cwd(candidate)
         if found:
             return Path(found).resolve()
 
@@ -138,10 +151,23 @@ class AntigravityHostAdapter(ProviderAdapter):
         return self._cli_path
 
     def _get_base_cmd(self) -> List[str]:
-        """Return base command list. On Windows, directly invoke companion python script with sys.executable if present."""
+        """Return the base argv. The prompt is appended to this list, so it must never reach cmd.exe.
+
+        A ``.cmd``/``.bat`` shim is run through cmd.exe, which re-parses ``& | ^ %`` in arguments
+        (command injection from prompt text). Such a shim is only usable via its companion
+        ``.py`` script, which is started directly with ``sys.executable``; otherwise refuse.
+        """
         cli = self.get_cli_path()
-        if cli.suffix.lower() in (".cmd", ".bat") and (cli.parent / f"{cli.stem}.py").is_file():
-            return [sys.executable, str(cli.parent / f"{cli.stem}.py")]
+        if cli.suffix.lower() in (".cmd", ".bat"):
+            companion = cli.parent / f"{cli.stem}.py"
+            if companion.is_file():
+                return [sys.executable, str(companion)]
+            raise ProviderError(
+                f"Refusing to run '{cli.name}': Windows batch shims are executed by cmd.exe, which "
+                "would re-interpret characters in the prompt as commands. Point ARGUS_AGY_BIN at a "
+                "real executable (agy.exe) or install the agy Python entry point next to the shim.",
+                status_code=400,
+            )
         return [str(cli)]
 
     def discover_capabilities(self) -> Dict[str, Any]:
@@ -175,7 +201,7 @@ class AntigravityHostAdapter(ProviderAdapter):
 
         # Check effort support in help
         try:
-            help_cmd = [str(cli), "--help"]
+            help_cmd = self._get_base_cmd() + ["--help"]
             res_help = subprocess.run(
                 help_cmd,
                 capture_output=True,
@@ -351,7 +377,7 @@ class AntigravityHostAdapter(ProviderAdapter):
         full_prompt = "\n".join(prompt_parts).strip()
         if not full_prompt and messages:
             full_prompt = messages[-1].get("content", "")
-        full_prompt = scrub_secrets(full_prompt)
+        full_prompt = scrub_prompt(full_prompt)
 
         # Determine effort parameter
         effort_val = (effort or "medium").strip().lower()
@@ -534,7 +560,7 @@ class AntigravityHostAdapter(ProviderAdapter):
         full_prompt = "\n".join(prompt_parts).strip()
         if not full_prompt and messages:
             full_prompt = messages[-1].get("content", "")
-        full_prompt = scrub_secrets(full_prompt)
+        full_prompt = scrub_prompt(full_prompt)
 
         effort_val = (effort or "medium").strip().lower()
         if effort_val not in ("low", "medium", "high"):

@@ -12,23 +12,22 @@ pytest.importorskip("textual", reason="Textual is required for the TUI; install 
 from PIL import Image
 from rich.text import Text
 
-pytestmark = pytest.mark.graphics
-
 from argus.config import ArgusConfig
-from argus.tui.renderers.base import BaseLogoRenderer, LogoRenderResult, MissingLogoAssetError
+from argus.tui.renderers.base import LogoRenderResult, MissingLogoAssetError
 from argus.tui.renderers.box_drawing import BoxDrawingLogoRenderer
 from argus.tui.renderers.braille import BRAILLE_DOT_MAP, BrailleLogoRenderer
 from argus.tui.renderers.factory import create_logo_renderer
 from argus.tui.renderers.graphics import TerminalGraphicsLogoRenderer
 from argus.tui.renderers.halfblock import HalfBlockLogoRenderer
 from argus.tui.renderers.rasterizer import (
-    CANONICAL_ASPECT_RATIO,
     LogoRasterizer,
     compute_file_sha256,
     locate_canonical_svg,
 )
 from argus.tui.renderers.text_fallback import TextFallbackLogoRenderer
 from argus.tui.widgets.wordmark import ArgusWordmark
+
+pytestmark = pytest.mark.graphics
 
 
 # =============================================================================

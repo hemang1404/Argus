@@ -1,20 +1,40 @@
-"""Example: Configuring external inference providers with Argus."""
+"""Example: inspect provider presets and the model ladder Argus would use.
 
-from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
-from argus.providers.discovery import resolve_dynamic_tiers
+Offline: nothing here contacts a provider or reads your stored credentials.
+
+Model selection rules (``argus.config.ArgusConfig``):
+  * ``model=...`` pins one model. It is the only model sent; there is no escalation.
+  * No model named, provider with a documented cheap-first cascade, escalation on:
+    the cheaper model for attempts 1-2 and the stronger model for attempt 3.
+  * Any other provider: the provider's own default model, no escalation.
+A model with no known price is refused (``CONFIG_ERROR``) unless the provider is
+local, or you supply a price via ``ArgusConfig.model_prices``.
+"""
+
+from __future__ import annotations
+
+from argus.config import CASCADE_LADDERS, ArgusConfig
+from argus.providers.models import PROVIDER_PRESETS
+
 
 def main() -> None:
-    # 1. Inspect supported provider presets
-    print("Supported Argus provider presets:")
-    for preset_name, preset in PROVIDER_PRESETS.items():
-        print(f"  - {preset_name}: {preset.description}")
+    print("Provider presets:")
+    for key, preset in PROVIDER_PRESETS.items():
+        needs_key = "key required" if preset.requires_key else "no key"
+        print(f"  - {key}: default model {preset.default_model} ({needs_key})")
 
-    # 2. Inspect active routing tiers
-    tiers = resolve_dynamic_tiers()
-    print("\nActive Dynamic Escalation Ladder:")
-    print(f"  T1 (Fast):     {tiers['t1']['model']}")
-    print(f"  T2 (Strong):   {tiers['t2']['model']}")
-    print(f"  T3 (Frontier): {tiers['t3']['model']}")
+    print("\nCheap-first cascades (used only when no model is pinned):")
+    for provider, (small, large) in CASCADE_LADDERS.items():
+        print(f"  - {provider}: attempts 1-2 {small}, attempt 3 {large}")
+
+    print("\nResolved ladders:")
+    for label, cfg in (
+        ("openai, nothing pinned", ArgusConfig(provider="openai")),
+        ("openai, model pinned", ArgusConfig(provider="openai", model="gpt-4o")),
+        ("ollama, nothing pinned", ArgusConfig(provider="ollama")),
+    ):
+        print(f"  {label}: source={cfg.ladder_source!r} models={cfg.ladder_models()}")
+
 
 if __name__ == "__main__":
     main()
