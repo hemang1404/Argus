@@ -26,7 +26,7 @@ Changes from a full engineering audit (November 2026). Version `0.2.0b2` is prep
 ### Documentation
 - Corrected the quickstart command, SDK snippet and example, `argus mcp serve` -> `argus mcp run`, MCP install targets (antigravity, opencode, gemini), nonexistent paths and flags (`.argus/artifacts`, `applier.py`, `--container`), tier descriptions, the model ladder text, "tested providers" claims, PyPI statements and the host-execution trust statement.
 - Added `docs/RESEARCH_STATUS.md`, a claim-by-claim research status table. Removed or corrected unsupported research claims (26 -> 50, 77% cost, 200-400x, 92%, "fix rate", "zero incorrect applications" without scope).
-- Test counts: earlier documents quoted 471 and 489 passing tests by hand and disagreed. The only figure measured for this release: on 2026-11-16, Windows 11, Python 3.14, `pytest tests -m "not real_host and not live_provider and not live_antigravity and not tokenizer_download"` with `ARGUS_OFFLINE=1` and an isolated `ARGUS_CONFIG_DIR` gave 796 passed, 11 skipped, 8 deselected (225 s), 0 failed. It is a point-in-time measurement on one machine, not a guarantee; CI is the source of truth.
+- Test counts: earlier documents quoted 471 and 489 passing tests by hand and disagreed. The only figure measured for this release: on 2026-11-16, Windows 11, Python 3.14, `pytest tests -m "not real_host and not live_provider and not live_antigravity and not tokenizer_download"` with `ARGUS_OFFLINE=1` and an isolated `ARGUS_CONFIG_DIR` gave 806 passed, 11 skipped, 8 deselected (215 s), 0 failed. It is a point-in-time measurement on one machine, not a guarantee; CI is the source of truth.
 
 ## [0.2.0b1] - 2026-11-06
 
