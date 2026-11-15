@@ -4,6 +4,7 @@ import '@fontsource-variable/geist-mono/index.css';
 import Wordmark from '../components/Wordmark.astro';
 import Mark from '../components/Mark.astro';
 
+import { version } from '../data/nav.mjs';
 const repoUrl = 'https://github.com/hemang1404/Argus';
 ---
 
@@ -913,7 +914,7 @@ const repoUrl = 'https://github.com/hemang1404/Argus';
 
             <div class="statusbar">
               <span>argus-runtime</span>
-              <span class="statusbar-version">✦ v0.2.0b2</span>
+              <span class="statusbar-version">✦ v{version}</span>
             </div>
           </div>
 

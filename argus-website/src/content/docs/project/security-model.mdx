@@ -83,7 +83,7 @@ The runner reduces common abuse:
 | Shell injection | Direct execution with `shell=False`; operators rejected |
 | Output flood | Concurrent draining with a 4 MB memory bound |
 | Runaway children | Process-tree termination on timeout |
-| Secret leakage to children | Known secret environment variables scrubbed |
+| Secret leakage to children | Environment variables whose names look secret are not passed to the test process (names only; files stay readable) |
 | Target escape | Canonical path checks and workspace containment |
 
 These mitigate accidental damage and naive injection. They are not a
@@ -113,8 +113,16 @@ checks.
 
 - Keys are stored in the OS keyring when a backend is available, with a
   restricted-permission fallback file otherwise.
-- Environment variables are supported but are visible to child processes; Argus
-  scrubs known secret names before launching tests.
+- Environment variables are supported. Before launching your test command, Argus
+  drops from the child's environment every variable whose name contains one of
+  `KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `AUTH` or
+  `PRIVATE`, or that contains a provider or service prefix (`OPENAI_`,
+  `ANTHROPIC_`, `GEMINI_`, `DEEPSEEK_`, `GROQ_`, `AWS_`, `AZURE_`, `GITHUB_`,
+  `GITLAB_`, `SLACK_`, `DISCORD_`), plus `ARGUS_CONFIG_DIR` and
+  `ARGUS_KEYRING_SERVICE`. This matches variable **names** only: a secret in a
+  variable with an innocuous name is passed through, and the test process can
+  still read credential files such as `~/.ssh`, the keyring-backed store, the
+  per-user Argus config directory and `.env` files, because it runs as you.
 - Diagnostic output masks keys.
 - Prompts, responses, and context files are passed through `scrub_secrets`
   before being written to `.argus/`. Text sent to the model uses `scrub_prompt`

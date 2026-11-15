@@ -13,6 +13,11 @@ import { version } from '../data/nav.mjs';
     Repairs broken AI-generated patches in an isolated workspace, verifies them
     against your tests, and hands you a signed candidate to approve.
   </p>
+  <p class="hero-scope">
+    Argus is not an agent and includes no model. It works with the model
+    provider you configure and are authorized to use, and it never applies a
+    change without your approval.
+  </p>
 
   <figure class="terminal">
     <figcaption class="sr-only">
@@ -38,12 +43,6 @@ import { version } from '../data/nav.mjs';
     </div>
   </figure>
 
-  <p class="hero-tip">
-    <span class="tip-dot" aria-hidden="true"></span>
-    <strong>Tip</strong>
-    <span>Run <code>/connect</code> to link Cursor, Claude Code, or Aider</span>
-  </p>
-
   <div class="hero-actions">
     <a class="btn-primary" href="/getting-started/quick-start/">Get started</a>
     <a class="btn-ghost" href="/project/architecture/">Read the architecture</a>
@@ -51,7 +50,7 @@ import { version } from '../data/nav.mjs';
 
   <dl class="hero-spec">
     <div><dt>Version</dt><dd>v{version}</dd></div>
-    <div><dt>Status</dt><dd>Public Beta</dd></div>
+    <div><dt>Status</dt><dd>Beta (pre-release)</dd></div>
     <div><dt>Runtime</dt><dd>Python 3.11–3.14</dd></div>
     <div><dt>License</dt><dd>MIT</dd></div>
   </dl>
@@ -176,38 +175,12 @@ import { version } from '../data/nav.mjs';
     margin-inline-start: 0.35rem;
   }
 
-  .hero-tip {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    margin: 1.4rem 0 0;
-    font-family: var(--a-mono);
-    font-size: 0.75rem;
+  .hero-scope {
+    max-width: 40rem;
+    margin: 0.9rem auto 0;
+    font-size: 0.9rem;
+    line-height: 1.6;
     color: var(--a-text-secondary);
-  }
-
-  .tip-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--a-orange);
-    margin-inline-end: 0.15rem;
-  }
-
-  .hero-tip strong {
-    color: var(--a-text);
-    font-weight: 500;
-  }
-
-  .hero-tip code {
-    font-family: var(--a-mono);
-    font-size: 0.95em;
-    color: var(--a-blue);
-    background: none;
-    border: 0;
-    padding: 0;
   }
 
   .hero-actions {
@@ -215,7 +188,7 @@ import { version } from '../data/nav.mjs';
     flex-wrap: wrap;
     justify-content: center;
     gap: 0.6rem;
-    margin-top: 2.1rem;
+    margin-top: 1.8rem;
   }
 
   .btn-primary,

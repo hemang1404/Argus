@@ -34,19 +34,22 @@ argus run --test "pytest tests/test_calculator.py"
 ```
 
 `--test` is required. When `--file` is omitted, Argus parses the test failure
-traceback to locate the target source file. You can name it explicitly:
+traceback to locate the target source file. You can name it explicitly. The
+values below are the defaults (`--attempts 3`, `--budget 0.03`; ranges 1-10 and up
+to $10, as in `argus run --help`):
 
 ```bash title="Shell"
 argus run \
   --test "pytest tests/test_calculator.py" \
   --file src/calculator.py \
   --attempts 3 \
-  --budget 0.05
+  --budget 0.03
 ```
 
 Argus first prints a warning that your test command runs on your machine with
 your permissions (it is not sandboxed). The run happens in a temporary copy of the
-project; your working tree is not modified. On success, the CLI prints the candidate ID:
+project; your working tree is not modified. On success, the CLI prints the candidate ID
+(example output; the attempt count, time, cost and run ID differ on every run):
 
 ```text
 ✓ Test command passes on the patched copy (2 attempts, 18422ms, $0.0031)

@@ -5,6 +5,7 @@ description: Requirements, source installation, optional extras, verification, a
 
 import InstallTabs from '../../../components/InstallTabs.astro';
 import { Aside } from '@astrojs/starlight/components';
+import { version, currentOnPypi, pypiVersion, gitUrl } from '../../../data/install.mjs';
 
 ## Requirements
 
@@ -20,19 +21,24 @@ The core install includes the CLI, recovery controller, patch engine, workspace
 manager, provider adapters, and the MCP server. The terminal UI and the
 experimental gateway are optional extras.
 
+{!currentOnPypi && (
 <Aside type="caution" title="PyPI release vs. this documentation">
-`0.2.0b1` is published on PyPI as [`argus-recovery`](https://pypi.org/project/argus-recovery/),
-but it predates the audit remediation (signed candidates, token-equal Tier 3,
+PyPI currently has `{pypiVersion}` of [`argus-recovery`](https://pypi.org/project/argus-recovery/),
+which predates the audit remediation (signed candidates, token-equal Tier 3,
 pinned-model dispatch, fail-closed pricing, and more; see the
-[changelog](/project/changelog/)). For the behaviour described on this site,
-install from the repository until `0.2.0b2` is published.
+[changelog](/project/changelog/)). This site documents `{version}`, which is
+not on PyPI yet, so `pip install argus-recovery` does **not** give the behaviour
+described here. The commands below install from the repository. After `{version}`
+is published, the plain `pip install argus-recovery` form applies.
 </Aside>
+)}
 
 ## Install
 
 <InstallTabs />
 
-To install the current repository state:
+The tabs above install the current repository state (Git required). Equivalent
+plain form:
 
 ```bash title="Shell"
 pip install "git+https://github.com/hemang1404/Argus.git"

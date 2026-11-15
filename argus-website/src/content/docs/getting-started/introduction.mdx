@@ -4,6 +4,7 @@ description: What Argus is, the failure modes it addresses, and where it sits in
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import { version, currentOnPypi, pypiVersion } from '../../../data/install.mjs';
 
 Argus is a local, test-gated code recovery runtime for patches produced by large
 language models and coding agents. It runs beneath your editor, terminal, and
@@ -114,9 +115,11 @@ contamination, not process-level compromise. Both are covered in the [security m
 
 ## Project status
 
-Argus is pre-release (beta). `0.2.0b1` is published on PyPI as `argus-recovery`,
-but that release predates a large audit remediation; install from the repository
-for the behaviour documented here (see [Installation](/getting-started/installation/)).
+Argus is pre-release (beta). This site documents `{version}`.
+{currentOnPypi
+  ? <>It is published on PyPI as <code>argus-recovery</code>.</>
+  : <>PyPI has <code>{pypiVersion}</code>, which predates a large audit remediation and is not what these pages describe; install from the repository for the documented behaviour.</>}
+See [Installation](/getting-started/installation/).
 Interfaces may change before a stable release. The
 [changelog](/project/changelog/) records the release history and the
 [research page](/project/research/) separates what the evidence supports from what

@@ -24,7 +24,7 @@ If none exists, it reads `[tool.argus]` from `pyproject.toml`.
 
 ```yaml title="argus.yaml"
 max_attempts: 3
-budget_limit_usd: 0.05
+budget_limit_usd: 0.03
 test_timeout_seconds: 45
 model: qwen2.5-coder:7b
 reasoning_effort: low
@@ -33,7 +33,7 @@ reasoning_effort: low
 ```toml title="pyproject.toml"
 [tool.argus]
 max_attempts = 3
-budget_limit_usd = 0.05
+budget_limit_usd = 0.03
 test_timeout_seconds = 45
 model = "qwen2.5-coder:7b"
 ```

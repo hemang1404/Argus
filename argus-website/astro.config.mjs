@@ -12,7 +12,7 @@ export default defineConfig({
     starlight({
       title: 'Argus',
       description:
-        'Argus is a local, test-gated code recovery runtime for LLM-generated patches. Isolated workspaces, tiered patch reconciliation, and human-approved candidates.',
+        'Argus is a local, test-gated code recovery runtime for LLM-generated patches. Recovery runs in a temporary copy of your project, with tiered patch reconciliation and human-approved candidates. Uses only the model provider you configure.',
       favicon: '/favicon.svg',
       pagefind: false,
       logo: {
@@ -32,6 +32,11 @@ export default defineConfig({
       head: [
         { tag: 'meta', attrs: { name: 'theme-color', content: '#090A0D' } },
         { tag: 'meta', attrs: { name: 'color-scheme', content: 'dark' } },
+        { tag: 'meta', attrs: { property: 'og:image', content: 'https://argus.hemangsharrma.workers.dev/og.png' } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://argus.hemangsharrma.workers.dev/og.png' } },
       ],
       components: {
         Header: './src/components/Header.astro',
