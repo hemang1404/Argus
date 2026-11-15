@@ -9,15 +9,52 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Offline suite: never reach live providers, the Antigravity host or the tokenizer CDN.
+  ARGUS_RUN_LIVE_TESTS: "0"
+  ARGUS_RUN_ANTIGRAVITY_TESTS: "0"
+  ARGUS_OFFLINE: "1"
+  # Tests that need the real tiktoken vocabulary (network on first use), a live provider,
+  # or the real Antigravity host are excluded from the hermetic selector.
+  OFFLINE_SELECTOR: "not live_provider and not live_antigravity and not real_host and not tokenizer_download"
+
 jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: python -m pip install "ruff>=0.5.0"
+
+      # Rules are pyflakes + pycodestyle errors (see [tool.ruff] in pyproject.toml). F821
+      # (undefined name) previously hid real defects behind `except Exception: pass`.
+      - name: ruff check
+        run: ruff check .
+
   offline-suite:
     name: Offline suite (Python ${{ matrix.python-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
@@ -34,24 +71,22 @@ jobs:
 
       - name: Install package with test and optional extras
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[dev,tui,gateway,research]"
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,tui,gateway]"
 
+      # faulthandler_timeout dumps all thread stacks if a single test hangs, so a stall
+      # shows where instead of silently burning the job timeout.
       - name: Run offline test suite
-        run: |
-          pytest -m "not live_provider and not live_antigravity and not real_host and not packaging" -v --tb=short
-        env:
-          ARGUS_RUN_LIVE_TESTS: "0"
-          ARGUS_RUN_ANTIGRAVITY_TESTS: "0"
+        run: pytest -m "${{ env.OFFLINE_SELECTOR }}" -v --tb=short -o faulthandler_timeout=300
 
-      - name: Coverage (patch engine and runtime, full offline scope)
+      - name: Coverage (patch engine and runtime)
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: |
           pytest -q \
             --cov=argus.patch --cov=argus.runtime \
             --cov-report=term-missing --cov-report=xml \
             --cov-fail-under=70 \
-            -m "not live_provider and not live_antigravity and not real_host and not packaging"
+            -m "${{ env.OFFLINE_SELECTOR }}" -o faulthandler_timeout=300
 
       - name: Upload coverage report
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
@@ -61,11 +96,14 @@ jobs:
           path: coverage.xml
           if-no-files-found: error
 
-  core-only-install:
-    name: Core install without optional extras
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+  default-install:
+    name: Default install, no extras (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -80,24 +118,14 @@ jobs:
 
       - name: Install only the default dependency set
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip
           pip install .
 
-      - name: Verify CLI and imports without optional extras
+      - name: Verify CLI and optional-extra isolation
         run: |
           argus --version
           argus --help
-          python -c "import sys, argus, argus.cli, argus.runtime.controller, argus.patch.fuzzy_engine; assert argus.__version__ == '0.2.0b1'; assert 'textual' not in sys.modules, 'textual must be optional'; assert 'fastapi' not in sys.modules, 'fastapi must be optional'"
-
-      - name: Run optional-free core gate against the installed package
-        run: |
-          pip install pytest pytest-asyncio
-          # test_security_adversarial.py and test_groq_prohibition_and_isolation.py
-          # exercise the deferred gateway and therefore require the 'gateway' extra.
-          pytest -q tests/test_patch_engine.py tests/test_candidate_applier.py \
-            tests/test_workspace_correctness.py tests/test_offline_anchor_matching.py \
-            tests/test_container_evaluation.py tests/test_frame_localization.py \
-            tests/test_secret_redaction.py tests/test_presets.py tests/test_providers.py
+          python -c "import sys, argus, argus.cli, argus.runtime.controller, argus.patch.fuzzy_engine; assert 'textual' not in sys.modules, 'textual must be optional'; assert 'fastapi' not in sys.modules, 'fastapi must be optional'; assert 'tiktoken' not in sys.modules, 'tiktoken must be optional'; print(argus.__version__)"
 
   docs-website:
     name: Documentation website build
@@ -125,37 +153,14 @@ jobs:
         working-directory: argus-website
         run: npm run build
 
-  container-unit:
-    name: Container evaluator unit tests (no Docker e2e)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[dev]"
-
-      # These tests exercise ContainerEvaluator through mocks; they pass without a
-      # Docker daemon. No genuine Docker end-to-end test exists yet.
-      - name: Run container evaluator tests
-        run: pytest -q tests/test_container_evaluation.py -v --tb=short
-
   build:
-    name: Build and install distribution
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Build and install distribution (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout repository
@@ -171,18 +176,55 @@ jobs:
 
       - name: Build sdist and wheel
         run: |
-          python -m pip install --upgrade pip setuptools wheel build twine
-          python -m build
+          python -m pip install --upgrade pip build twine
+          python -m build --outdir dist
           twine check dist/*
 
-      - name: Verify wheel contents and clean install
+      - name: Check distribution contents
+        shell: python
         run: |
-          python -m venv /tmp/argus-clean
-          /tmp/argus-clean/bin/pip install --upgrade pip
-          /tmp/argus-clean/bin/pip install dist/*.whl
-          cd /tmp
-          /tmp/argus-clean/bin/argus --version
-          /tmp/argus-clean/bin/argus --help
-          /tmp/argus-clean/bin/python -c "import argus, argus.cli, argus.patch.fuzzy_engine; print(argus.__version__)"
-          /tmp/argus-clean/bin/python -c "import sys; import argus.cli; assert 'textual' not in sys.modules; assert 'fastapi' not in sys.modules"
-          unzip -l "$GITHUB_WORKSPACE"/dist/*.whl | grep -E "argus/assets/argus-logo.svg|argus/tui/styles.tcss"
+          import glob, tarfile, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          for required in ("argus/py.typed", "argus/assets/argus-logo.svg", "argus/tui/styles.tcss"):
+              assert required in names, f"missing from wheel: {required}"
+          for name in names:
+              top = name.split("/")[0]
+              assert top == "argus" or top.endswith(".dist-info"), f"unexpected top-level wheel entry: {name}"
+              assert not name.startswith(("argus/research", "tests/")), f"must not ship: {name}"
+          assert any(n.endswith("licenses/LICENSE") for n in names), "LICENSE missing from wheel"
+          sdist = glob.glob("dist/*.tar.gz")[0]
+          snames = tarfile.open(sdist).getnames()
+          for required in ("tests/conftest.py", "argus/py.typed"):
+              assert any(n.endswith("/" + required) for n in snames), f"missing from sdist: {required}"
+          print("wheel entries:", len(names), "sdist entries:", len(snames))
+
+      - name: Install wheel into a clean virtual environment and smoke test
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/argus-clean"
+          if [ -d "$RUNNER_TEMP/argus-clean/Scripts" ]; then BIN="$RUNNER_TEMP/argus-clean/Scripts"; else BIN="$RUNNER_TEMP/argus-clean/bin"; fi
+          "$BIN/python" -m pip install --upgrade pip
+          "$BIN/python" -m pip install dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$BIN/argus" --version
+          "$BIN/argus" --help
+          "$BIN/python" -c "import argus, argus.cli, argus.patch.fuzzy_engine; assert 'site-packages' in argus.__file__, argus.__file__; print(argus.__version__, argus.__file__)"
+          "$BIN/python" -c "import sys; import argus.cli; assert 'textual' not in sys.modules; assert 'fastapi' not in sys.modules"
+
+      # Run the core tests against the INSTALLED wheel, not the checkout: the tests are copied
+      # to a directory without pyproject.toml so `pythonpath = ["."]` cannot shadow site-packages.
+      - name: Run core tests against the installed wheel
+        shell: bash
+        run: |
+          if [ -d "$RUNNER_TEMP/argus-clean/Scripts" ]; then BIN="$RUNNER_TEMP/argus-clean/Scripts"; else BIN="$RUNNER_TEMP/argus-clean/bin"; fi
+          "$BIN/python" -m pip install pytest pytest-asyncio
+          mkdir "$RUNNER_TEMP/wheel-tests"
+          cp -r tests "$RUNNER_TEMP/wheel-tests/tests"
+          cd "$RUNNER_TEMP/wheel-tests"
+          "$BIN/python" -m pytest -q -p no:cacheprovider -o asyncio_mode=auto -o asyncio_default_fixture_loop_scope=function \
+            tests/test_patch_engine.py tests/test_candidate_applier.py \
+            tests/test_workspace_correctness.py tests/test_offline_anchor_matching.py \
+            tests/test_container_evaluation.py tests/test_frame_localization.py \
+            tests/test_secret_redaction.py tests/test_presets.py tests/test_providers.py \
+            tests/test_cli_help_smoke.py

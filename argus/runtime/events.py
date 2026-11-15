@@ -12,7 +12,7 @@ import json
 import sys
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, TextIO
+from typing import Any, Dict, Optional, TextIO
 
 
 class EventType(str, Enum):

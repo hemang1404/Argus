@@ -16,32 +16,35 @@ source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
 pip install -e ".[dev,tui]"
 ```
 
-Docker or Podman is optional, for the container evaluation harness. Git is
-required for worktree isolation.
+Docker or Podman is optional, for the library-level container evaluation harness.
+The offline suite needs no network, API key or model access.
 
 ## Quality gates
 
 Run the offline suite before opening a pull request:
 
 ```bash title="Shell"
-# Core safety, isolation, and lifecycle gates
+# Full offline suite (excludes the test that calls a real local model host)
+ARGUS_OFFLINE=1 pytest -q -m "not live_provider and not live_antigravity and not real_host and not tokenizer_download"
+
+# Focused gates
 pytest tests/test_runtime_and_workspace_safety.py \
        tests/test_gateway_security.py \
-       tests/test_wp6_deep_verification.py \
-       tests/test_wp7_deep_verification.py
+       tests/test_patch_remediation.py \
+       tests/test_candidate_signing.py
 
 # Synthetic adversarial patch corpus
 pytest -v tests/test_patch_adversarial_corpus.py
 
-# Full offline suite
-pytest -q --ignore=tests/test_real_host_integration.py
-
-# Syntax / bytecode compilation
+# Lint and compilation
+ruff check .
 python -m compileall -q argus tests
 ```
 
-Live-provider and real-host tests are opt-in through their markers and
-environment variables; they are not part of the default offline gate.
+`tests/test_real_host_integration.py` calls a locally installed Antigravity CLI and
+makes real inference calls, so it is excluded on purpose. Tests must not touch your
+real keyring, `ARGUS_CONFIG_DIR` or the repository root; use `tmp_path` and the
+fixtures in `tests/conftest.py`.
 
 ## Engineering standards
 
@@ -52,7 +55,9 @@ environment variables; they are not part of the default offline gate.
   container that is unavailable must fail, not run on the host.
 - Use type hints and module docstrings that explain architectural
   responsibility.
-- Keep the live working tree untouched during recovery.
+- Keep the live working tree untouched during recovery. Recovery runs in a
+  temporary copy; there is no worktree mode.
+- Never choose a provider or model for the user, and never substitute a named model.
 - Never write credentials, tokens, or private keys to disk or logs.
 - Scrub secret-bearing environments before launching subprocesses.
 - Do not add a dependency when the standard library or an existing dependency is
@@ -63,7 +68,8 @@ environment variables; they are not part of the default offline gate.
 New recovery behaviour should include tests for the decision boundaries, not only
 the happy path:
 
-- exact, normalized, fuzzy, and anchor matches;
+- exact, normalized, token-equal, and anchor matches, and the near misses that
+  must be refused (changed operator, name or literal);
 - ambiguous multi-site matches and refusal;
 - provider failure and timeout;
 - malformed or empty model output;
@@ -99,6 +105,8 @@ Every pull request is evaluated against:
 5. Are relevant automated tests present?
 6. Does it affect host security or credential confidentiality?
 7. Does it alter matching tier definitions or experimental baselines?
+8. Do the docs and CHANGELOG match? Research claims need an evidence pointer in
+   `docs/RESEARCH_STATUS.md`.
 
 Review comments focus on concrete mechanisms that can cause a problem, not
 personal preference. A review with zero findings is valid when the code has no
@@ -112,9 +120,8 @@ verified against the implementation, not inferred from older README examples.
 
 ## Security reports
 
-Do not open a public issue for a vulnerability. Use GitHub Security Advisories or
-`security@argus-recovery.org` with reproduction steps, affected components, and
-versions. See the [security model](/project/security-model/).
+Do not open a public issue for a vulnerability. Use GitHub Security Advisories on
+the repository with reproduction steps, affected components, and versions. See the [security model](/project/security-model/).
 
 ## Community
 

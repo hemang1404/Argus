@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -23,10 +22,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from argus.config import ArgusConfig
 from argus.gateway.budget import BudgetConfig, BudgetGuard
 from argus.gateway.config import GatewayConfig, ProviderConfig, TierDefinition
-from argus.gateway.retry import FailureClassification, classify_exception, is_retryable, is_uncertain_execution
 from argus.gateway.router import GatewayRouter, NoEligibleProviderError
 from argus.gateway.server import app, init_gateway, validate_upstream_url
 from argus.gateway.telemetry import TelemetryRegistry
@@ -34,7 +31,6 @@ from argus.mcp.server import create_mcp_server
 from argus.patch.ast_checker import ASTChecker
 from argus.providers.adapter import ProviderError
 from argus.providers.antigravity import AntigravityHostAdapter, find_antigravity_cli
-from argus.providers.storage import scrub_secrets
 
 
 @pytest.fixture(autouse=True)
@@ -613,7 +609,9 @@ def test_opaque_credential_missing_binding_rejected_transport_never_called(tmp_p
         mock_post.assert_not_called()
 
 
-def test_opaque_credential_custom_openai_provider_routing(tmp_path):
+def test_opaque_credential_custom_openai_provider_routing(tmp_path, monkeypatch):
+    from argus.config import MODEL_REGISTRY, ModelCost
+    monkeypatch.setitem(MODEL_REGISTRY, "custom-model", ModelCost(input_cost_per_m=1.0, output_cost_per_m=1.0))
     """Client supplies opaque key with explicit X-Upstream-Provider; forwarded when matched, rejected when mismatched."""
     p_custom = ProviderConfig(name="custom-openai", kind="openai_compatible", base_url="https://api.custom.internal/v1", api_key="")
     cfg = GatewayConfig(providers=[p_custom], tiers={"cheap": TierDefinition(provider="custom-openai", model="custom-model")})
@@ -677,6 +675,23 @@ def test_conflicting_provider_header_and_signature_transport_never_called(tmp_pa
         )
         assert resp.status_code == 400
         assert resp.json()["error"]["code"] == "conflicting_provider_binding"
+        mock_post.assert_not_called()
+
+
+def test_unpriced_model_still_fails_closed_for_paid_provider(tmp_path):
+    """Pricing stays fail-closed: an unknown model on a paid host is rejected before transport."""
+    p = ProviderConfig(name="custom-openai", kind="openai_compatible", base_url="https://api.custom.internal/v1", api_key="")
+    cfg = GatewayConfig(providers=[p], tiers={"cheap": TierDefinition(provider="custom-openai", model="no-such-priced-model")})
+    init_gateway(cfg, workspace=tmp_path)
+    client = TestClient(app)
+    with patch("httpx.AsyncClient.post") as mock_post:
+        resp = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer opaque-key", "X-Upstream-Provider": "custom-openai"},
+            json={"model": "argus/cheap", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == "unpriced_model"
         mock_post.assert_not_called()
 
 
@@ -890,7 +905,7 @@ def test_recovery_safety_candidate_applier_rejections_preserve_target(tmp_path):
     base_hash = hashlib.sha256(original_code.encode("utf-8")).hexdigest()
 
     # 1. Invalid syntax in candidate -> refused with SYNTAX_VALIDATION_FAILED
-    run_dir = CandidateArtifactStore.save_run_artifact(
+    CandidateArtifactStore.save_run_artifact(
         run_id="run-bad-syntax",
         target_file="calc.py",
         test_command="pytest",
@@ -912,7 +927,7 @@ def test_recovery_safety_candidate_applier_rejections_preserve_target(tmp_path):
 
     # 2. Stale target modification -> refused with STALE_TARGET_CONFLICT
     target.write_text("def add(a, b):\n    # modified concurrently\n    return a + b\n", encoding="utf-8")
-    run_dir2 = CandidateArtifactStore.save_run_artifact(
+    CandidateArtifactStore.save_run_artifact(
         run_id="run-stale",
         target_file="calc.py",
         test_command="pytest",

@@ -1,9 +1,6 @@
 """Tests for zero-stutter tool streaming pass-through and token accounting in Argus Gateway."""
 
-import json
 import tempfile
-from pathlib import Path
-import pytest
 
 from argus.gateway.config import GatewayConfig
 from argus.gateway.interceptor import StreamInterceptor, StreamPatchHealer

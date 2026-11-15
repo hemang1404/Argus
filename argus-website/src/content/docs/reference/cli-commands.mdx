@@ -3,7 +3,9 @@ title: CLI Commands
 description: Every command and flag exposed by the installed Argus CLI.
 ---
 
-This reference reflects the `argus` command in version `0.2.0b1`. Run
+import { version, currentOnPypi } from '../../../data/install.mjs';
+
+This reference reflects the `argus` command in version `{version}`{currentOnPypi ? '' : ' (not yet published to PyPI)'}. Run
 `argus <command> --help` for the authoritative text in your installed version.
 
 ## Global
@@ -12,9 +14,16 @@ This reference reflects the `argus` command in version `0.2.0b1`. Run
 | --- | --- |
 | `argus` | Print help and the TUI hint |
 | `argus --version` | Print the package version |
-| `argus --workspace PATH <command>` | Set the active workspace for commands that accept it |
+| `argus --workspace PATH <command>` | Set the active workspace for every command; a command's own `-w` overrides it |
 
 With no subcommand, Argus prints help rather than starting a run.
+
+### Exit codes
+
+`0` success; `1` failure or error (a failed recovery, an unknown provider or run ID,
+a refused apply, a missing file, and so on); `2` usage error (bad or missing
+option); `130` interrupted. Every command that can fail reports it through the exit
+status, so scripts can rely on it.
 
 ## Recovery
 
@@ -27,26 +36,38 @@ Alias: `argus recover`.
 | `--test`, `-t` | required | Test command to execute |
 | `--file`, `-f`, `--target` | auto | Target source file |
 | `--test-file` | — | Test file to copy into the workspace |
-| `--provider`, `-p` | active | Provider name, `auto`, or `antigravity` |
-| `--model`, `-m` | provider default | Model override |
+| `--provider`, `-p` | active | Provider name, `auto`, or `antigravity`; with none configured and none named the command stops |
+| `--model`, `-m` | ladder / provider default | Pins this model for every attempt (no escalation) |
 | `--effort`, `-e` | adaptive | `low`, `medium`, or `high` |
 | `--no-adaptive` | off | Disable adaptive effort routing |
-| `--attempts`, `-a` | `3` | Attempts; clamped to 3 |
-| `--budget`, `-b` | `0.05` | Maximum spend in USD |
-| `--workspace`, `-w` | cwd | Workspace root |
+| `--attempts`, `-a` | `3` | Attempts, 1 to 10 (out of range is a usage error) |
+| `--budget`, `-b` | `0.03` | Maximum spend in USD; finite, greater than 0, at most 10 |
+| `--price` | — | `MODEL=IN,OUT[,CACHED]` price in USD per 1M tokens for a model Argus does not know (repeatable) |
+| `--workspace`, `-w` | cwd | Workspace root (overrides the global `-w`) |
 | `--enable-tier4`, `--allow-tier4` | off | Enable experimental anchor matching |
 | `--apply` | off | Apply after verification; requires `--yes-reviewed` |
 | `--yes-reviewed` | off | Record automation approval for `--apply` |
 | `--json-events` | off | Emit JSON Lines events on stdout |
 
-Exit status is non-zero when the run does not end in `SUCCESS` or
-`ALREADY_PASSING`, and when an in-run apply is refused.
+Before it starts, `run` prints a notice that the test command runs on your machine
+with your permissions and is not sandboxed. A successful run also prints the model
+ladder that was used and any project-policy notes (limits a file tightened, keys it
+ignored).
+
+A model with no known price is refused (`CONFIG_ERROR`) unless the provider is
+local or host-native; pass `--price` to supply one. Exit status is non-zero when the
+run does not end in `SUCCESS` or `ALREADY_PASSING`, and when an in-run apply is
+refused.
 
 ### `argus exec`
 
-Runs a single task prompt through the provider, with the same effort routing as
-recovery. It defaults to the Antigravity host runtime unless `--provider` is
-set. This is a direct inference helper, not part of the recovery loop.
+Sends a single task prompt, and the contents of `--file` if given, to your
+configured provider, with the same effort classification as recovery. This is a
+direct inference helper, not part of the recovery loop: it never edits files and
+never runs tests. It uses the active provider or the one named by `--provider`; with
+neither it exits with an error, and it never falls back to a host runtime. Choose
+the Antigravity host explicitly with `--provider antigravity`. The output names the
+model that actually answered.
 
 | Option | Description |
 | --- | --- |
@@ -55,8 +76,9 @@ set. This is a direct inference helper, not part of the recovery loop.
 | `--file`, `-f` | File to include as context |
 | `--effort`, `-e` | `low`, `medium`, `high` |
 | `--no-adaptive` | Disable routing |
-| `--provider` | Provider name |
+| `--provider` | Provider name (default: the active provider) |
 | `--model`, `-m` | Model override |
+| `--workspace`, `-w` | Directory `--file` is resolved against |
 
 ## Candidates
 
@@ -72,12 +94,15 @@ Alias: `argus status`.
 
 ### `argus inspect RUN_ID`
 
-Prints metadata and the unified diff. Accepts `--workspace`.
+Prints metadata (including the patch tier that applied the edit) and the unified
+diff. Accepts `--workspace`. Exits 1 for an unknown
+or malformed run ID (`INVALID_RUN_ID`) or an unsigned or tampered run
+(`CANDIDATE_SIGNATURE_INVALID`).
 
 ### `argus diff [RUN_ID]`
 
 Prints the diff for a run, or for the last run when the argument is omitted.
-Accepts `--workspace`.
+Accepts `--workspace`. Exits 1 when there is no such run.
 
 ### `argus approve RUN_ID`
 
@@ -102,8 +127,9 @@ Alias: `argus apply-candidate`.
 | `--file`, `-f` | Assert the expected target file |
 | `--force` | Bypass only the approval gate |
 
-`--force` does not bypass verification, hashes, syntax validation, or path
-containment.
+`--force` does not bypass verification, signature, hashes, syntax validation, or
+path containment. Applying a run that was already applied prints "already applied" and
+changes nothing (exit 0).
 
 ## Providers
 
@@ -123,9 +149,15 @@ containment.
 | `--preset`, `-p` | Preset key |
 | `--base-url`, `-u` | OpenAI-compatible base URL |
 | `--model`, `-m` | Model identifier |
-| `--api-key`, `-k` | Key (prefer the hidden prompt) |
+| `--api-key`, `-k` | Key on the command line (visible in shell history and process lists; prefer the options below) |
+| `--api-key-env VAR` | Read the key from environment variable `VAR` |
+| `--api-key-stdin` | Read the key from the first line of standard input |
 | `--timeout`, `-t` | Request timeout, default `60.0` |
-| `--active` | Set active (enabled by default) |
+| `--active` / `--no-active` | Set as the active provider (default: yes) |
+
+With no key option and no terminal attached, `provider set` fails fast instead of
+waiting for a hidden prompt. `provider select`, `test` and `delete` exit 1 for an
+unknown provider, and `test` exits 1 when the connection fails.
 
 Presets: `antigravity`, `ollama`, `lmstudio`, `openai`, `deepseek`, `gemini`,
 `openrouter`, `custom`.
@@ -149,9 +181,14 @@ Options: `--global` (default) or `--workspace`, and `--workspace-path`.
 | `argus init [CLIENT]` | Generate a tool integration preset |
 | `argus doctor` | Environment and provider diagnostics |
 
-`setup` options: `--workspace`, `--all`.
-`init` options: `--list`, `--print`, `--overwrite`, `--dir`.
+`setup` options: `--workspace`, `--all` (required when no terminal is attached, since
+it writes configuration for every detected tool).
+`init` options: `--list`, `--print`, `--overwrite`, `--dir`. `init` exits 1 for an
+unknown client or an existing file.
 Preset clients include Aider, Claude, OpenCode, Continue, and Cursor.
+
+By default `doctor` makes one small live request to the active provider, which can be
+billable. `argus doctor --offline` skips that connectivity check (no request is sent).
 
 ## Maintenance
 
@@ -166,9 +203,9 @@ Checks PyPI for a newer `argus-recovery` release.
 | `--pre` | Include pre-releases |
 | `--yes`, `-y` | Non-interactive confirmation |
 
-This release is installed from the GitHub repository and is not published on
-PyPI. The update manager queries PyPI, so it cannot update a source checkout;
-use `git pull` and reinstall instead.
+`argus-recovery` is published on PyPI and the update manager queries PyPI, so it
+cannot update a source checkout or a Git install; use `git pull` and reinstall
+instead. The PyPI release can be older than the repository.
 
 ## Terminal interfaces
 
@@ -200,5 +237,6 @@ use `git pull` and reinstall instead.
 | `--config`, `-c` | — | Gateway configuration file |
 | `--allow-remote` | off | Allow non-loopback binding |
 
-Startup requires `ARGUS_GATEWAY_API_KEY` and the `gateway` extra. Binding to a
-non-loopback host without `--allow-remote` is refused.
+Startup requires `ARGUS_GATEWAY_API_KEY` and the `gateway` extra; without them the
+command prints a refusal message and exits 1. Binding to a non-loopback host
+without `--allow-remote` is refused. Note that `-h` is `--host` here, not help.

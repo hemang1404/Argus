@@ -1,5 +1,11 @@
 name: Publish to PyPI
 
+# One-time setup on PyPI (no long-lived token is used or stored):
+#   PyPI project "argus-recovery" -> Settings -> Publishing -> add a Trusted Publisher:
+#     owner/repo: hemang1404/Argus, workflow: publish.yml, environment: pypi
+#   (and the same on TestPyPI with environment: testpypi). Protect both GitHub environments
+#   with required reviewers. After that works, delete the PYPI_API_TOKEN secret.
+
 on:
   release:
     types: [published]
@@ -8,25 +14,24 @@ on:
       target:
         description: "Publish target repository"
         required: true
-        default: "pypi"
+        default: "testpypi"
         type: choice
         options:
-          - pypi
           - testpypi
+          - pypi
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  build-and-publish:
-    name: Build distribution and publish to PyPI
-    runs-on: ubuntu-latest
-    environment:
-      name: ${{ inputs.target == 'testpypi' && 'testpypi' || 'pypi' }}
-      url: ${{ inputs.target == 'testpypi' && 'https://test.pypi.org/p/argus-recovery' || 'https://pypi.org/p/argus-recovery' }}
-    timeout-minutes: 20
-
+  tests:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,18 +44,90 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install build tools
+      - name: Install package with test extras
         run: |
-          python -m pip install --upgrade pip setuptools wheel build twine
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,tui,gateway]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Run offline test suite
+        run: pytest -m "not live_provider and not live_antigravity and not real_host and not tokenizer_download" -q --tb=short -o faulthandler_timeout=300
+        env:
+          ARGUS_RUN_LIVE_TESTS: "0"
+          ARGUS_RUN_ANTIGRAVITY_TESTS: "0"
+          ARGUS_OFFLINE: "1"
+
+  build:
+    name: Build distribution
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Check tag matches package version
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "Publishing to PyPI requires running from a release tag (got $REF_TYPE '$REF_NAME')."; exit 1
+          fi
+          VERSION="$(python -c "import ast, pathlib; src = pathlib.Path('argus/__init__.py').read_text(encoding='utf-8'); print(next(n.value.value for n in ast.parse(src).body if isinstance(n, ast.Assign) and n.targets[0].id == '__version__'))")"
+          if [ "$REF_NAME" != "v$VERSION" ]; then
+            echo "Tag '$REF_NAME' does not match package version 'v$VERSION'."; exit 1
+          fi
+          echo "Tag $REF_NAME matches version $VERSION"
 
       - name: Build sdist and wheel
         run: |
-          python -m build
+          python -m pip install --upgrade pip build twine
+          python -m build --outdir dist
           twine check dist/*
 
-      - name: Publish to PyPI
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'TestPyPI' || 'PyPI' }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'testpypi' || 'pypi' }}
+      url: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'https://test.pypi.org/p/argus-recovery' || 'https://pypi.org/p/argus-recovery' }}
+    permissions:
+      contents: read
+      id-token: write # Trusted Publishing (OIDC); no API token is configured
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository-url: ${{ inputs.target == 'testpypi' && 'https://test.pypi.org/legacy/' || '' }}
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          skip-existing: true
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Publish to PyPI
+        if: github.event_name == 'release' || inputs.target == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-from typing import Any, Dict, Optional, Set
+from typing import Any, Optional, Set
 import anyio
 import anyio.abc
 import httpcore

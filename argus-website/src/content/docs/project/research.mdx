@@ -9,6 +9,15 @@ properties the system actually guarantees.
 
 ## What is being evaluated
 
+> **Status.** The evidence for the claims below is **not in this repository**, and
+> every figure is maintainer-reported. The per-claim table, with what is verified,
+> partial, unsupported or incorrect, is in
+> `docs/RESEARCH_STATUS.md` in the repository (this file is added by the
+> `0.2.0b2` remediation and appears on GitHub only after that work is merged).
+> Earlier versions of this page and of the README quoted figures that the audit
+> found incorrect (for example "26 to 50", "77% cheaper", "200-400x", "92%"); they
+> have been removed.
+
 The research questions are narrow:
 
 1. Can formatting drift in LLM-generated patches be reconciled without applying
@@ -25,17 +34,19 @@ claim to improve a model's coding ability.
 
 ## Methodology
 
-The repository keeps its evaluation material in-tree:
+The repository contains the offline test suite (`tests/`) but **not** the research
+data. The directories that held experiment data, configurations and results are
+gitignored, so a fresh clone cannot reproduce any benchmark figure. The evaluation
+material lives in the maintainer's local research workspace and has not been
+published; a versioned archive with checksums is the planned fix.
 
-| Artifact | Purpose |
-| --- | --- |
-| `tests/` | Offline regression, safety, and lifecycle suites |
-| `data/benchmark_manifest.json` | Benchmark task manifest |
-| `data/candidate_tasks.jsonl` | Candidate task corpus |
-| `data/swe_bench_verified_tasks.jsonl` | SWE-bench-derived task set |
-| `data/full_benchmark.json` | Aggregated benchmark data |
-| `configs/` | Experiment configuration |
-| `results/` | Recorded experiment outputs |
+The independent, preregistered evaluation (called Pilot-100 / Report 18) used:
+official SWE-bench Verified Docker grading with full FAIL_TO_PASS and PASS_TO_PASS
+tests, a hashed task manifest created before any model call, a gold-patch control
+(a task whose reference patch fails is excluded), one price book for all costs,
+paired exact tests and task-bootstrap intervals, and preregistered predictions with
+misses reported. The target file was given to the model, so the numbers are not
+leaderboard scores.
 
 Core quality gates used by contributors:
 
@@ -46,34 +57,45 @@ pytest tests/test_runtime_and_workspace_safety.py \
        tests/test_wp7_deep_verification.py
 
 pytest -v tests/test_patch_adversarial_corpus.py
-pytest -q --ignore=tests/test_real_host_integration.py
+ARGUS_OFFLINE=1 pytest -q -m "not live_provider and not live_antigravity and not real_host and not tokenizer_download"
 python -m compileall -q argus tests
 ```
 
-## Reported results
+## What the evidence supports
 
-The following figures are **maintainer-reported for the 0.2.0b1 release** in the
-repository's README and changelog. They were not independently replicated for
-this documentation.
+Argus's patch-apply layer is a tolerant SEARCH/REPLACE matcher.
 
-| Observation | Reported figure | Scope |
+| Observation | Figure | Scope and caveats |
 | --- | --- | --- |
-| Offline test suite | 471 passing tests | Full offline suite |
-| Expanded core gate | 121 passing tests across three consecutive runs | Safety and lifecycle |
-| Synthetic adversarial corpus | 500 cases, 0 incorrect applications | Patch reconciliation |
-| Output flood resistance | 4 MB bound held under a 1 GB logical stream | Subprocess supervision |
-| POSIX verification | Process groups and PID start-time checked under WSL2 | Cleanup safety |
+| gpt-oss-20b, resolved tasks with Argus's applier vs a plain line-exact unique matcher | 31 to 38 of 99 (7 gained, 0 lost; exact McNemar p = 0.016; +5.7 points, 95% CI 2.7-9.1) | Official SWE-bench Verified grading, temperature 1.0, target file given. Quoted from the evaluation report, not recomputed here |
+| gpt-oss-120b | +2 tasks (44 to 46), p = 0.5 | Not significant |
+| Qwen3.8 | about 0 | |
+| Where the gain comes from | Mostly exact and indentation-tolerant matching, which other edit tools also provide | An Aider-style applier tied Argus Tiers 1-3 offline |
+| Old character-similarity Tier 3 | 1 extra solve and 1 wrong-location application | Why Tier 3 is now token-equal. The new Tier 3 has not been re-evaluated on model output |
+| Tier 4 anchors | No benefit measured (0 of 26, 0 discordant on 261 pools) | Never run on the 99-task set; stays opt-in |
+| Test feedback vs blind re-draws | +6.6 points (CI 1.5-11.6) for gpt-oss-20b; +4.5 (CI 0.0-9.1) for gpt-oss-120b; about 0 for Gemma, Qwen3.8, Gemini | 200-task blind set; the shipped controller uses feedback |
+| 20B-then-120B cascade | 59.6 vs 54.5 solved at about 1.10x spend | Offline replay only. The shipped provider ladders are unevaluated |
+| Cost per solve | $0.0045 (20B + feedback) vs $0.0058 (120B + re-draws) | Parity at best; one undated list-price book; compute excluded |
+| Passing but wrong | About 18% of resolved patches judged wrong or fragile; 6.6-12.0% of target-test passes broke other tests | One unblinded reader. "Resolved" means the graded tests pass |
+| Synthetic adversarial corpus | 500 cases, 0 incorrect applications | Seven templated mutation families; one wrong-location application was seen on real model output |
+| Argus localization | About 27% recall in separate measurements | All headline results had the target file supplied |
 
-These support specific claims: the tested code paths behaved as asserted in those
-environments. They do not establish universal correctness, nor do they predict
-success on an arbitrary repository.
+No learned router, execution-state routing or embedding retrieval is shipped or
+supported; the evidence did not justify one.
+
+The offline test suite is the other kind of evidence: it shows that tested code
+paths behave as asserted in the environments that ran it. The CHANGELOG records the
+suite size with date and environment. It does not establish universal correctness,
+nor does it predict success on an arbitrary repository.
 
 ## What the numbers do not mean
 
 - **A passing adversarial corpus is not a proof.** It is evidence that a fixed
   set of cases was handled without incorrect application.
 - **Test passage is test-relative.** A verified candidate satisfies the supplied
-  assertions, not the program's full specification.
+  assertions, not the program's full specification, and some test-passing patches
+  are wrong or break other tests.
+- **Resolved is not fixed.** Benchmark "resolved" means the graded tests pass.
 - **Cost figures are provider-dependent.** Token pricing and model behaviour
   change; recorded costs describe a specific run configuration.
 - **Results are environment-specific.** Python version, OS, provider, and model
@@ -85,9 +107,11 @@ success on an arbitrary repository.
 | Claim | Status |
 | --- | --- |
 | Ambiguous patches are refused | Design guarantee, enforced in the matching tier |
-| Applied patches parse as Python | Design guarantee for the supported scope |
+| Applied patches parse as Python | Design guarantee for the supported scope (syntactic only) |
 | Candidates require explicit approval | Design guarantee in the apply path |
-| Tier 4 anchor matching improves recovery | Experimental, disabled by default |
+| Tier 4 anchor matching improves recovery | Not shown; experimental, disabled by default |
+| Tier 3 token-equal matching adds solves | Not yet measured; the earlier similarity version added one solve and one wrong application |
+| Argus improves a model's fix rate | Not claimed; gains are conditional and small for strong models |
 | Container isolation is secure | Not claimed; optional, not independently audited here |
 | Multi-language recovery works | Not implemented; roadmap |
 
@@ -95,8 +119,9 @@ success on an arbitrary repository.
 
 To reproduce a result:
 
-1. Check out the release commit (`0.2.0b1` for the reported figures).
-2. Install with the `dev` and `research` extras.
+1. Check out the commit you are evaluating. (The research archive and the
+   harnesses that produced the reported figures are not in this repository.)
+2. Install with the `dev` extra.
 3. Use a pinned model identifier and provider endpoint.
 4. Record temperature, attempt ceiling, timeouts, and budget.
 5. Keep `.argus/` artifacts for each run; they contain the scrubbed prompt,

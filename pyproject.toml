@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "argus-recovery"
-version = "0.2.0b1"
+dynamic = ["version"]
 description = "Bounded, test-gated Python code recovery and resilient patch runtime."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,7 +38,6 @@ dependencies = [
     "click>=8.1.0",
     "rich>=13.0.0",
     "python-dotenv>=1.0.0",
-    "pydantic>=2.0.0",
     "httpx>=0.27.0",
     "keyring>=24.0.0",
     "mcp>=1.0.0,<2",
@@ -53,16 +52,18 @@ tui = [
     "textual>=8.2.0",
     "Pillow>=10.0.0",
 ]
-# Deferred milestone: the local inference gateway. Never installed by default.
+# The experimental local inference gateway (`argus gateway`, alias `argus serve`). The
+# desktop HTTP/SSE API (argus.api) and web app (argus/ui) also need these packages, but no
+# CLI command starts them. fastapi brings in pydantic, which the gateway models use.
 gateway = [
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",
 ]
-# Legacy confirmatory-analysis and tokenizer studies kept for reproducibility.
-research = [
+# Exact BPE token counting for budget reservation. Optional: without it (or with
+# ARGUS_OFFLINE=1) a conservative byte-based estimate is used. tiktoken downloads its
+# vocabulary on first use, so this is the only extra that may touch the network.
+tokens = [
     "tiktoken>=0.7.0",
-    "scipy>=1.11.0",
-    "numpy>=1.26.0",
 ]
 dev = [
     "pytest>=8.0.0",
@@ -70,13 +71,13 @@ dev = [
     "pytest-cov>=4.0.0",
     "psutil>=5.9.0",
     "build>=1.2.0",
+    "twine>=5.0.0",
+    "ruff>=0.5.0",
 ]
-# Convenience bundle for the supported v0.1.0 surfaces (CLI + TUI).
-# The experimental gateway is intentionally excluded and must be requested
-# explicitly with the 'gateway' extra.
+# Convenience bundle for the supported CLI + TUI surfaces. The gateway/API and the
+# tokenizer are intentionally excluded; request them explicitly.
 all = [
-    "textual>=8.2.0",
-    "Pillow>=10.0.0",
+    "argus-recovery[tui]",
 ]
 
 [project.urls]
@@ -88,12 +89,15 @@ Issues = "https://github.com/hemang1404/Argus/issues"
 [project.scripts]
 argus = "argus.cli:main"
 
+[tool.setuptools.dynamic]
+version = { attr = "argus.__version__" }
+
 [tool.setuptools.packages.find]
 include = ["argus*"]
 exclude = ["tests*", "data*", "results*", "models*", "packages*", "tools*", "argus-website*"]
 
 [tool.setuptools.package-data]
-argus = ["ui/*", "tui/*", "tui/*.tcss", "assets/*"]
+argus = ["py.typed", "ui/*", "tui/*", "tui/*.tcss", "assets/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -105,12 +109,20 @@ markers = [
     "live_provider: marks test as requiring live external LLM provider connectivity (opt-in via ARGUS_RUN_LIVE_TESTS=1)",
     "live_antigravity: marks test as requiring live Antigravity host CLI execution",
     "real_host: marks test as requiring live Antigravity host runtime connectivity",
-    "research: marks legacy research/confirmatory-analysis test requiring the 'research' extra",
+    "tokenizer_download: marks tests that need the real tiktoken vocabulary (network on first use; needs the 'tokens' extra)",
     "graphics: marks terminal-graphics tests requiring the 'tui' extra (Pillow)",
-    "packaging: marks npm/pnpm/ConPTY distribution tests requiring Node and optional native tooling",
-    "windows_only: marks tests that require a Windows ConPTY host",
     "gateway: marks tests for the deferred inference-gateway milestone",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["argus-website", "node_modules", "build", "dist"]
+
+[tool.ruff.lint]
+# pyflakes (undefined names, unused imports/variables) and pycodestyle errors. F821 caught real
+# bugs in this repo (undefined names swallowed by `except Exception: pass`).
+select = ["E4", "E7", "E9", "F"]
 
 [tool.coverage.run]
 source = ["argus"]

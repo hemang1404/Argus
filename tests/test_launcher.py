@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 import sys
-import tempfile
 from pathlib import Path
 from fastapi.testclient import TestClient
 
@@ -72,3 +70,31 @@ def test_ui_static_asset_serving():
     resp_js = client.get("/app.js")
     assert resp_js.status_code == 200
     assert "initSession" in resp_js.text
+
+
+def test_dedicated_conhost_fallback_never_uses_a_shell(monkeypatch, tmp_path: Path):
+    """The Windows fallback must spawn an argv list with shell=False, even for hostile paths."""
+    import argus.launcher as launcher
+
+    calls = []
+
+    def fake_popen(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return object()
+
+    hostile = tmp_path / "a & calc ^x"
+    hostile.mkdir()
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    monkeypatch.setattr(launcher, "find_windows_terminal", lambda: None)
+    monkeypatch.setattr(launcher, "find_opentui_entrypoint", lambda: None)
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
+
+    launcher.launch_terminal_app(dedicated=True, workspace=str(hostile))
+
+    assert len(calls) == 1
+    argv, kwargs = calls[0]
+    assert isinstance(argv, list)
+    assert not kwargs.get("shell", False)
+    assert "cmd.exe" not in [a.lower() for a in argv]
+    assert argv[:3] == [sys.executable, "-m", "argus.tui.app"]
+    assert kwargs["cwd"] == str(hostile.resolve())

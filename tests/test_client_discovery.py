@@ -8,7 +8,6 @@ import pytest
 
 from argus.adapters.discovery import (
     DiscoveredClient,
-    connect_all_detected,
     connect_client,
     discover_clients,
 )

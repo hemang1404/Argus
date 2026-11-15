@@ -1,12 +1,11 @@
-"""Streaming interceptor: Passes prose through immediately, buffers code blocks, heals diffs via 5-tier patch engine."""
+"""Streaming interceptor: Passes prose through immediately, buffers code blocks, heals diffs via the tiered patch engine."""
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import Optional
 from argus.patch.fuzzy_engine import ResilientPatchEngine, PatchResult
-from argus.patch.parser import PatchBlock, PatchParser
+from argus.patch.parser import PatchParser
 
 
 class StreamPatchHealer:

@@ -5,6 +5,7 @@ description: Requirements, source installation, optional extras, verification, a
 
 import InstallTabs from '../../../components/InstallTabs.astro';
 import { Aside } from '@astrojs/starlight/components';
+import { version, currentOnPypi, pypiVersion, gitUrl } from '../../../data/install.mjs';
 
 ## Requirements
 
@@ -12,7 +13,7 @@ import { Aside } from '@astrojs/starlight/components';
 | --- | --- |
 | Python | 3.11, 3.12, 3.13, or 3.14 |
 | Package manager | any PEP 517 compatible installer (`pip`, `uv`, `pipx`) |
-| Git | recommended; required for worktree isolation and repository detection |
+| Git | recommended; used to decide which files are copied into the workspace |
 | Operating system | Windows, Linux, macOS, or WSL2 |
 | Test runner | whatever your project already uses (for example `pytest`) |
 
@@ -20,18 +21,32 @@ The core install includes the CLI, recovery controller, patch engine, workspace
 manager, provider adapters, and the MCP server. The terminal UI and the
 experimental gateway are optional extras.
 
-<Aside type="tip" title="Available on PyPI">
-Argus is published to PyPI as [`argus-recovery`](https://pypi.org/project/argus-recovery/).
-Install it directly with <code>pip</code>, <code>uv</code>, or <code>pipx</code>.
+{!currentOnPypi && (
+<Aside type="caution" title="PyPI release vs. this documentation">
+PyPI currently has `{pypiVersion}` of [`argus-recovery`](https://pypi.org/project/argus-recovery/),
+which predates the audit remediation (signed candidates, token-equal Tier 3,
+pinned-model dispatch, fail-closed pricing, and more; see the
+[changelog](/project/changelog/)). This site documents `{version}`, which is
+not on PyPI yet, so `pip install argus-recovery` does **not** give the behaviour
+described here. The commands below install from the repository. After `{version}`
+is published, the plain `pip install argus-recovery` form applies.
 </Aside>
+)}
 
-## Install from PyPI
+## Install
 
 <InstallTabs />
 
+The tabs above install the current repository state (Git required). Equivalent
+plain form:
+
+```bash title="Shell"
+pip install "git+https://github.com/hemang1404/Argus.git"
+```
+
 The commands above install the core runtime. The terminal cockpit is an optional
 extra; the editable commands below include it so that `argus tui` and
-`argus app` work. To add it to a non-editable install:
+`argus app` work. To add it to a regular install:
 
 ```bash title="Shell"
 pip install "argus-recovery[tui]"
@@ -70,13 +85,13 @@ pip install ".[tui]"
 | --- | --- | --- |
 | `tui` | `textual`, `Pillow` | You want `argus tui` or `argus app` |
 | `gateway` | `fastapi`, `uvicorn` | You are evaluating the experimental inference proxy |
-| `research` | `tiktoken`, `scipy`, `numpy` | You are reproducing legacy research studies |
+| `tokens` | `tiktoken` | You want exact token counting for budget reservation (otherwise a conservative byte-based estimate is used; `tiktoken` downloads its vocabulary on first use, so set `ARGUS_OFFLINE=1` to stay offline) |
 | `dev` | `pytest`, `pytest-asyncio`, `pytest-cov`, `psutil`, `build` | You are contributing to Argus |
-| `all` | Currently the `tui` bundle | Convenience install for supported surfaces |
+| `all` | The `tui` bundle | Convenience install for the supported surfaces |
 
 ```bash title="Shell"
 # Development environment
-pip install -e ".[dev,tui]"
+pip install -e ".[dev,tui,gateway]"
 
 # Terminal UI only
 pip install -e ".[tui]"
@@ -97,8 +112,8 @@ argus doctor
 
 `argus --version` prints the package version. `argus doctor` checks Python,
 Git, pytest, the Antigravity host CLI, a local Ollama endpoint, and the active
-provider configuration. A healthy installation ends with a connectivity check
-only after a provider has been configured; before that, it reports:
+provider configuration. Once a provider is configured it also sends a live
+request to it, which can be billable; before that, it reports:
 
 ```text
 ! Provider        none configured (run 'argus provider set')
@@ -136,9 +151,10 @@ keys are stored in the operating system keyring when available. The runtime
 falls back to a restricted-permission file if no keyring backend is available.
 Override the directory with `ARGUS_CONFIG_DIR`.
 
-Per-workspace recovery artifacts live in `.argus/` inside the repository. Add
-`.argus/` to version control ignore rules; the repository's own `.gitignore`
-already does this.
+Per-workspace recovery artifacts live in `.argus/` inside the repository. Argus
+writes `.argus/.gitignore` so they stay out of `git status`; do not commit them.
+The signing key for candidate approvals lives in the configuration directory, not
+in the repository.
 
 ## Uninstall
 

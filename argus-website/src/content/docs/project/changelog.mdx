@@ -8,6 +8,30 @@ import { Aside } from '@astrojs/starlight/components';
 Argus follows [Semantic Versioning](https://semver.org/) and records changes in
 the repository's `CHANGELOG.md`. This page mirrors the published release notes.
 
+## 0.2.0b2 — 2026-11-16 (audit remediation)
+
+Prepared but not yet tagged or published to PyPI. The headline changes (see the repository `CHANGELOG.md`
+for the complete list):
+
+- **Model dispatch.** A named model is pinned for every attempt. The cheap-first
+  cascade applies only when no model is named and the provider has a documented
+  ladder. No silent substitution; no fallback to a small local model on budget
+  pressure.
+- **Patch engine.** Tier 3 is now token-equal (no more similarity-based matches
+  that could change an operator or name). Tier 1 needs a line/token boundary.
+  Line endings, BOMs and encodings are preserved; undecodable files are refused.
+  Truncated blocks apply nothing.
+- **Workspace.** Copy snapshot is Git-tracked plus untracked-not-ignored files;
+  `data/`, `build/`, `dist/` and similar are no longer dropped. Git worktree mode
+  was removed.
+- **Signed candidates.** HMAC-signed metadata; strict run IDs; per-run apply lock.
+- **Cost safety.** Unpriced models are refused; budgets must be finite and
+  positive; project policy files can only tighten limits.
+- **MCP and gateway hardening.** Workspace confinement, budget cap, removal of
+  test-mode authentication bypasses.
+- **Documentation.** Corrected commands, claims and research statements; added the
+  research status table.
+
 ## 0.2.0b1 — 2026-11-06
 
 Pre-release. Distribution name `argus-recovery`; command `argus`.
@@ -18,7 +42,8 @@ Pre-release. Distribution name `argus-recovery`; command `argus`.
 
 - Tier 1: byte-for-byte exact matching.
 - Tier 2: whitespace and leading-indentation normalization.
-- Tier 3: character-level sliding-window similarity with an ambiguity margin.
+- Tier 3: character-level sliding-window similarity with an ambiguity margin
+  (replaced in the unreleased changes by token-equal matching).
 - Tier 4: experimental anchor-based prefix/suffix matching, disabled by default
   and enabled with `--enable-tier4`.
 - Tier 5: safe refusal when a patch is ambiguous or below the similarity
@@ -28,9 +53,9 @@ Pre-release. Distribution name `argus-recovery`; command `argus`.
 **Session-aware workspace management**
 
 - Ephemeral project copy with heavy-directory exclusion (`.git`, `node_modules`,
-  virtual environments, build output, caches, and research data).
-- Git worktree mode using `git worktree add --detach` with an uncommitted-change
-  overlay.
+  virtual environments, build output, caches, and research data). (A Git worktree
+  mode described in the original notes was never reachable from any interface and
+  has since been removed.)
 - Process start-time identity tracking (`kernel32.GetProcessTimes` on Windows,
   `/proc/<pid>/stat` on POSIX) to prevent false retention after PID reuse.
 - Atomic rename directory claiming to prevent concurrent garbage-collection
@@ -76,9 +101,12 @@ Pre-release. Distribution name `argus-recovery`; command `argus`.
 
 **Quality gates**
 
-- 471 passing tests in the offline suite.
+- 471 passing tests in the offline suite (the maintainer's environment at the
+  time; not a reproducible figure).
 - 121 passing tests in the expanded core gate across three consecutive runs.
-- 500-case synthetic adversarial patch corpus with zero incorrect applications.
+- 500-case synthetic adversarial patch corpus with zero incorrect applications
+  (a synthetic corpus of seven templated mutation families, not real model
+  output).
 - POSIX process-group and PID start-time verification under WSL2.
 
 ### Security
@@ -92,7 +120,7 @@ Pre-release. Distribution name `argus-recovery`; command `argus`.
 
 ### Distribution
 
-- Not published on PyPI as of this release. Install from the GitHub repository.
+- Published on PyPI as `argus-recovery` `0.2.0b1`.
 - `tui` and `gateway` are optional extras; the gateway is excluded from `all`.
 
 ## Earlier history

@@ -14,12 +14,10 @@ from textual.widgets import Button, Static
 
 from argus import __version__
 from argus.update import (
-    InstallMethod,
     UpdateChannel,
     UpdateCheckResult,
     apply_update,
     check_for_updates,
-    detect_install_method,
     verify_update,
 )
 

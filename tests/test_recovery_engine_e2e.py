@@ -2,12 +2,11 @@
 
 import tempfile
 from pathlib import Path
-import pytest
 
 from argus.config import ArgusConfig
 from argus.providers.models import ProviderConfig
 from argus.providers.adapter import OpenAICompatibleAdapter
-from argus.providers.mock_server import MockOpenAIServer
+from tests.mock_server import MockOpenAIServer
 from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
 from argus.runtime.controller import RecoveryController, RecoveryOutcome
 

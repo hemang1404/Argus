@@ -34,21 +34,26 @@ argus run --test "pytest tests/test_calculator.py"
 ```
 
 `--test` is required. When `--file` is omitted, Argus parses the test failure
-traceback to locate the target source file. You can name it explicitly:
+traceback to locate the target source file. You can name it explicitly. The
+values below are the defaults (`--attempts 3`, `--budget 0.03`; ranges 1-10 and up
+to $10, as in `argus run --help`):
 
 ```bash title="Shell"
 argus run \
   --test "pytest tests/test_calculator.py" \
   --file src/calculator.py \
   --attempts 3 \
-  --budget 0.05
+  --budget 0.03
 ```
 
-The command runs entirely in an ephemeral workspace. Your working tree is not
-modified. On success, the CLI prints the candidate ID:
+Argus first prints a warning that your test command runs on your machine with
+your permissions (it is not sandboxed). The run happens in a temporary copy of the
+project; your working tree is not modified. On success, the CLI prints the candidate ID
+(example output; the attempt count, time, cost and run ID differ on every run):
 
 ```text
-✓ Verified passing (2 attempts, 18422ms, $0.0031)
+✓ Test command passes on the patched copy (2 attempts, 18422ms, $0.0031)
+  Applied to a copy only; syntax-checked and test-verified, not reviewed for semantic correctness.
   Candidate: run_20261106_142530_9f3a1c2d
   Target:    src/calculator.py
 ```
@@ -67,7 +72,9 @@ argus inspect <run_id>
 state. `argus inspect` prints the target file, test command, attempt count, cost,
 and the unified diff. `argus diff <run_id>` shows only the diff.
 
-A verified candidate is not yet approved. Approval is a separate decision.
+"Verified" means your test command passed in the temporary copy. It does not mean
+the change is correct. A verified candidate is not yet approved; approval is a
+separate decision.
 
 ## 4. Review and approve
 
@@ -91,6 +98,7 @@ Before writing, Argus re-checks that:
 - the candidate is approved;
 - the target file still matches the recorded baseline SHA-256;
 - the candidate content still matches its recorded SHA-256;
+- the candidate's metadata signature is valid;
 - the patched content parses as Python;
 - the target resolves inside the workspace.
 
@@ -105,8 +113,8 @@ argus tui
 ```
 
 Enter the test command, press `Enter`, and watch the recovery timeline. When a
-candidate is ready, the diff review screen opens; press `a` or `Enter` to approve
-and apply, or `d` to discard. See the [TUI guide](/interfaces/tui/) for the full
+candidate is ready, the diff review screen opens; arm approval with `a`,
+confirm with `y`, or discard with `d`. See the [TUI guide](/interfaces/tui/) for the full
 key map.
 
 ## The same flow over MCP
@@ -125,7 +133,9 @@ or inspect the artifacts under `.argus/runs/<run_id>/` for the scrubbed prompt,
 raw response, and parse output.
 
 <Aside type="tip" title="Cheap first pass">
-Start with `--budget 0.05` and a small local model. If reconciliation or tests
-fail because the edit is wrong rather than because the format drifted, a more
-capable model is a better next step than more attempts.
+Start with the default budget and a small model. If reconciliation or tests fail
+because the edit is wrong rather than because the format drifted, a more capable
+model is a better next step than more attempts. Naming `--model` pins that one
+model for every attempt; leaving it off lets providers with a documented ladder
+use a cheap model first and escalate on the last attempt.
 </Aside>

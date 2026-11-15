@@ -4,86 +4,76 @@
 
 ## 1. Product Identity
 
-- **Product Name:** Argus (Local AI-Assisted Code Recovery Runtime).
-- **Category:** Developer Tooling / AI Code Reliability Infrastructure.
-- **Core Purpose:** Recover from failed, broken, or malformed AI-generated code edits using bounded test-gated reproduction, multi-tier fuzzy patch reconciliation, and atomic candidate application.
-- **Target Audience:** Software engineers, platform teams, and AI agent developers building with coding assistants (Cursor, VS Code, Claude Code, Aider, OpenCode) who require deterministic, test-verified patch recovery without git pollution or runaway inference spend.
+- **Product Name:** Argus (local recovery runtime for model-generated code edits).
+- **Category:** Developer tooling / reliability infrastructure for AI-assisted code changes.
+- **Core Purpose:** Turn a failing test command into a reviewable, test-gated candidate patch using a model the user has configured, with bounded attempts and spend, tolerant-but-safe patch reconciliation, and approval-gated application.
+- **Product principle:** The recovery runtime is the product. Argus is not a model router and does not pick providers for you.
+- **Target audience:** Developers and agent builders who want model-proposed edits to fail safely: bounded, reviewable, never applied silently.
 
 ---
 
 ## 2. Positioning & Boundaries
 
-Argus is an execution and safety substrate that sits beneath coding assistants and developer workflows.
-
-- **What Argus Is:** A local CLI runtime, interactive TUI cockpit, Model Context Protocol (FastMCP) server, and auxiliary reverse-proxy gateway.
-- **What Argus Is Not:** It is not an AI model, not an autonomous end-to-end coding agent, not a general-purpose chat interface, not a cloud SaaS platform, and not a host-level security sandbox.
+- **What Argus is:** A local CLI runtime, a Textual TUI, an MCP stdio server for agents, an experimental loopback gateway, and a Python API, all over one controller.
+- **What Argus is not:** an AI model, an autonomous end-to-end coding agent, a chat interface, a cloud service, an adaptive/learned inference router, or a security sandbox.
+- **Authorized inference only:** Argus calls only a provider the user configured (keyring or environment). It has no Argus-owned keys, no hidden fallback and no silent provider or model switch. With no provider configured, commands stop with an actionable error. A model the user names is the model used.
+- **Success levels are separate:** *applied* (edit located), *syntactic* (parses), *tests pass* (the one supplied command passed in the copy; shown as "verified"), *semantic* (a human judgement Argus does not make).
 
 ---
 
-## 3. Capability Inventory: Implemented vs. Experimental vs. Deferred vs. Unsupported
+## 3. Capability Inventory
 
-### A. Implemented (Core & Production-Ready for Local Development)
-1. **Multi-Tier Patch Reconciliation (Tiers 1–3, Tier 5):**
-   - **Tier 1 (Exact Matching):** Byte-for-byte exact character replacement.
-   - **Tier 2 (Whitespace/Indentation Normalization):** Reconciles leading indentation drift and trailing whitespace differences.
-   - **Tier 3 (Fuzzy Sliding-Window Matching):** Sliding-window character similarity with threshold (0.82) and ambiguity margin enforcement (0.10).
-   - **Tier 5 (Safe Refusal):** Terminal safe refusal when matches are ambiguous or similarity is below threshold.
-   - **AST Syntax Gate:** Mandatory Abstract Syntax Tree validation (`ast.parse`) for Python source before accepting any match.
-2. **Ephemeral Workspace Lifecycle:**
-   - Isolated copy mode (`WorkspaceManager(mode="copy")`) in `%TEMP%/argus_ws_*` excluding heavy directories (`.git`, `node_modules`, `venv`, `build`).
-   - Git worktree mode (`WorkspaceManager(mode="worktree")`) with detached HEAD and uncommitted file overlay.
-   - Session-aware garbage collection validating host PID and process start-time (`kernel32.GetProcessTimes` on Windows, `/proc/{pid}/stat` on POSIX) to protect active runs against PID reuse.
-   - Atomic directory rename claiming to prevent concurrent garbage collector collisions.
-3. **Bounded Subprocess Execution:**
-   - `SubprocessTestRunner` with direct invocation (`shell=False`).
-   - Strict command tokenizer rejecting shell chaining operators (`&&`, `||`, `;`, `|`), redirection, and backgrounding.
-   - Bounded output collection (`BoundedOutputCollector`) draining streams concurrently with 4MB memory bounds, tested under 1 GB logical stream flood.
-   - Process-tree hard termination (`taskkill /F /T` on Windows, `os.killpg` on POSIX) on timeout.
-4. **Authoritative Candidate Application & TOCTOU Defense:**
-   - Candidate artifacts written to `.argus/artifacts/<run_id>.json` with baseline and candidate SHA-256 digests.
-   - `AuthoritativePatchApplier` checks baseline file hashes before applying updates.
-   - Atomic file commit via temporary sibling files and `os.replace`.
-5. **Developer Interfaces:**
-   - Command-Line Interface (`argus run`, `argus recover`, `argus candidates`, `argus diff`, `argus apply`).
-   - Interactive Textual TUI cockpit (`argus tui`) with command palette, timeline, and diff viewer.
-   - FastMCP stdio server (`argus mcp`) exposing tool definitions for upstream agents.
-6. **Authorized Provider Adapters:**
-   - OpenAI-compatible HTTP adapter with connection pooling and explicit lifecycle close.
-   - Ollama local runtime adapter.
-   - Antigravity Host Adapter (`agy` CLI integration).
-   - Automatic secret scrubbing from subprocess environments and error messages.
+### A. Implemented
 
-### B. Experimental (Feature-Complete but Subject to Evolution)
-1. **Tier 4 Anchor-Based Matching:**
-   - Prefix/suffix anchor matching across drifted interior code lines.
-   - **Status:** Implemented but disabled by default; requires explicit opt-in via `--enable-tier4`.
-2. **Local Inference Gateway Proxy (`argus gateway` / `argus serve`):**
-   - OpenAI- and Anthropic-compatible reverse proxy listening on `127.0.0.1:8000`.
-   - Mandatory constant-time bearer authentication (`ARGUS_GATEWAY_API_KEY`).
-   - Loopback CORS and Host header validation against DNS rebinding.
-   - Identity-based rate limiting keying by token hash and client ID.
-   - Two-phase dynamic budget reservation using integer micro-dollars.
-   - In-memory streaming patch healer.
-   - **Status:** Experimental auxiliary tool; separate from the core offline recovery loop.
-3. **Containerized Repository Evaluator (`ContainerEvaluator`):**
-   - Docker/Podman container lifecycle harness passing `--network=none`, CPU/memory bounds, and in-memory tar-stream candidate transfer.
-   - **Status:** Implemented; fails closed when container engine is unresponsive. Evaluated separately from host execution.
+1. **Tiered patch reconciliation (Tiers 1-3, refusal):**
+   - **Tier 1 exact:** verbatim match at a line or token boundary; never inside a longer identifier, comment or string.
+   - **Tier 2 whitespace/indentation:** whole-line match after normalizing indentation and trailing whitespace.
+   - **Tier 3 token-equal (default on, can be disabled):** a unique region whose identifier/operator/number/string tokens are identical to the search block; only whitespace and comments may differ. Near misses that change a token are refused.
+   - **Refusal:** ambiguous or absent matches change nothing.
+   - **Syntactic gate:** `ast.parse` + `compile` on the final state for `.py`/`.pyi`/`.pyw` targets. This is not a correctness check.
+   - Line endings (LF/CRLF/CR/mixed), BOM and PEP 263 encodings are preserved; undecodable files are refused.
+   - SEARCH/REPLACE parsing reports truncated or malformed blocks instead of applying a partial edit.
+2. **Temporary workspace (copy):**
+   - Each run works in a temporary copy of the project (`argus_ws_*` under the system temp directory). The default snapshot is the Git-tracked plus untracked-not-ignored files (working-tree content), or a full walk for non-Git directories; `.git`, `.argus`, caches and root-level virtualenv/`node_modules` are excluded. Size is bounded (default 2 GiB, fails fast).
+   - Git worktree mode was removed; the copy is the only isolation mode.
+   - Session-aware cleanup of leaked workspaces (PID plus process start-time).
+3. **Bounded subprocess execution:** direct invocation (`shell=False`), strict command tokenizer, bounded output (4 MB), process-tree kill on timeout. **Runs on the host with the user's privileges; not sandboxed.**
+4. **Signed candidates and authoritative apply:**
+   - Run artifacts in `.argus/runs/<run_id>/` (`metadata.json`, `metadata.sig`, `candidate.patched`, `patch.diff`, `prompt.txt`, `raw_response.txt`, `attempts.json`, `context_window.json`).
+   - Metadata is HMAC-signed with a key in the user config directory; baseline and candidate SHA-256 hashes are re-checked at apply; approval is recorded separately; apply is atomic and takes a per-run lock.
+5. **Model dispatch and cost control:**
+   - Pinned model = single model. Cheap-first cascade only when no model is named and the provider has a documented ladder (openai, deepseek, gemini, antigravity), attempts 1-2 small and attempt 3 large. Other providers: default model, no escalation.
+   - Unknown model prices are refused unless the provider is local; budgets must be finite and positive; usage counts are validated.
+   - Project policy file may only tighten limits.
+6. **Interfaces:** CLI (`run`/`recover`, `candidates`, `inspect`, `diff`, `approve`, `reject`, `apply`, `provider`, `doctor`, `mcp`, `tui`, `setup`, `init`, `update`, `exec`), Textual TUI, FastMCP stdio server (no approval tool), Python API.
+7. **Provider adapters:** OpenAI-compatible HTTP adapter (OpenAI, DeepSeek, Gemini, OpenRouter, Ollama, LM Studio, custom endpoints) and the Antigravity host CLI adapter. Anthropic models are reachable through OpenRouter or a custom endpoint; there is no native Anthropic preset.
 
-### C. Deferred (Planned for Future Releases)
-1. **Multi-Language AST Validation:** Tree-sitter parsers for TypeScript, JavaScript, Rust, and Go. (Currently restricted to Python).
-2. **Transactional Multi-File Patches:** Multi-file atomic patch application across multiple target files. (Currently restricted to single-file targets).
-3. **Hardware-Level MicroVM Isolation:** Integration with microVM hypervisors (Firecracker, Cloud Hypervisor) for untrusted code execution.
+### B. Experimental
 
-### D. Unsupported (Explicitly Excluded / Prohibited)
-1. **Groq Inference Provider:** Permanently prohibited and blocked across all configurations, adapters, routing logic, and storage engines.
-2. **Unauthenticated Network Exposure:** Starting the Gateway on non-loopback addresses (`0.0.0.0`) without `--allow-remote` and `ARGUS_GATEWAY_API_KEY` is strictly prohibited and refused on startup.
-3. **Silent Patch Application:** Automatic working tree modification without verified test passage and human approval.
-4. **Universal Correctness Claims:** Passing test suites proves adherence to test assertions; it does not guarantee universal software correctness.
+1. **Tier 4 anchor matching:** off by default; `--enable-tier4`. No benefit has been measured (0 extra in a 26-task pilot and 0 discordant on 261 offline candidate pools; never measured on the 100-task design set).
+2. **Local gateway (`argus gateway` / `argus serve`):** OpenAI/Anthropic-compatible loopback proxy. Needs the `gateway` extra and `ARGUS_GATEWAY_API_KEY`; budget reservation in integer micro-dollars; unknown models priced fail-closed. Outside the recovery loop.
+3. **Container evaluator (`ContainerEvaluator`):** library-level only (not a CLI flag): Docker/Podman with `--network=none` and resource limits. Fails closed when requested but unavailable. Not independently audited.
+
+### C. Deferred
+
+1. Multi-language syntax validation (Tree-sitter): the gate is Python-only.
+2. Transactional multi-file patches: single-file scope today.
+3. MicroVM isolation for untrusted code.
+4. A candidate clean/revert command (old runs must be deleted by hand).
+
+### D. Explicitly out of scope
+
+1. **Groq:** refused at configuration, CLI and gateway.
+2. **Unauthenticated network exposure** of the gateway.
+3. **Silent application:** no code path applies a candidate without verification and approval (`--yes`/`--yes-reviewed` record the approval as automation).
+4. **Learned or "adaptive" routing:** no learned router is shipped or supported; the evidence did not justify one (see `docs/RESEARCH_STATUS.md`).
+5. **Correctness claims:** passing tests proves the supplied command passed, nothing more.
 
 ---
 
 ## 4. Operational Invariants
 
-1. **Working Tree Invariance:** The user's active git working tree is sacred. Iterative candidate attempts run strictly in isolated temporary directories.
-2. **Fail-Closed Execution:** If requested isolation (container/sandbox) or authentication cannot be verified, execution halts immediately with an explicit refusal code.
-3. **Bounded Computation:** Every recovery attempt has a hard turn limit (default 3), command timeout (default 30s), output buffer cap (default 4MB), and monetary reservation ceiling.
+1. **Working-tree invariance:** attempts run in the temporary copy; the live tree changes only through an approved, hash-checked apply.
+2. **Fail closed:** missing provider, unpriced model, unavailable requested isolation, invalid signature or run ID, ambiguous match: stop with an explicit code.
+3. **Bounded computation:** attempts (default 3), per-test timeout (30 s), task deadline (300 s), output buffer (4 MB), and a monetary ceiling (default `$0.03`) per run.
+4. **Honest reporting:** distinguish applied / syntactic / tests pass / semantic; never describe a test pass as a fix.

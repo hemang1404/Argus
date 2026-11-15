@@ -28,8 +28,10 @@ argus run \
 ```
 
 Auto-localization parses traceback frames. It is convenient but not infallible,
-especially when a failure originates in a dependency or a conftest. Passing
-`--file` removes ambiguity and is the recommended form for CI.
+especially when a failure originates in a dependency or a conftest. In separate
+measurements its recall was about 27%, and the published research results were all
+obtained with the target file supplied. Passing `--file` removes ambiguity and is
+the recommended form.
 
 ## Scope the test
 
@@ -52,11 +54,17 @@ policy file; do not wrap the command in a shell pipeline, which is rejected.
 
 | Flag | Default | Notes |
 | --- | --- | --- |
-| `--attempts` | `3` | Values above 3 are clamped to 3 |
-| `--budget` | `0.05` | USD ceiling for the run |
+| `--attempts` | `3` | 1 to 10; out of range is a usage error |
+| `--budget` | `0.03` | Finite, positive USD ceiling for the run, at most 10 |
+| `--price` | none | `MODEL=IN,OUT[,CACHED]` USD per 1M tokens for a model Argus does not know (repeatable) |
 | `--enable-tier4` | off | Experimental anchor matching |
 | `--effort` | adaptive | `low`, `medium`, or `high` |
 | `--no-adaptive` | off | Disable effort classification |
+
+Before the run starts, Argus prints a warning that your test command executes on
+your machine with your user permissions (it is not sandboxed). After the run it
+reports the model ladder that was used and any project-policy notes (limits a
+`argus.yaml` tightened or keys it ignored).
 
 The provider's own request timeout and the task deadline are separate bounds
 configured in `ArgusConfig`. A recovery can therefore end with
@@ -88,9 +96,10 @@ process exits non-zero if the run does not end in `SUCCESS` or
 
 | You see | What it means |
 | --- | --- |
-| Verified candidate + diff | Review it, then approve and apply |
+| Verified candidate + diff | The test command passed in the copy. Review the diff, then approve and apply |
 | `ALREADY_PASSING` | The test passed without changes; nothing to recover |
-| `FAILED_MAX_ATTEMPTS` | The model did not produce a verified patch in three turns |
+| `FAILED_MAX_ATTEMPTS` | The model did not produce a verified patch within the attempt limit |
+| `CONFIG_ERROR` | No provider, unknown provider, or a model with no known price |
 | `LOCALIZATION_FAILED` | Pass `--file` explicitly |
 | `TEST_SETUP_ERROR` | The command could not run; fix the harness first |
 | `BUDGET_EXCEEDED` | The run hit its spend ceiling |
@@ -112,9 +121,11 @@ Common causes:
 - the search block describes a version of the file that no longer exists;
 - the edit is syntactically valid but does not fix the assertion;
 - the test requires a dependency missing from the isolated copy;
-- the provider is returning truncated output because the token ceiling is low.
+- the provider is returning truncated output because the token ceiling is low (a
+  reply cut off by the length limit is reported to the model as truncation);
+- the failure needs a different file than the one named.
 
-The response is not to disable the AST gate or lower the similarity threshold.
+The response is not to disable the syntactic gate or loosen matching.
 Improve the context: pass `--file`, narrow the test, switch to a model better at
 code, or fix the underlying test harness.
 
@@ -122,9 +133,11 @@ code, or fix the underlying test harness.
 
 Recovery artifacts are per workspace and per run ID, and workspaces are separate
 directories. You can run recoveries in parallel in different projects. In the
-same project, concurrent applies can race by design; the baseline hash check
-makes the second write fail with `STALE_TARGET_CONFLICT` rather than overwrite.
-Serialise applies when you need a deterministic order.
+same project, applying one run from several processes is serialized by a per-run
+lock: exactly one apply succeeds and the others report the run as already applied
+or `APPLY_IN_PROGRESS`. Two different runs that edit the same file are protected by
+the baseline hash check: the second write fails with `STALE_TARGET_CONFLICT`
+rather than overwriting.
 
 ## What not to do
 

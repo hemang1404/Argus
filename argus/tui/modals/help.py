@@ -69,13 +69,13 @@ class HelpModal(ModalScreen[None]):
 
         # Diff Review
         table.add_row("", "")
-        table.add_row(f"[bold {_ORANGE}]Enter[/] / [bold {_ORANGE}]a[/]", "Atomically apply verified patch to disk (Diff Review)")
-        table.add_row(f"[bold {_ORANGE}]Esc[/] / [bold {_ORANGE}]d[/]", "Discard candidate patch and return")
+        table.add_row(f"[bold {_ORANGE}]a[/] then [bold {_ORANGE}]y[/]", "Approve (a), then confirm (y) to apply the patch to disk (Diff Review). Enter never applies")
+        table.add_row(f"[bold {_ORANGE}]Esc[/] / [bold {_ORANGE}]d[/]", "Discard candidate patch and return (Esc also cancels a pending confirmation)")
 
         # Slash Commands
         table.add_row("", "")
         table.add_row(f"[bold {_BLUE}]/recover <cmd>[/]", "Directly run test-gated repair loop without modal form")
-        table.add_row(f"[bold {_BLUE}]/diff[/]", "Review and apply verified candidate diff")
+        table.add_row(f"[bold {_BLUE}]/diff[/]", "Review a candidate diff; applying needs a, then y")
         table.add_row(f"[bold {_BLUE}]/policy[/]", "Configure dynamic routing tier & budget ceiling")
         table.add_row(f"[bold {_BLUE}]/model[/]", "Select inference model & configure API keys securely")
         table.add_row(f"[bold {_BLUE}]/connect[/]", "Auto-detect and link Cursor, Claude Code, and Aider")

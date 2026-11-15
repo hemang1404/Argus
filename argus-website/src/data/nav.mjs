@@ -4,7 +4,7 @@
  * mobile drawer, breadcrumbs, and the search index.
  */
 
-export const version = '0.2.0b1';
+export const version = '0.2.0b2';
 export const siteUrl = 'https://argus.hemangsharrma.workers.dev';
 export const repoUrl = 'https://github.com/hemang1404/Argus';
 export const issuesUrl = 'https://github.com/hemang1404/Argus/issues';

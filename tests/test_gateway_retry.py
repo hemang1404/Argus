@@ -3,7 +3,6 @@
 import email.utils
 import time
 import httpx
-import pytest
 
 from argus.gateway.retry import (
     FailureClassification,

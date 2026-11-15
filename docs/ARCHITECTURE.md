@@ -1,158 +1,156 @@
 # Argus Architecture & Execution Design
 
-**Status:** Current Implementation Architecture  
-**Scope:** Core Recovery Runtime, Multi-Tier Patch Engine, Ephemeral Workspaces, Subprocess Supervision, Artifact Provenance, Interfaces (CLI, TUI, FastMCP, Gateway)
+**Status:** current implementation (post audit remediation).
+**Scope:** recovery controller, patch engine, temporary workspaces, subprocess supervision, candidate artifacts, and the CLI / TUI / MCP / gateway surfaces.
 
 ---
 
-## 1. Architectural Overview & Boundary Separation
+## 1. Overview
 
-Argus is designed with a strict separation between its **Core Recovery Runtime** and its **Interface Layers**:
+Argus separates one **recovery runtime** from several thin **interfaces**. The CLI, TUI, MCP server and Python API all call the same `RecoveryController`; none has its own recovery logic.
 
 ```mermaid
 flowchart TD
-    subgraph ClientSurfaces["Client & Presentation Surfaces"]
-        CLI["Argus CLI (argus run / recover / apply)"]
-        TUI["Interactive TUI Cockpit (argus tui)"]
-        MCP["Model Context Protocol Server (argus mcp)"]
-        GW["Experimental Local Proxy Gateway (argus gateway)"]
+    subgraph Surfaces["Interfaces"]
+        CLI["CLI (argus run / approve / apply)"]
+        TUI["TUI (argus tui)"]
+        MCP["MCP stdio server (argus mcp run)"]
+        API["Python API"]
+        GW["Gateway (argus gateway, experimental)"]
     end
 
-    subgraph CoreRuntime["Core Recovery Runtime (In-Process)"]
-        RC["RecoveryController (Bounded Orchestrator, Max 3 Turns)"]
-        PA["Provider Adapters (OpenAICompatible, Ollama, Antigravity)"]
-        WM["WorkspaceManager (Ephemeral Directory / Git Worktree)"]
-        PE["ResilientPatchEngine (Tiers 1-5 with AST Validation)"]
-        SR["SubprocessTestRunner (Direct Host Process Supervision)"]
+    subgraph Runtime["Recovery runtime (in-process)"]
+        RC["RecoveryController (bounded loop)"]
+        PA["Provider adapter (user-configured)"]
+        WM["WorkspaceManager (temporary copy)"]
+        PE["ResilientPatchEngine (tiers + syntactic gate)"]
+        SR["SubprocessTestRunner (host process)"]
     end
 
-    subgraph CandidateAndApply["Artifact Provenance & State Mutation"]
-        CA["Candidate Artifact (.argus/artifacts/<run_id>.json)"]
-        APA["AuthoritativePatchApplier (SHA-256 TOCTOU Defense)"]
-        WT["Active Working Tree (Source Codebase)"]
-    end
-
-    subgraph ContainerRuntime["Isolated Evaluation (Optional / SWE-bench)"]
-        CE["ContainerEvaluator (Docker / Podman, --network=none)"]
+    subgraph Candidates["Candidates"]
+        CA[".argus/runs/<run_id>/ (signed metadata)"]
+        AP["AuthoritativePatchApplier"]
+        WT["Your working tree"]
     end
 
     CLI --> RC
     TUI --> RC
     MCP --> RC
-    GW -.->|Auxiliary In-Memory Healing| PE
+    API --> RC
+    GW -.->|streaming patch healing only| PE
 
     RC --> WM
     RC --> PA
     RC --> PE
     RC --> SR
-    RC -.->|Optional Container Mode| CE
-
-    SR -->|Test Passed| CA
-    CA -->|Explicit 'argus apply'| APA
-    APA -->|Atomic Replace| WT
+    SR -->|tests pass| CA
+    CA -->|approve, then apply| AP
+    AP -->|atomic replace| WT
 ```
 
 ---
 
-## 2. Component Inventory
+## 2. Components
 
-### A. RecoveryController (`argus/runtime/controller.py`)
-- **Role:** Central in-process orchestrator managing the bounded test-feedback loop.
-- **Turn Bounds:** Hard-capped at 3 iterations (`max_turns=3`) to prevent runaway loops.
-- **Lifecycle Management:** Implements `close()` and context manager protocol (`__enter__` / `__exit__`), deterministically terminating underlying adapter connections and HTTP connection pools.
-- **Target Localization:** Automatically localizes the target failure file from reproduction traceback frames if not explicitly specified.
+### RecoveryController (`argus/runtime/controller.py`)
+- Owns the bounded loop: localize target, run the baseline test, ask the model for an edit, reconcile it, re-run the test in the copy, repeat until pass or a limit is hit.
+- Limits: attempts (`max_attempts`, default 3, ceiling in `argus.config`), a per-run budget (`budget_limit_usd`, default `$0.03`), per-test and task timeouts, a token cap.
+- **Model dispatch:** `ArgusConfig` resolves the model ladder once. A named model is pinned for every attempt. With no model named and a provider in `CASCADE_LADDERS` (openai, deepseek, gemini, antigravity) and escalation on, attempts 1-2 use the cheaper model and attempt 3 the stronger. The ladder and its source are recorded in `outcome.routing_reasons`. The adapter's reported model is recorded per attempt.
+- **Cost safety:** unknown model prices fail closed (`UnpricedModelError` -> `CONFIG_ERROR`) unless the provider is local or host-native; a reservation is made before each call and settled after; uncertain spend is quarantined.
+- **Project policy:** `argus.yaml` / `.argus.yaml` / `[tool.argus]` in the workspace root is applied to a per-run config copy and can only tighten limits. Notes land in `outcome.config_notes`.
+- **Errors are typed outcomes**, not tracebacks: `CONFIG_ERROR`, `INVALID_TARGET`, `LOCALIZATION_FAILED`, `BUDGET_EXCEEDED`, `DEADLINE_EXCEEDED`, `PROVIDER_RATE_LIMITED`, `CONTAINER_SETUP_ERROR`, `TEST_SETUP_ERROR`, `ALREADY_PASSING`, `FAILED_MAX_ATTEMPTS`, `CANCELLED`, `SUCCESS`.
+- Writes `attempts.json` next to the artifacts: per attempt, the patch tier, model, tokens, cost, finish reason and outcome flags.
 
-### B. ResilientPatchEngine (`argus/patch/fuzzy_engine.py`)
-- **Role:** Syntax-validated multi-tier search-and-replace reconciler.
-- **Tiers:**
-  1. *Tier 1 (Exact Matching):* Byte-for-byte character match.
-  2. *Tier 2 (Whitespace/Indentation Normalization):* Reconciles leading indentation and trailing space shifts while preserving relative indentation structure.
-  3. *Tier 3 (Fuzzy Sliding-Window Matching):* Sliding-window character similarity with a strict threshold (`similarity_threshold=0.82`) and ambiguity rejection margin (`ambiguity_margin=0.10`).
-  4. *Tier 4 (Anchor-Based Matching):* Surrounding anchor line matching for drifted interiors. Disabled by default; requires explicit opt-in (`--enable-tier4`).
-  5. *Tier 5 (Safe Refusal):* Refusal mechanism. When matching is ambiguous or score is insufficient, Argus refuses to modify code.
-- **AST Syntax Guard:** Mandatory Python Abstract Syntax Tree validation (`ast.parse`) on all candidates before acceptance.
+### ResilientPatchEngine (`argus/patch/fuzzy_engine.py`, `parser.py`, `ast_checker.py`, `textio.py`)
+- Parses SEARCH/REPLACE blocks as a line state machine; a truncated or malformed block is reported, never merged.
+- Tiers: (1) exact at a line/token boundary; (2) whitespace/indentation-normalized whole lines; (3) token-equal region (whitespace/comments may differ, tokens may not); (4) experimental anchors, off by default; (5) refusal. Ambiguity (multiple candidates) is always refused.
+- The result must pass a syntactic gate (`ast.parse` + `compile`) for `.py`, `.pyi`, `.pyw` files. The gate is syntactic only.
+- `textio` decodes strictly (UTF-8, BOM, PEP 263), normalizes line endings for matching and restores the original endings on write.
 
-### C. WorkspaceManager (`argus/runtime/workspace.py`)
-- **Role:** Filesystem virtualization protecting the active working tree from contamination.
-- **Copy Mode:** Creates full isolated project copy under `%TEMP%/argus_ws_*`, excluding heavy and non-essential directories (`.git`, `node_modules`, `venv`, `build`, `dist`).
-- **Worktree Mode:** Uses detached Git worktrees (`git worktree add --detach`) with timeouts ($30\text{s}$) and automatic overlay of uncommitted modifications.
-- **Session-Aware GC:** Writes `.argus_session.json` recording PID and process start-time (`kernel32.GetProcessTimes` on Windows, `/proc/{pid}/stat` field 22 on POSIX). Protects active runs against PID reuse and uses atomic rename claiming to prevent concurrent GC collisions.
+### WorkspaceManager (`argus/runtime/workspace.py`)
+- Creates a temporary **copy** under `argus_ws_*` in the system temp directory. Snapshot = Git-tracked plus untracked-not-ignored files (working-tree content) or a full walk for non-Git directories. Excludes `.git`, `.argus`, `__pycache__`, and root-level `.venv venv node_modules .tox .nox` and tool caches. Options: `snapshot_exclude`, `snapshot_respect_gitignore`, `snapshot_max_bytes` (default 2 GiB, fail fast).
+- Symlinks are copied only if they stay inside the project.
+- Cleanup removes the copy on exit; a session file (PID plus process start time) lets later runs prune leaked copies safely. A hard kill can still leave a copy until the next prune.
+- There is no worktree mode.
 
-### D. SubprocessTestRunner (`argus/runtime/runner.py`)
-- **Role:** Execution harness for reproduction test suites on the host.
-- **Argument Security:** Strict tokenization; rejects shell chaining (`&&`, `||`, `;`), redirection (`>`, `<`), and backgrounding (`&`). `shell=True` is prohibited.
-- **Bounded Output Capture:** [`BoundedOutputCollector`](file:///c:/coding/Argus/argus/runtime/runner.py#L32) drains stdout and stderr concurrently in 64KB chunks to prevent pipe deadlocks, capping memory buffers at 4MB while preserving head and tail logs.
-- **Process-Tree Termination:** Hard-kills runaway processes and all descendant worker processes on timeout via `taskkill /F /T` (Windows) or `os.killpg` (POSIX).
+### SubprocessTestRunner (`argus/runtime/runner.py`)
+- Runs the test command without a shell, rejecting shell operators. Drains stdout/stderr concurrently into a 4 MB bounded collector; kills the process tree on timeout.
+- **Runs on the host with the user's permissions; this is not a sandbox.** `HOST_EXECUTION_WARNING` is shown by the CLI before `argus run` and included in MCP payloads.
 
-### E. AuthoritativePatchApplier (`argus/patch/applier.py`)
-- **Role:** State mutation boundary.
-- **Artifact Provenance:** Reads candidate artifacts from `.argus/artifacts/<run_id>.json`.
-- **TOCTOU Defense:** Re-computes target file SHA-256 on disk; refuses application if file hash has changed since candidate generation.
-- **Atomic Application:** Writes candidate content to a temporary sibling file and commits atomically via `os.replace`.
+### Candidate store and applier (`argus/runtime/candidate.py`)
+- Run IDs are validated against a strict pattern; only real child directories of `.argus/runs` resolve.
+- Metadata is written with an HMAC-SHA256 signature (`metadata.sig`) using a key in the user config directory (never inside the workspace). Unsigned or altered metadata -> `CANDIDATE_SIGNATURE_INVALID`.
+- Apply checks: verified, approved, signature, candidate hash, baseline hash against the live file, path containment, syntax, single apply per run (`.apply.lock`), then atomic replace preserving file mode. A repeat apply reports "already applied".
 
-### F. Provider Adapters (`argus/providers/`)
-- **Role:** Encapsulates communication with authorized model endpoints.
-- **Supported Adapters:**
-  - `OpenAICompatibleAdapter`: Standard OpenAI-compatible API protocol.
-  - `OllamaAdapter`: Local offline inference runtime.
-  - `AntigravityHostAdapter`: Integration with local Antigravity CLI paired programming sessions.
-- **Prohibitions:** Groq endpoints and keys are strictly prohibited and refused.
-- **Secret Redaction:** Scrubbing patterns redact API keys, tokens, and authorization material from logs, environments, and errors.
+### Provider adapters (`argus/providers/`)
+- `OpenAICompatibleAdapter` serves OpenAI, DeepSeek, Gemini (OpenAI-compatible endpoint), OpenRouter, Ollama, LM Studio and custom endpoints. `AntigravityHostAdapter` drives the local `agy` CLI. There is no separate Ollama adapter and no native Anthropic adapter.
+- Credentials: OS keyring (service name overridable with `ARGUS_KEYRING_SERVICE`) with a 0600 fallback file; the `ARGUS_API_KEY` environment fallback applies to the `custom` provider only. Secrets are excluded from `repr`.
+- Text sent to the model passes `scrub_prompt` (known keys, token-shaped secrets, PEM blocks); logs and artifacts use `scrub_secrets`.
+- Groq is refused.
+
+### Interfaces
+- **CLI** (`argus/cli.py`): see the README; every command exits non-zero on error.
+- **TUI** (`argus/tui/`, `tui` extra): same controller and candidate store.
+- **MCP server** (`argus/mcp/server.py`): four tools, no approval tool; workspace confined to the server root; budget capped.
+- **Gateway** (`argus/gateway/`, `gateway` extra): loopback proxy; outside the recovery loop.
+- **Desktop API and web app** (`argus/api/`, `argus/ui/`): **experimental and not started by any CLI command** (decision recorded in the audit: nothing in the package or packaging starts them; only tests exercise them). Reachable only by serving `argus.api.create_app()` yourself; not covered by supported-surface claims.
+- **Container evaluator** (`argus/runtime/container.py`): library-level only; `--network=none`, resource limits; opt-in via `use_container_runner`.
 
 ---
 
-## 3. End-to-End Execution Flow
+## 3. Execution flow
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Dev as Developer / Upstream Agent
-    participant CLI as Argus CLI / TUI / MCP
+    actor Dev as Developer / agent
+    participant UI as CLI / TUI / MCP / API
     participant RC as RecoveryController
     participant WM as WorkspaceManager
     participant SR as SubprocessTestRunner
-    participant LLM as Model Provider
+    participant LLM as Configured provider
     participant PE as ResilientPatchEngine
-    participant APA as AuthoritativePatchApplier
+    participant CA as Candidate store
 
-    Dev->>CLI: argus run "pytest tests/test_calc.py"
-    CLI->>RC: execute_recovery(test_command)
-    RC->>WM: setup() -> ephemeral workspace
-    WM-->>RC: workspace_path
-
-    RC->>SR: run_test(command, cwd=workspace)
-    SR-->>RC: TestResult(passed=False, traceback)
-
-    loop Up to 3 Recovery Turns
-        RC->>LLM: generate_patch(prompt, failure_context)
-        LLM-->>RC: PatchBlock(search, replace)
-        RC->>PE: apply_patch(source, patch_block)
-        PE-->>RC: PatchResult(success, patched_code, tier)
-        RC->>WM: write_file(target_file, patched_code)
-        RC->>SR: run_test(command, cwd=workspace)
-        SR-->>RC: TestResult(passed=True/False)
+    Dev->>UI: argus run --test "pytest tests/test_calc.py"
+    UI->>RC: run(test_command, target_file?)
+    RC->>RC: validate config, prices, policy
+    Note over RC,WM: without --file, the preliminary test run and file localization also run in a temporary copy, after validation
+    RC->>WM: setup() -> temporary copy
+    RC->>SR: baseline test in the copy
+    loop up to max_attempts
+        RC->>LLM: prompt (scrubbed) + failure feedback
+        LLM-->>RC: SEARCH/REPLACE blocks
+        RC->>PE: reconcile + syntactic gate
+        RC->>SR: re-run test in the copy
     end
-
-    alt Reproduction Tests Pass
-        RC->>RC: create_candidate_artifact(hashes, diff, telemetry)
-        RC-->>Dev: Candidate Created (Run ID: <run_id>)
-        Dev->>CLI: argus apply <run_id>
-        CLI->>APA: apply_candidate(<run_id>)
-        APA->>APA: Verify baseline SHA-256 hash
-        APA->>Dev: Working Tree Atomically Updated
-    else Max Turns Exhausted / Ambiguous Refusal
+    alt tests pass
+        RC->>CA: save signed candidate
+        RC-->>Dev: run_id (nothing applied yet)
+        Dev->>UI: argus approve <run_id>
+        Dev->>UI: argus apply --run-id <run_id>
+        UI->>CA: verify signature, hashes, approval, syntax
+        CA-->>Dev: atomic write to your file
+    else limit reached
         RC->>WM: cleanup()
-        RC-->>Dev: Recovery Refused / Unresolved
+        RC-->>Dev: failure status, no applicable candidate
     end
 ```
 
 ---
 
-## 4. Auxiliary Interfaces (Optional Integrations)
+## 4. Packaging scope: accepted decision (ARCH-09)
 
-### FastMCP Server (`argus/mcp/server.py`)
-- Standard Model Context Protocol stdio interface allowing upstream agents (Claude Code, Cursor, OpenCode) to call `argus_status`, `argus_recover`, `argus_get_candidate`, and `argus_apply_candidate`.
+The wheel ships the recovery runtime together with the optional gateway (`argus/gateway/`), the experimental desktop API (`argus/api/`) and the static web app (`argus/ui/`); together with the TUI they are roughly 40% of the package bytes. **Decision: the distribution is not split for now.** Rationale:
 
-### Experimental Gateway Proxy (`argus/gateway/server.py`)
-- Auxiliary reverse proxy translating OpenAI/Anthropic API calls to configured backends with dynamic budget reservation (integer micro-dollars), loopback Host/Origin validation, identity-based rate limiting, and in-memory streaming patch healing.
-- Strictly decoupled from core recovery execution.
+- The runtime never depends on them. `import argus`, `argus.cli` and `argus.runtime.controller` do not import `argus.gateway`, `argus.api`, `argus.ui` or `argus.tui`; this is checked by `tests/test_closeout_runtime.py::test_core_import_does_not_load_optional_surfaces`. Their third-party dependencies (FastAPI, uvicorn, Textual) live in extras, so a default install does not pull them.
+- The code is inert unless a user starts it (`argus gateway`, `argus tui`, or serving `create_app()` themselves); `argus gateway` without the extra exits with an install hint.
+- A split needs a second distribution, its own versioning, release and CI, and migration of `argus gateway`; that cost is not justified before the gateway has users.
+
+Residual risk accepted: dead-weight bytes and a larger audited surface in the wheel. Follow-up: when the gateway is promoted from experimental (or a second consumer appears), move `argus/gateway`, `argus/api` and `argus/ui` into a separate `argus-gateway` distribution that depends on `argus-recovery`; until then these surfaces are labelled experimental and excluded from supported-surface claims.
+
+---
+
+## 5. Not in the architecture
+
+Earlier documents described an adaptive or learned router, execution-state feature vectors and embedding retrieval. None of that is in the shipped runtime. The evidence did not justify a learned router; see [RESEARCH_STATUS.md](RESEARCH_STATUS.md).

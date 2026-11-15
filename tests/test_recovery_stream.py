@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -39,7 +40,8 @@ def test_recovery_run_auth_and_path_validation():
 
 def test_recovery_dispatch_and_stream():
     """Verify that dispatching a task initiates background execution and streams SSE events."""
-    with tempfile.TemporaryDirectory() as tmp_root:
+    # One TestClient context = one event loop: the background recovery worker must outlive the POST request.
+    with tempfile.TemporaryDirectory() as tmp_root, contextlib.ExitStack() as stack:
         root = Path(tmp_root).resolve()
         target_file = root / "src" / "calc.py"
         target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -47,7 +49,7 @@ def test_recovery_dispatch_and_stream():
 
         test_token = "secret-stream-token"
         app = create_app(workspace=str(root), token=test_token)
-        client = TestClient(app)
+        client = stack.enter_context(TestClient(app))
 
         # Mock RecoveryController.run to return a deterministic outcome and fire callbacks
         fake_record = AttemptRecord(
@@ -70,7 +72,7 @@ def test_recovery_dispatch_and_stream():
             target_file=str(target_file),
         )
 
-        def mock_run(target_file, test_command, test_file=None, on_attempt_start=None, on_attempt_end=None):
+        def mock_run(target_file, test_command, test_file=None, workspace_root=None, on_attempt_start=None, on_attempt_end=None):
             if on_attempt_start:
                 on_attempt_start(1, 4)
             if on_attempt_end:

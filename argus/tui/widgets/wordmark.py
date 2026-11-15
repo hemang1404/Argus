@@ -8,6 +8,7 @@ from rich.text import Text
 from textual.events import Resize
 from textual.widget import Widget
 
+from argus import __version__
 from argus.config import ArgusConfig
 from argus.tui.renderers.base import BaseLogoRenderer, LogoRenderResult
 from argus.tui.renderers.factory import create_logo_renderer
@@ -26,7 +27,7 @@ class ArgusWordmark(Widget):
 
     def __init__(
         self,
-        version: str = "v0.2.0",
+        version: str = f"v{__version__}",
         renderer_mode: Optional[str] = None,
         config: Optional[ArgusConfig] = None,
         *args,

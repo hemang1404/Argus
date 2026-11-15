@@ -9,45 +9,38 @@ Iterative repair is only safe if it cannot damage the repository being repaired.
 Argus therefore performs every attempt outside the live working tree, in storage
 that is disposable by construction.
 
-## Two workspace modes
+## One mode: a temporary copy
 
-`WorkspaceManager` supports two ways to materialize a project:
+`WorkspaceManager` copies the project into a temporary directory (`argus_ws_*` under
+the system temp directory) and runs every attempt there. Earlier releases also
+described a Git worktree mode; it was never reachable from the CLI, TUI, MCP server
+or API, and it has been removed. The copy is the only isolation mode.
 
-| Mode | Mechanism | Best for |
-| --- | --- | --- |
-| Ephemeral copy | Copy the project into a temporary directory | Repositories of any size, non-Git directories |
-| Git worktree | `git worktree add --detach` at `HEAD` plus an overlay | Git repositories where copying is expensive |
+## What the copy contains
 
-The ephemeral copy is the default path for a recovery run. The worktree mode
-requires Git and is selected by callers that request it.
+- **In a Git repository:** the tracked files plus untracked files that are not
+  ignored, using their current working-tree content. Your uncommitted edits are
+  therefore what the tests run against, and verification against a clean `HEAD`
+  never happens by accident.
+- **Outside Git:** every file, minus the exclusions below.
 
-## What the copy excludes
+Always excluded: `.git`, `.argus`, `__pycache__` and `*.pyc` anywhere in the tree,
+plus these names at the project root only: `.venv`, `venv`, `node_modules`, `.tox`,
+`.nox`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.hg`, `.svn`.
 
-A full snapshot would be wasteful and could copy secrets or build state that the
-tests do not need. The runtime skips these directory names:
+Directories such as `data/`, `build/`, `dist/`, `results/`, `packages/`, `logs/`,
+`scratch/` and large archives are **copied**, because tests often need them. A
+size limit protects you from copying something huge: the snapshot fails fast above
+`snapshot_max_bytes` (default 2 GiB, configurable through `ArgusConfig`). Extra
+root-level names to leave out go in `snapshot_exclude`, and
+`snapshot_respect_gitignore=False` copies ignored files too. Symlinks are copied as
+links only when they stay inside the project.
 
-```text title="Excluded from snapshots"
-.git        .venv       venv         env
-node_modules  __pycache__  .pytest_cache  .mypy_cache
-.ruff_cache  .tox        .argus       dist
-build       logs         scratch      data
-packages    experiments_archive  results  figures
-```
+Untracked files that are not ignored are copied, including a `.env` you have not
+ignored. Keep secrets out of the project tree or in `.gitignore`.
 
-The target file and its package layout are preserved. If your test suite depends
-on a directory in that list, the reproduction may fail for environmental
-reasons; pass a narrower test command or run the recovery from a layout that
-does not depend on excluded data.
-
-## Uncommitted work
-
-In worktree mode, a detached worktree at `HEAD` would not contain uncommitted
-edits. Argus overlays dirty tracked files and untracked files into the worktree
-so the reproduction runs against the same state you see locally. This is
-important: verification against a clean `HEAD` would not prove anything about
-the code you are actually fixing.
-
-Copy mode naturally contains the current files, so no overlay step is needed.
+If you point Argus at a target file outside an explicit workspace root, it refuses
+(`TargetOutsideWorkspaceError`) before copying anything.
 
 ## Lifecycle and cleanup
 
@@ -62,10 +55,9 @@ concurrently:
   renaming its directory before deleting it, preventing two collectors from
   removing the same directory concurrently.
 
-Stale Git worktrees are pruned through `git worktree prune`, with administrative
-removal attempted for worktrees that are no longer needed. The goal is that a
-crashed run leaves at most temporary directories, not a corrupted repository
-metadata state.
+A process that is killed outright (for example `Ctrl+Break` on Windows) skips
+cleanup and can leave `argus_ws_*` directories in the temp directory; a later run
+prunes stale ones. Your original files are not touched in that case.
 
 ## What isolation does not cover
 
@@ -74,9 +66,9 @@ Workspace copying isolates *files*. It does not isolate processes. Test commands
 run on the host with your current user privileges. A malicious test suite can
 read your home directory, reach the network, or delete files you can delete.
 For untrusted repositories, use an operating-system or container boundary you
-control. Argus fails closed when container isolation is requested and no working
-engine is available, but this documentation does not claim that the container
-path has been verified against a live daemon.
+control. A container evaluator exists in the library (not as a CLI flag); it
+fails closed when requested and no working engine is available, but this
+documentation does not claim that path has been verified against a live daemon.
 </Aside>
 
 The isolation boundary is about repository integrity:

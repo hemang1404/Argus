@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Keeps the tag-pinned GitHub Actions current. Actions are pinned by tag (not commit SHA)
+  # because SHAs cannot be verified offline; switch to SHA pins when reviewing a Dependabot PR.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"

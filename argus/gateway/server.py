@@ -2,7 +2,7 @@
 
 Implements an OpenAI-compatible HTTP proxy on localhost with:
 1. Model tier resolution (argus/auto, argus/cheap, argus/strong, argus/frontier)
-2. In-memory streaming patch healing via the 5-Tier Resilient Patch Engine
+2. In-memory streaming patch healing via the tiered patch engine (exact, whitespace-tolerant, token-equal; fuzzy opt-in)
 3. Task-level and session-level USD budget caps
 """
 
@@ -15,13 +15,13 @@ import hmac
 import ipaddress
 import json
 import logging
-import os
+import re
 import socket
 import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, AsyncGenerator, Deque, Dict, Optional
+from typing import Any, AsyncGenerator, Deque, Dict, List, Optional
 from urllib.parse import urlsplit
 
 import httpx
@@ -37,7 +37,8 @@ from argus.adapters.protocol import (
     openai_to_anthropic_response,
     transform_openai_stream_to_anthropic,
 )
-from argus.gateway.budget import BudgetGuard
+from argus.config import UnpricedModelError
+from argus.gateway.budget import BudgetGuard, price_for_model
 from argus.gateway.config import GatewayConfig
 from argus.gateway.interceptor import StreamInterceptor, StreamPatchHealer
 from argus.gateway.retry import (
@@ -346,9 +347,9 @@ async def lifespan(app: FastAPI):
     """Auto-initialize gateway on server start if not already done."""
     if _config is None:
         init_gateway()
-    # Direct ASGI startup (e.g. uvicorn) must fail closed if API key is not configured
-    in_test = bool(os.environ.get("ARGUS_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST"))
-    if not in_test and _config and not _config.get_gateway_key():
+    # Direct ASGI startup (e.g. uvicorn) must fail closed if API key is not configured.
+    # There is no test-mode exemption: tests configure a key or override auth explicitly.
+    if _config and not _config.get_gateway_key():
         raise RuntimeError(
             "Security Refusal: ARGUS_GATEWAY_API_KEY environment variable is required to start the Gateway. "
             "Unauthenticated gateway execution is strictly prohibited."
@@ -401,9 +402,8 @@ def verify_gateway_auth(request: Request) -> Optional[JSONResponse]:
     expected_token = _config.get_gateway_key()
 
     if not expected_token:
-        # In test suite, allow legacy test cases that explicitly instantiate GatewayConfig without a gateway key
-        if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("ARGUS_TEST_MODE") == "1":
-            return None
+        # Fail closed. No environment variable can disable authentication; tests that
+        # need an unauthenticated gateway replace this function via monkeypatch.
         return JSONResponse(
             status_code=401,
             content={
@@ -477,6 +477,9 @@ def estimate_request_cost(body: Dict[str, Any], model: Optional[str] = None) -> 
     max_tokens = body.get("max_tokens") or body.get("max_completion_tokens") or 1000
 
     target_model = model or body.get("model", "argus/auto")
+    # Reservation estimate only (before routing, so the final model may still be unknown): an
+    # unknown or pseudo model ('argus/auto') reserves at a conservative frontier-class rate.
+    # The actual metered price is resolved fail-closed by price_for_model() after routing.
     cost_profile = MODEL_REGISTRY.get(target_model, ModelCost(input_cost_per_m=2.50, output_cost_per_m=10.00))
     est_cost = cost_profile.calculate_cost(est_prompt_tokens, max_tokens)
     return min(0.50, max(0.001, round(est_cost, 4)))
@@ -500,14 +503,28 @@ app.add_middleware(
 )
 
 
+# Additional Host header values accepted by the DNS-rebinding guard. Always empty in
+# production; test fixtures may populate it (e.g. Starlette's "testserver").
+_EXTRA_ALLOWED_HOSTS: set[str] = set()
+
+_RUN_ID_HEADER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
+def resolve_run_id(request: Request, default: str) -> str:
+    """Return the client-supplied ``x-argus-run-id`` if well formed, else ``default``.
+
+    Credentials (``x-api-key`` / ``Authorization``) are never used as identifiers:
+    run ids are echoed in budget errors and stored in telemetry.
+    """
+    supplied = (request.headers.get("x-argus-run-id") or "").strip()
+    return supplied if _RUN_ID_HEADER_RE.fullmatch(supplied) else default
+
+
 @app.middleware("http")
 async def gateway_security_middleware(request: Request, call_next):
     # 1. Host header validation: prevent DNS rebinding
     host_header = request.headers.get("host", "").split(":")[0].strip().lower()
-    allowed_hosts = {"127.0.0.1", "localhost", "::1"}
-    # testserver is strictly restricted to test execution environments
-    if os.environ.get("ARGUS_TEST_MODE") == "1" or os.environ.get("PYTEST_CURRENT_TEST"):
-        allowed_hosts.add("testserver")
+    allowed_hosts = {"127.0.0.1", "localhost", "::1"} | _EXTRA_ALLOWED_HOSTS
     allow_remote = _config and getattr(_config, "allow_remote", False)
 
     if not allow_remote and host_header and host_header not in allowed_hosts:
@@ -620,7 +637,7 @@ async def chat_completions(request: Request) -> Response:
 
     requested_model = body.get("model", "argus/auto")
     stream = body.get("stream", False)
-    run_id = request.headers.get("x-argus-run-id", "default_run")
+    run_id = resolve_run_id(request, "default_run")
     user_agent = request.headers.get("user-agent", "")
     client_header = request.headers.get("x-argus-client", "")
     client = detect_client(client_header, user_agent)
@@ -695,7 +712,7 @@ async def chat_completions(request: Request) -> Response:
             },
         )
 
-    # 4. Safe Upstream Credential Resolution & Provider Isolation
+    # 3b. Safe Upstream Credential Resolution & Provider Isolation
     expected_token = _config.get_gateway_key()
     client_supplied_upstream_key, cred_err = resolve_client_upstream_credential(
         request, target.provider_name, expected_token, has_configured_key=bool(target.api_key)
@@ -705,6 +722,16 @@ async def chat_completions(request: Request) -> Response:
         return JSONResponse(
             status_code=400,
             content={"error": cred_err},
+        )
+
+    # 3c. Fail closed on unpriced models: cost must be boundable before any paid upstream call.
+    try:
+        price_for_model(target.upstream_model, target.provider_name, target.base_url)
+    except UnpricedModelError as ex:
+        _budget_guard.release(res_id)
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": str(ex), "type": "unpriced_model", "code": "unpriced_model"}},
         )
 
     configured_provider_key = target.api_key
@@ -872,22 +899,20 @@ async def _handle_host_request(
             out_tokens = max(1, len(full_text) // 4)
             dur_ms = (time.perf_counter() - start_time) * 1000.0
             try:
-                registry = TelemetryRegistry.get(_workspace_root)
-                registry.record(
-                    run_id=run_id,
+                TelemetryRegistry.get().record_turn(
                     client=client,
-                    tier=tier,
                     requested_model=requested_model,
-                    actual_model=target_model,
-                    provider="antigravity",
+                    routed_model=target_model,
+                    tier=tier,
+                    prompt_tokens=in_tokens,
+                    completion_tokens=out_tokens,
                     latency_ms=dur_ms,
-                    input_tokens=in_tokens,
-                    output_tokens=out_tokens,
                     cost_usd=0.0,
-                    status_code=200,
+                    usage_source="locally_estimated",
+                    cost_status="zero_subscription",
                 )
-            except Exception:
-                pass
+            except OSError as ex:
+                logger.warning("Telemetry write failed for host stream: %s", ex)
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -918,22 +943,20 @@ async def _handle_host_request(
     total_tokens = in_tokens + out_tokens
 
     try:
-        registry = TelemetryRegistry.get(_workspace_root)
-        registry.record(
-            run_id=run_id,
+        TelemetryRegistry.get().record_turn(
             client=client,
-            tier=tier,
             requested_model=requested_model,
-            actual_model=resp.model or target_model,
-            provider="antigravity",
+            routed_model=resp.model or target_model,
+            tier=tier,
+            prompt_tokens=in_tokens,
+            completion_tokens=out_tokens,
             latency_ms=duration_ms,
-            input_tokens=in_tokens,
-            output_tokens=out_tokens,
             cost_usd=0.0,
-            status_code=200,
+            usage_source="locally_estimated" if getattr(resp, "usage_estimated", False) else "provider_reported",
+            cost_status="zero_subscription",
         )
-    except Exception:
-        pass
+    except OSError as ex:
+        logger.warning("Telemetry write failed for host response: %s", ex)
 
     if _budget_guard and res_id:
         _budget_guard.release(res_id)
@@ -1560,7 +1583,7 @@ async def anthropic_messages(request: Request) -> Response:
 
     requested_model = body.get("model", "argus/auto")
     stream = body.get("stream", False)
-    run_id = request.headers.get("x-argus-run-id", request.headers.get("x-api-key", "anthropic_run"))
+    run_id = resolve_run_id(request, "anthropic_run")
     user_agent = request.headers.get("user-agent", "")
     client_header = request.headers.get("x-argus-client", "")
     client = detect_client(client_header, user_agent)
@@ -1637,6 +1660,19 @@ async def anthropic_messages(request: Request) -> Response:
                     "message": f"Invalid or unsafe upstream base URL: '{target.base_url}'.",
                     "code": "ssrf_protection",
                 },
+            },
+        )
+
+    # 4b. Fail closed on unpriced models (cost must be boundable before a paid upstream call)
+    try:
+        price_for_model(target.upstream_model, target.provider_name, target.base_url)
+    except UnpricedModelError as ex:
+        _budget_guard.release(res_id)
+        return JSONResponse(
+            status_code=400,
+            content={
+                "type": "error",
+                "error": {"type": "unpriced_model", "message": str(ex), "code": "unpriced_model"},
             },
         )
 

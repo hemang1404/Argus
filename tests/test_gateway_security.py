@@ -11,13 +11,11 @@ Validates:
 
 from __future__ import annotations
 
-import os
 from starlette.testclient import TestClient
-from unittest.mock import patch, MagicMock
 
 import pytest
 
-from argus.gateway.config import BudgetConfig, GatewayConfig, ProviderConfig, TierDefinition
+from argus.gateway.config import GatewayConfig, ProviderConfig, TierDefinition
 from argus.gateway.server import (
     app,
     init_gateway,

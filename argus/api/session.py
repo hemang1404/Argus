@@ -10,15 +10,15 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from argus.adapters.presets import export_preset, get_preset, list_presets
-from argus.api.auth import require_session_token, validate_path_within_workspace
+from argus.api.auth import require_session_token
+from argus.config import DEFAULT_BUDGET_USD
 from argus.gateway.budget import BudgetGuard
 from argus.gateway.config import BudgetConfig
 
@@ -27,7 +27,7 @@ logger = logging.getLogger("argus.api.session")
 router = APIRouter(prefix="/api/v1/session", tags=["session"])
 
 # Global session spend guard
-_SESSION_BUDGET_GUARD = BudgetGuard(BudgetConfig(per_task_usd=0.05, per_session_usd=1.00))
+_SESSION_BUDGET_GUARD = BudgetGuard(BudgetConfig(per_task_usd=DEFAULT_BUDGET_USD, per_session_usd=1.00))
 
 
 def get_budget_guard() -> BudgetGuard:

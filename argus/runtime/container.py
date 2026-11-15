@@ -18,12 +18,10 @@ import os
 import shlex
 import shutil
 import subprocess
-import sys
 import tarfile
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 
 class ContainerEvaluationError(Exception):

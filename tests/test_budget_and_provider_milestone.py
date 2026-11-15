@@ -6,28 +6,21 @@ All tests run strictly offline with no live paid API calls or SWE-bench benchmar
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from argus.config import ArgusConfig, MODEL_REGISTRY, ModelCost
+from argus.config import ArgusConfig, MODEL_REGISTRY
 from argus.providers.adapter import (
-    CompletionResponse,
-    OpenAICompatibleAdapter,
-    ProviderAdapter,
     ProviderError,
 )
-from argus.providers.models import PROVIDER_PRESETS, ProviderConfig
+from argus.providers.models import PROVIDER_PRESETS
 from argus.runtime.budget import (
     GlobalExperimentBudget,
-    TaskConditionBudget,
     count_prompt_tokens,
 )
-from argus.runtime.controller import RecoveryController, RecoveryOutcome
-
-pytestmark = pytest.mark.research
+from argus.runtime.controller import RecoveryController
 
 
 # =============================================================================
@@ -128,13 +121,58 @@ def test_official_gemini_model_pricing_math():
     assert MODEL_REGISTRY["gemini-3.8-flash-low"].input_cost_per_m == 0.0
 
 
+@pytest.mark.tokenizer_download
 def test_gpt_oss_tokenizer_o200k_harmony_selected():
     """Verify that GPT-OSS models resolve to o200k_harmony vocabulary."""
-    pytest.importorskip("tiktoken", reason="install 'argus-recovery[research]'")
+    pytest.importorskip("tiktoken", reason="install 'argus-recovery[tokens]'")
     from argus.runtime.budget import get_gpt_oss_tokenizer
     tokenizer = get_gpt_oss_tokenizer("openai/gpt-oss-20b")
     assert tokenizer is not None
     assert tokenizer.name == "o200k_harmony"
+
+
+def test_gpt_oss_tokenizer_selection_order_without_download(monkeypatch):
+    """Selection prefers o200k_harmony and falls back in order, using a fake tiktoken (no network)."""
+    import sys
+    import types
+
+    from argus.runtime import budget
+
+    requested: list[str] = []
+
+    class _Enc:
+        def __init__(self, name):
+            self.name = name
+
+    def _get(name):
+        requested.append(name)
+        if name == "o200k_harmony" and not available_harmony:
+            raise ValueError("unavailable")
+        return _Enc(name)
+
+    fake = types.SimpleNamespace(get_encoding=_get)
+    monkeypatch.setitem(sys.modules, "tiktoken", fake)
+    monkeypatch.delenv("ARGUS_OFFLINE", raising=False)
+    monkeypatch.delenv("ARGUS_TOKENIZER", raising=False)
+
+    available_harmony = True
+    monkeypatch.setattr(budget, "_TOKENIZER_CACHE", {})
+    assert budget.get_gpt_oss_tokenizer("openai/gpt-oss-20b").name == "o200k_harmony"
+
+    available_harmony = False
+    requested.clear()
+    monkeypatch.setattr(budget, "_TOKENIZER_CACHE", {})
+    assert budget.get_gpt_oss_tokenizer("openai/gpt-oss-20b").name == "o200k_base"
+    assert requested[:2] == ["o200k_harmony", "o200k_base"]
+
+
+def test_gpt_oss_tokenizer_heuristic_when_offline(monkeypatch):
+    """ARGUS_OFFLINE=1 skips tiktoken entirely; counting falls back to the byte estimate."""
+    from argus.runtime.budget import count_prompt_tokens, get_gpt_oss_tokenizer
+
+    monkeypatch.setenv("ARGUS_OFFLINE", "1")
+    assert get_gpt_oss_tokenizer("openai/gpt-oss-20b") is None
+    assert count_prompt_tokens("x = 1", "openai/gpt-oss-20b") > 0
 
 
 def test_conservative_prompt_token_counting():
@@ -189,9 +227,10 @@ def test_token_estimation_representative_code_unicode_and_metadata():
     assert tokens_meta >= 30
 
 
+@pytest.mark.tokenizer_download
 def test_token_estimation_comparison_against_mocked_provider_telemetry():
     """Verify local conservative estimate is always >= raw wire tokens reported by provider."""
-    tiktoken = pytest.importorskip("tiktoken", reason="install 'argus-recovery[research]'")
+    tiktoken = pytest.importorskip("tiktoken", reason="install 'argus-recovery[tokens]'")
     enc = tiktoken.get_encoding("o200k_harmony")
 
     user_prompt = "def calculate_mean(values: list[float]) -> float:\n    return sum(values) / len(values)\n"
@@ -279,7 +318,6 @@ def test_global_experiment_budget_ceiling_enforcement(tmp_path: Path):
         provider="custom",
         model="openai/gpt-oss-20b",
         budget_limit_usd=0.030,
-        global_experiment_budget_usd=global_cap,
     )
     controller = RecoveryController(config=cfg)
 

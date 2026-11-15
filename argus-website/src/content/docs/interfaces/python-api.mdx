@@ -25,7 +25,7 @@ from argus.runtime.controller import RecoveryController
 
 config = ArgusConfig(
     max_attempts=3,
-    budget_limit_usd=0.05,
+    budget_limit_usd=0.03,
     test_timeout_seconds=30,
 )
 
@@ -49,7 +49,7 @@ print(outcome.unified_diff)
 | `target_file` | Source file to repair; optional |
 | `test_command` | Reproduction command; required in practice |
 | `test_file` | Optional test file to copy into the workspace |
-| `workspace_root` | Project root; defaults to the current directory |
+| `workspace_root` | Project root. If omitted, it is inferred from the target file's directory; a target outside an explicit root is refused |
 | `on_attempt_start` | Callback `(attempt, max_attempts)` |
 | `on_attempt_end` | Callback receiving an `AttemptRecord` |
 | `event_emitter` | JSON Lines emitter for machine-readable progress |
@@ -73,10 +73,15 @@ print(outcome.unified_diff)
 | `message` | `str \| None` | Human-readable summary |
 | `changed_files` | `list[str]` | Files modified inside the workspace |
 | `effort_used` | `str \| None` | Adaptive routing decision |
-| `routing_reasons` | `list[str]` | Why that effort was chosen |
+| `routing_reasons` | `list[str]` | Why that effort and which model ladder (`model_ladder=...`) were chosen |
+| `config_notes` | `list[str]` | Project-policy notes: limits tightened, keys ignored, parse errors |
+| `tier_used` | `int \| None` | Patch (SEARCH/REPLACE matcher) tier that applied the accepted edit; never the model tier |
+| `model_tier` | `int \| None` | Model-ladder tier (1 = cheap ... 3 = strong) of the final attempt; each `AttemptRecord` has both fields |
 
 A `SUCCESS` outcome is the only state that produces an applyable candidate. Do
 not infer applicability from `verified` alone; approval is still required.
+`verified` means the supplied test command passed in the temporary copy. It is
+neither a syntactic nor a semantic claim about the patch.
 
 ## Configuration
 
@@ -91,17 +96,31 @@ config = ArgusConfig(
     provider_timeout_seconds=45.0,
     task_deadline_seconds=300.0,
     budget_limit_usd=0.03,
-    similarity_threshold=0.82,
-    ambiguity_margin=0.10,
-    enable_tier4=False,
+    similarity_threshold=0.82,   # Tier 3 similarity floor
+    enable_tier3=True,           # token-equal matching
+    enable_tier4=False,          # experimental, off by default
     temperature=0.0,
+    # model_prices={"my-model": ModelCost(input_cost_per_m=0.5, output_cost_per_m=1.5)},
+    # snapshot_exclude=["big_dir"], snapshot_max_bytes=2 * 1024**3,
 )
 ```
 
-When `provider_config` is supplied, its name and model take precedence. When
-neither is supplied, the stored active provider is used, then `ARGUS_PROVIDER`.
-A credential alone never selects a provider. Groq is rejected at construction
-time.
+Model rules: a `model` you pass wins over the stored provider's default and is the
+only model sent (no escalation). With no model, a provider that has a documented
+ladder (`openai`, `deepseek`, `gemini`, `antigravity`) and `escalation_enabled`
+uses the cheap model for attempts 1-2 and the stronger one for attempt 3;
+`small_model`/`large_model` set an explicit two-rung ladder; any other provider
+uses its default model. `"argus/auto"` means "no model".
+
+When `provider_config` is supplied, its name is used. When neither is supplied, the
+stored active provider is used, then `ARGUS_PROVIDER`. A credential alone never
+selects a provider. Groq is rejected at construction time. A model with no price in
+the built-in table or `model_prices` is refused (`CONFIG_ERROR`) unless the
+provider is local or host-native.
+
+The workspace's project policy file can only tighten `max_attempts`,
+`budget_limit_usd` and `test_timeout_seconds` (and turn escalation off); it is
+applied to a per-run copy of the config and reported in `outcome.config_notes`.
 
 ## Candidate store and applier
 
@@ -133,6 +152,10 @@ result = AuthoritativePatchApplier.apply(
 print(result.success, result.error_code, result.message)
 ```
 
+Candidate-store calls raise `CandidateApplicationError` subclasses for a malformed
+run ID (`INVALID_RUN_ID`) or unsigned or edited metadata
+(`CANDIDATE_SIGNATURE_INVALID`).
+
 The applier returns a result object rather than raising for ordinary refusals:
 `success`, `message`, `error_code`, `run_id`, `target_file`, and `applied_at`.
 Handle `success == False` explicitly.
@@ -145,29 +168,29 @@ For experiments that separate reconciliation from execution:
 from argus.patch.fuzzy_engine import ResilientPatchEngine
 from argus.patch.parser import PatchBlock
 
-engine = ResilientPatchEngine(
-    similarity_threshold=0.82,
-    ambiguity_margin=0.10,
-    enable_tier4=False,
-)
+source = open("src/calculator.py", encoding="utf-8").read()
+engine = ResilientPatchEngine(enable_tier3=True, enable_tier4=False)
 result = engine.apply_patch(
-    "src/calculator.py",
-    PatchBlock(search_text="return a - b", replace_text="return a + b"),
+    source,  # the file's text, not a path
+    PatchBlock(search_text="    return a - b", replace_text="    return a + b"),
+    filename="src/calculator.py",
 )
-print(result.success, result.tier_used, result.message)
+print(result.success, result.tier_used, result.details)
+# On success result.patched_code holds the new text. For several blocks, use
+# engine.apply_blocks(source, [block1, block2]): the syntactic gate runs once, on
+# the final state.
 ```
 
-The engine validates the full file with `ast.parse` before returning success.
-It refuses non-Python targets.
+The engine runs the syntactic gate (`ast.parse` and `compile`) on the full file
+before returning success; the result's `ast_result.level` is `"syntactic"`. It
+refuses unsupported (non-Python) targets by name.
 
 ## Evaluation harnesses
 
-The `research` extra installs the legacy analysis dependencies:
-
-```bash title="Shell"
-pip install -e ".[research]"
-```
-
 Use the controller rather than shelling out to the CLI when measuring latency,
 cost, or attempts. The CLI adds formatting and process startup overhead that does
-not belong in an experiment. See [Research and benchmarks](/project/research/).
+not belong in an experiment. The runner for the published research experiments is
+not part of the supported API. See [Research and benchmarks](/project/research/).
+
+A complete, offline, runnable example (stub provider, throw-away project) is in
+`examples/quickstart_recovery.py` in the repository.

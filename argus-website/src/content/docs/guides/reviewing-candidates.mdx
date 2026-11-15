@@ -17,7 +17,8 @@ argus candidates --limit 25
 The table shows the run ID, target, verification, approval, application state,
 cost, and creation time. `status` is an alias for `candidates`.
 
-A listing might look like:
+The table may be abbreviated on narrow terminals; widen the terminal for full
+columns. A listing might look like:
 
 ```text
 Run ID                            Target              Status  Approval  Applied  Cost
@@ -37,7 +38,7 @@ argus diff <run_id>
 `inspect` prints:
 
 - target file and test command;
-- verification and approval state;
+- verification (the test command passed in the copy) and approval state;
 - whether it has been applied;
 - attempts and measured cost;
 - creation timestamp;
@@ -54,7 +55,11 @@ A good candidate is boring:
 - **Intent.** The change addresses the failure, not a symptom in the test.
 - **Blast radius.** No unrelated refactoring, renames, or formatting sweeps.
 - **Test coupling.** The reproduction actually exercises the changed behaviour.
-- **Syntax.** It parses, but also reads like the surrounding code.
+- **Syntax.** It parses (that is all the gate checks), but also reads like the
+  surrounding code.
+- **Correctness.** Independent grading found that a minority of test-passing
+  patches (roughly 6.6-12.0% broke other tests, about 18% were judged wrong or
+  fragile by a reviewer) are not good fixes. See [Research](/project/research/).
 - **Hidden state.** No new global state, environment reads, or network calls
   introduced merely to satisfy an assertion.
 
@@ -90,11 +95,9 @@ that a candidate was considered and declined.
 
 ## Review in the TUI
 
-Open the diff review screen and press:
-
-- `a` or `Enter` — approve and apply;
-- `d` — discard;
-- `Esc` — back.
+Open the diff review screen. Approving and applying takes two steps: `a` arms the
+approval and `y` confirms it (`Enter` never approves, and Discard is focused on
+arrival); `d` discards and `Esc` cancels a pending confirmation or goes back. Approval is recorded in the same signed metadata the CLI uses.
 
 The TUI uses the same approval and application code as the CLI. It is a
 convenience surface, not a second policy.

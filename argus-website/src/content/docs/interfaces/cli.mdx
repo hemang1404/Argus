@@ -52,7 +52,11 @@ argus --version
 argus --workspace /path/to/project <command>
 ```
 
-Most commands also accept `--workspace` / `-w`. Run IDs are positional for
+The `run` command prints a notice before it starts: your test command runs on your
+machine with your permissions and is not sandboxed.
+
+Most commands also accept `--workspace` / `-w`, and the global option applies to
+all of them unless a command is given its own. Run IDs are positional for
 `approve`, `reject`, `inspect`, and optional for `diff`; `apply` takes
 `--run-id`.
 
@@ -65,14 +69,16 @@ argus doctor
 `doctor` is the fastest way to distinguish an installation problem from a
 recovery problem. It reports Python, Git, pytest, the Antigravity CLI, a local
 Ollama endpoint, the active provider, credential availability, and a live
-connectivity check. It prints a masked key, never the secret.
+connectivity check (a real request to the provider, which can be billable). It
+prints a masked key, never the secret.
 
 ## Failing loudly
 
-Recovery commands return a non-zero exit status when they do not produce a
-verified candidate, and when an apply is refused. Scripted callers should treat
-any non-zero status as a failed operation rather than parsing human-readable
-output.
+Every command that can fail returns a non-zero exit status: `1` for a failure or
+error, `2` for a usage error. That includes recoveries that produce no verified
+candidate, refused applies, unknown provider names or run IDs, and failed provider
+connection tests. Scripted callers should treat any non-zero status as a failed
+operation rather than parsing human-readable output.
 
 For machine-readable progress, use:
 
@@ -100,10 +106,12 @@ trust.
 ## What the CLI will not do
 
 - It will not run a recovery without a test command.
-- It will not exceed three attempts (`--attempts` is clamped).
+- It will not accept an out-of-range `--attempts` (1 to 10) or a non-finite,
+  non-positive or very large `--budget`.
 - It will not execute shell syntax in the test command.
 - It will not apply an unapproved candidate during `run`.
-- It will not silently switch providers when none is configured.
+- It will not silently switch providers when none is configured. That includes
+  `argus exec`, which never falls back to a host runtime.
 - It will not accept Groq as a provider.
 
 The complete flag reference lives in [CLI commands](/reference/cli-commands/).

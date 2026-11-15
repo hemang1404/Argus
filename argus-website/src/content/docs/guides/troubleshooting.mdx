@@ -35,9 +35,11 @@ completes.
 
 ### `Could not find a version that satisfies the requirement argus-recovery`
 
-Argus `0.2.0b1` is not published on PyPI. Install from the GitHub repository with
-the commands on the [installation page](/getting-started/installation/). Do not
-substitute a similarly named package from an index.
+`argus-recovery` `0.2.0b1` is a pre-release on PyPI. If your installer ignores
+pre-releases, add `--pre` (`pip install --pre argus-recovery`). To get the current
+repository behaviour instead, install from GitHub with the commands on the
+[installation page](/getting-started/installation/). Do not substitute a
+similarly named package from an index.
 
 ### TUI exits with a missing dependency message
 
@@ -56,7 +58,9 @@ pip install -e ".[tui]"
 
 ### `No LLM provider configured.`
 
-Configure one explicitly. A key in your environment does not select a provider.
+Configure one explicitly. A key in your environment does not select a provider,
+and Argus will not fall back to a host CLI or another provider for you; this
+includes `argus exec`.
 
 ```bash title="Shell"
 argus provider set --preset ollama
@@ -93,7 +97,9 @@ The Ollama preset uses `http://localhost:11434/v1`. LM Studio uses
 ### Antigravity is not detected
 
 `argus doctor` reports the host CLI path. Set `ARGUS_AGY_BIN` to an explicit
-binary if it is installed outside `PATH`. The `antigravity` preset uses the host
+binary if it is installed outside `PATH`. If the CLI was installed through npm and only an
+`agy.cmd`/`agy.bat` shim exists, Argus refuses to run it (the prompt would be re-parsed by
+`cmd.exe`); set `ARGUS_AGY_BIN` to the real `agy.exe`. The `antigravity` preset uses the host
 CLI rather than an HTTP key.
 
 ## Recovery
@@ -116,14 +122,22 @@ that requires a shell feature.
 Argus rejects `&&`, `||`, `;`, `|`, redirection, and backgrounding. Put compound
 commands in a script and invoke the script.
 
+### `CONFIG_ERROR` naming an unpriced model
+
+Argus refuses to run a model whose price it does not know, so it cannot bound the
+spend. Use a model from the built-in price table, a local provider, or supply a
+price (`ArgusConfig.model_prices`, USD per 1M tokens).
+
 ### `FAILED_MAX_ATTEMPTS`
 
-No attempt produced a verified patch. Inspect:
+No attempt produced a verified patch. A provider outage is reported per attempt,
+not only as this summary, so read the per-attempt lines. Inspect:
 
 ```bash title="Shell"
 ls .argus/runs/<run_id>/
 sed -n '1,160p' .argus/runs/<run_id>/raw_response.txt
 sed -n '1,160p' .argus/runs/<run_id>/unapplied_patch.txt
+cat .argus/runs/<run_id>/attempts.json   # patch tier, model, tokens, cost per attempt
 ```
 
 Typical causes are a non-parsable model response, a stale search block, or a
@@ -132,8 +146,9 @@ or choose a stronger code model. Raising attempts rarely fixes a wrong edit.
 
 ### `BUDGET_EXCEEDED`
 
-The run reached its USD ceiling. The default CLI budget is `0.05`. Raise it
-deliberately:
+The run reached its USD ceiling (default `0.03`). The old fallback that switched to
+a small local model on budget pressure no longer exists; the run simply stops.
+Raise the budget deliberately:
 
 ```bash title="Shell"
 argus run --test "pytest tests/test_calculator.py" --budget 0.10
@@ -158,9 +173,10 @@ argus run --test "pytest tests/test_calculator.py" --provider openai
 
 ### A patch is "refused" instead of applied
 
-Read the diff and the refusal message. If the search block is ambiguous, Argus
-will not guess. Improve the target context; do not enable Tier 4 as a first
-response. Tier 4 is experimental and off by default.
+Read the refusal message. If the search block is ambiguous, or the nearest match
+differs in an operator, name or literal, Argus will not guess. Improve the target
+context; do not enable Tier 4 as a first response. Tier 4 is experimental, off by
+default, and no benefit has been measured for it.
 
 ## Approval and application
 
@@ -176,8 +192,17 @@ An agent calling `argus_apply_candidate` cannot approve on your behalf.
 
 ### `STALE_TARGET_CONFLICT`
 
-The live file changed after the candidate was produced. Rerun the recovery. Do
-not bypass this check; the verified content no longer corresponds to your file.
+The live file changed after the candidate was produced, or the candidate was
+already applied (the message says "already applied" in that case). Rerun the
+recovery if the file changed. Do not bypass this check; the verified content no
+longer corresponds to your file.
+
+### `CANDIDATE_SIGNATURE_INVALID` / `INVALID_RUN_ID`
+
+The run's metadata is unsigned (for example created by an older version), was
+edited, or the signing key in your Argus configuration directory changed. Re-run
+recovery to create a new candidate. A run ID containing path separators or `..` is
+rejected as `INVALID_RUN_ID`.
 
 ### `SYNTAX_VALIDATION_FAILED`
 
@@ -197,18 +222,24 @@ permissions on the file and its directory. The original file is left intact.
 The CLI reconfigures stdout and stderr to UTF-8 on Windows. If you embed Argus in
 another process, set `PYTHONIOENCODING=utf-8` and use a UTF-8 capable terminal.
 
-### Git worktree operations fail
+### Leftover `argus_ws_*` directories
 
-Worktree isolation requires Git and a writable repository. Run `git status`
-first. Stale worktrees are pruned, but an interrupted Git process can leave
-metadata that needs `git worktree prune` manually.
+A run killed outright (for example `Ctrl+Break`) skips cleanup and leaves temporary
+copies in the system temp directory. Your project is unchanged. Later runs prune
+stale ones; you can also delete them by hand.
+
+### Tests fail in the workspace copy but pass in your tree
+
+The copy contains tracked files plus untracked files that are not ignored. A file
+that is git-ignored but needed by the tests (generated data, a local config) is not
+copied. Commit it, un-ignore it, or set `snapshot_respect_gitignore=False`.
 
 ### Container mode refuses to start
 
-A request for container isolation fails closed when Docker or Podman is not
-responsive. Argus will not silently fall back to host execution. Install a
-working engine or run the host path explicitly, and remember that host execution
-is not a sandbox.
+Container evaluation is a library-level option (`use_container_runner`), not a CLI
+flag. A request for it fails closed when Docker or Podman is not responsive: Argus
+will not silently fall back to host execution. Install a working engine or run the
+host path explicitly, and remember that host execution is not a sandbox.
 
 ## MCP
 
@@ -227,6 +258,10 @@ modification. Verify that the host is launching the same Python environment wher
 ```json
 { "mcpServers": { "argus": { "command": "python", "args": ["-m", "argus.mcp"] } } }
 ```
+
+The MCP server confines `workspace` to the directory it was started in. If a tool
+call fails with "outside the MCP server root", start the server from the project
+directory or set `ARGUS_MCP_WORKSPACE_ROOT`.
 
 ### Tools appear but `argus_recover` returns `CONFIG_ERROR`
 

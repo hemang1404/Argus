@@ -1,11 +1,20 @@
 include README.md
 include LICENSE
 include pyproject.toml
+include CHANGELOG.md
+include SECURITY.md
+include CONTRIBUTING.md
 
 recursive-include argus *.py
 recursive-include argus/ui *
 recursive-include argus/tui *
 recursive-include argus/assets *
+include argus/py.typed
+
+# Tests ship in the sdist so downstream packagers can run them; conftest.py and the
+# fixtures are required for that.
+recursive-include tests *.py
+recursive-include tests/fixtures *
 
 prune data
 prune data_archive

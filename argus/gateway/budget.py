@@ -2,11 +2,41 @@
 
 from __future__ import annotations
 
+import collections
 import threading
+import time
 import uuid
 from typing import Dict, Optional, Tuple
-from argus.config import MODEL_REGISTRY, ModelCost
+from argus.config import MODEL_REGISTRY, ModelCost, UnpricedModelError
 from argus.gateway.config import BudgetConfig
+
+
+_FREE_PROVIDER_NAMES = {"antigravity", "ollama", "lmstudio"}
+_LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def price_for_model(model: str, provider: Optional[str] = None, base_url: Optional[str] = None) -> ModelCost:
+    """Price of ``model``; fails closed like ``ArgusConfig.get_model_cost``.
+
+    A model absent from the registry is priced at zero only when the upstream is host-native
+    (antigravity) or served from this machine; otherwise ``UnpricedModelError`` is raised so a
+    paid, unknown model can never be metered at a guessed (low) price.
+    """
+    if model in MODEL_REGISTRY:
+        return MODEL_REGISTRY[model]
+    name = (provider or "").strip().lower()
+    host = ""
+    if base_url:
+        from urllib.parse import urlsplit
+        host = (urlsplit(base_url).hostname or "").lower()
+        if base_url.startswith("host://"):
+            name = name or "antigravity"
+    if name in _FREE_PROVIDER_NAMES or host in _LOCAL_HOSTNAMES or (model and "antigravity" in model.lower()):
+        return ModelCost(input_cost_per_m=0.0, output_cost_per_m=0.0)
+    raise UnpricedModelError(
+        f"Model '{model}' has no known price, so the gateway cannot bound its cost. "
+        "Use a model from the registry or a local/host-native provider."
+    )
 
 
 def _to_micro(usd: float) -> int:
@@ -22,8 +52,17 @@ def _to_usd(micro: int) -> float:
 class BudgetGuard:
     """Thread-safe budget enforcer with exact integer micro-dollar accounting and two-phase reservations."""
 
-    def __init__(self, config: BudgetConfig) -> None:
+    # A reservation whose request never reaches commit/release/record_uncertain (handler
+    # crash, malformed upstream body) would otherwise hold budget forever. After this many
+    # seconds it is dropped; a late commit still records its real spend.
+    RESERVATION_TTL_SECONDS = 900.0
+    _MAX_RECONCILED_IDS = 50_000
+
+    def __init__(self, config: BudgetConfig, reservation_ttl_seconds: Optional[float] = None) -> None:
         self.config = config
+        self._reservation_ttl = (
+            self.RESERVATION_TTL_SECONDS if reservation_ttl_seconds is None else reservation_ttl_seconds
+        )
         self._lock = threading.RLock()
         self._session_spend_micro = 0
         self._task_spend_micro: Dict[str, int] = {}
@@ -32,7 +71,9 @@ class BudgetGuard:
         self._uncertain_spend_micro = 0
         self._task_uncertain_micro: Dict[str, int] = {}
         self._active_reservations: Dict[str, Tuple[str, int]] = {}
+        self._reservation_started: Dict[str, float] = {}
         self._reconciled_reservations: set[str] = set()
+        self._reconciled_order: collections.deque[str] = collections.deque()
 
     @property
     def _session_spend_usd(self) -> float:
@@ -69,6 +110,7 @@ class BudgetGuard:
         """Check if request would violate task or session budget limits using exact integer arithmetic."""
         cost_micro = _to_micro(estimated_cost)
         with self._lock:
+            self._expire_stale_reservations_locked()
             # 1. Session check: confirmed spend + active reservations + uncertain liabilities
             total_session_micro = (
                 self._session_spend_micro
@@ -103,6 +145,19 @@ class BudgetGuard:
 
             return True, ""
 
+    def _expire_stale_reservations_locked(self) -> None:
+        if self._reservation_ttl <= 0 or not self._reservation_started:
+            return
+        cutoff = time.monotonic() - self._reservation_ttl
+        for res_id in [r for r, t in self._reservation_started.items() if t < cutoff]:
+            self._release_locked(res_id)
+
+    def _mark_reconciled_locked(self, reservation_id: str) -> None:
+        self._reconciled_reservations.add(reservation_id)
+        self._reconciled_order.append(reservation_id)
+        while len(self._reconciled_order) > self._MAX_RECONCILED_IDS:
+            self._reconciled_reservations.discard(self._reconciled_order.popleft())
+
     def reserve(
         self,
         run_id: str,
@@ -121,6 +176,7 @@ class BudgetGuard:
             self._reserved_session_micro += amount_micro
             self._task_reserved_micro[run_id] = self._task_reserved_micro.get(run_id, 0) + amount_micro
             self._active_reservations[res_id] = (run_id, amount_micro)
+            self._reservation_started[res_id] = time.monotonic()
             return True, "", res_id
 
     def _release_locked(self, reservation_id: Optional[str]) -> None:
@@ -129,6 +185,7 @@ class BudgetGuard:
             return
         if reservation_id in self._active_reservations:
             run_id, amount_micro = self._active_reservations.pop(reservation_id)
+            self._reservation_started.pop(reservation_id, None)
             self._reserved_session_micro = max(0, self._reserved_session_micro - amount_micro)
             self._task_reserved_micro[run_id] = max(0, self._task_reserved_micro.get(run_id, 0) - amount_micro)
 
@@ -139,7 +196,7 @@ class BudgetGuard:
         with self._lock:
             if reservation_id in self._reconciled_reservations:
                 return
-            self._reconciled_reservations.add(reservation_id)
+            self._mark_reconciled_locked(reservation_id)
             self._release_locked(reservation_id)
 
     def record_uncertain(
@@ -155,7 +212,7 @@ class BudgetGuard:
             if reservation_id:
                 if reservation_id in self._reconciled_reservations:
                     return 0.0
-                self._reconciled_reservations.add(reservation_id)
+                self._mark_reconciled_locked(reservation_id)
             self._release_locked(reservation_id)
             self._uncertain_spend_micro += est_micro
             self._task_uncertain_micro[run_id] = self._task_uncertain_micro.get(run_id, 0) + est_micro
@@ -174,15 +231,21 @@ class BudgetGuard:
         if is_subscription or (model and "antigravity" in model.lower()):
             cost = 0.0
         else:
-            cost_profile = MODEL_REGISTRY.get(model, ModelCost(input_cost_per_m=0.50, output_cost_per_m=0.50))
-            cost = cost_profile.calculate_cost(prompt_tokens, completion_tokens)
+            try:
+                cost = price_for_model(model).calculate_cost(prompt_tokens, completion_tokens)
+            except UnpricedModelError:
+                # The route handlers refuse unpriced models before the upstream call, so this is a
+                # defensive path: never guess a low price. Charge the whole reservation as uncertain.
+                with self._lock:
+                    held = self._active_reservations.get(reservation_id, (run_id, 0))[1] if reservation_id else 0
+                return self.record_uncertain(reservation_id, run_id, model, _to_usd(held))
 
         cost_micro = _to_micro(cost)
         with self._lock:
             if reservation_id:
                 if reservation_id in self._reconciled_reservations:
                     return 0.0
-                self._reconciled_reservations.add(reservation_id)
+                self._mark_reconciled_locked(reservation_id)
             self._release_locked(reservation_id)
             self._session_spend_micro += cost_micro
             self._task_spend_micro[run_id] = self._task_spend_micro.get(run_id, 0) + cost_micro

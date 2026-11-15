@@ -12,6 +12,8 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
+from argus.config import DEFAULT_BUDGET_USD
+
 # Design tokens shared with argus/tui/styles.tcss.
 _TEXT = "#e1e4ec"
 _SECONDARY = "#9298a8"
@@ -50,7 +52,7 @@ class StatsModal(ModalScreen[None]):
         completion_tokens: Optional[int] = None,
         session_spend_usd: Optional[float] = None,
         frontier_baseline_usd: Optional[float] = None,
-        budget_limit_usd: float = 0.50,
+        budget_limit_usd: float = DEFAULT_BUDGET_USD,
     ) -> None:
         super().__init__()
         from argus.gateway.telemetry import TelemetryRegistry
@@ -100,7 +102,7 @@ class StatsModal(ModalScreen[None]):
                 with Vertical(classes="modal-heading"):
                     yield Static("SESSION TELEMETRY", classes="kicker")
                     yield Static(
-                        "Cost & routing economics" if not self._is_idle else "Gateway is idle",
+                        "Cost & routing economics" if not self._is_idle else "No routed traffic recorded",
                         id="stats-title",
                     )
                 yield Static(
@@ -111,9 +113,9 @@ class StatsModal(ModalScreen[None]):
             with Horizontal(id="stats-hero"):
                 if self._is_idle:
                     yield _stat_block(
-                        "Endpoint",
-                        "127.0.0.1:8000/v1",
-                        "gateway listening",
+                        "Gateway",
+                        "not running here",
+                        "start it with 'argus gateway'",
                         primary=True,
                         value_style="-blue",
                     )
@@ -125,7 +127,7 @@ class StatsModal(ModalScreen[None]):
                     yield _stat_block(
                         "Traffic",
                         "0 calls",
-                        "awaiting requests",
+                        "none recorded in this process",
                     )
                 else:
                     yield _stat_block(
@@ -180,9 +182,9 @@ class StatsModal(ModalScreen[None]):
         table.add_column("Value", style=_TEXT)
 
         if self._is_idle:
-            table.add_row("Status", f"[{_GREEN}]● Gateway ready[/]  [{_SECONDARY}]127.0.0.1:8000/v1[/]")
-            table.add_row("Active Client", f"[{_SECONDARY}]Listening for inbound SDK/agent traffic[/]")
-            table.add_row("Routing Policy", f"[{_SECONDARY}]Adaptive escalation (T1 → T2 → T3)[/]")
+            table.add_row("Status", f"[{_MUTED}]○ No gateway traffic recorded in this process[/]")
+            table.add_row("Active Client", f"[{_SECONDARY}]none[/]")
+            table.add_row("Note", f"[{_SECONDARY}]Telemetry covers this process only; the gateway is started with 'argus gateway'[/]")
             table.add_row(
                 "Quick setup",
                 f"[{_MUTED}]Type /connect in the TUI, or run 'argus init aider' / 'argus setup'.[/]",

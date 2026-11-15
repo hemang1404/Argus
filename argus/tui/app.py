@@ -6,14 +6,13 @@ Coordinates screens, global keybindings, and in-process execution state.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from textual.app import App, ComposeResult
+from textual.app import App
 from textual.binding import Binding
 
-from argus.config import ArgusConfig
+from argus.config import DEFAULT_BUDGET_USD, DEFAULT_MAX_ATTEMPTS, ArgusConfig
 from argus.runtime.candidate import CandidateApplicationError, CandidateArtifactStore
 from argus.runtime.controller import RecoveryOutcome
 from argus.tui.modals.config import ConfigModal
@@ -24,7 +23,6 @@ from argus.tui.modals.palette import CommandPaletteModal
 from argus.tui.modals.policy import PolicyModal
 from argus.tui.modals.stats import StatsModal
 from argus.tui.modals.update import UpdateModal
-from argus.tui.modals.usage import UsageModal
 from argus.tui.screens.diff_review import DiffReviewScreen
 from argus.tui.screens.execution import ExecutionTimelineScreen
 from argus.tui.screens.recovery import RecoveryWorkflowScreen
@@ -70,7 +68,7 @@ class ArgusTUIApp(App[None]):
                 if "max_attempts" in p_data:
                     self.config.max_attempts = int(p_data["max_attempts"])
                 if "model" in p_data:
-                    self.config.model = str(p_data["model"])
+                    self.config.pin_model(str(p_data["model"]))
         except (OSError, TypeError, ValueError):
             # Unreadable or corrupt policy file: keep defaults rather than crashing startup.
             pass
@@ -155,8 +153,8 @@ class ArgusTUIApp(App[None]):
             if not result:
                 return
             tier = result.get("tier", "argus/auto")
-            budget = result.get("budget", 0.50)
-            attempts = result.get("attempts", 3)
+            budget = result.get("budget", DEFAULT_BUDGET_USD)
+            attempts = result.get("attempts", DEFAULT_MAX_ATTEMPTS)
 
             self.current_tier = tier
             self.config.budget_limit_usd = float(budget)
@@ -183,7 +181,7 @@ class ArgusTUIApp(App[None]):
                 "t3": t3,
             }
             if tier in tier_models:
-                self.config.model = tier_models[tier]
+                self.config.pin_model(tier_models[tier])
 
             try:
                 from argus.providers.storage import get_config_dir
@@ -250,10 +248,10 @@ class ArgusTUIApp(App[None]):
             cval = result.get("value")
 
             if ctype == "model":
-                self.config.model = str(cval)
                 p_val = result.get("provider")
                 if p_val:
                     self.config.provider = str(p_val)
+                self.config.pin_model(str(cval))
                 self.notify(f"Active model set to: {cval}", severity="information")
             elif ctype == "tier":
                 self.current_tier = str(cval)
@@ -272,7 +270,7 @@ class ArgusTUIApp(App[None]):
                     "t3": t3,
                 }
                 if str(cval) in tier_models:
-                    self.config.model = tier_models[str(cval)]
+                    self.config.pin_model(tier_models[str(cval)])
                 self.notify(f"Routing tier configured: {cval}", severity="information")
             elif ctype == "budget":
                 self.config.budget_limit_usd = float(cval)

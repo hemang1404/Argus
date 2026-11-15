@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import ast
+import contextlib
+import copy
 import hashlib
+import inspect
+import json
 import os
 import re
 import time
@@ -11,27 +15,33 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from argus.config import ArgusConfig
 from argus.patch.fuzzy_engine import PatchResult, RefusalReason, ResilientPatchEngine
-from argus.patch.parser import PatchBlock, PatchParser
+from argus.patch.ast_checker import ASTChecker, is_python_filename
+from argus.patch.parser import PatchParser
+from argus.patch.textio import UnsupportedEncodingError
 from argus.patch.paths import PatchTargetError, validate_patch_blocks
 from argus.providers.models import ProviderConfigurationError
 from argus.providers.adapter import OpenAICompatibleAdapter, ProviderAdapter, ProviderError
 from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
 from argus.runtime.budget import (
     ARGUS_SYSTEM_PROMPT,
-    GlobalExperimentBudget,
     TaskConditionBudget,
     count_prompt_tokens,
     is_conclusive_provider_refusal,
 )
 from argus.runtime.candidate import CandidateArtifactStore
 from argus.runtime.events import JsonLinesEmitter
-from argus.runtime.runner import SubprocessTestRunner, TestExecutionResult
-from argus.runtime.workspace import WorkspaceManager
-from argus.utils.redaction import scrub_secrets
+from argus.runtime.runner import SubprocessTestRunner
+from argus.runtime.workspace import (
+    SnapshotTooLargeError,
+    TargetNotFoundError,
+    TargetOutsideWorkspaceError,
+    WorkspaceManager,
+)
+from argus.utils.redaction import scrub_prompt, scrub_secrets
 
 
 class LocalizationError(RuntimeError):
@@ -46,6 +56,8 @@ class AttemptRecord:
     prompt_tokens: int
     completion_tokens: int
     cost_usd: float
+    # Patch (SEARCH/REPLACE matcher) tier that produced the edit; None when no patch was matched.
+    # This is NOT the model tier: see ``model_tier``.
     tier_used: Optional[int]
     patch_success: bool
     test_passed: bool
@@ -64,6 +76,10 @@ class AttemptRecord:
     patch_strategy: str = ""
     patch_confidence: Optional[float] = None
     refusal_reason: Optional[str] = None
+    # Provider-reported stop reason for this attempt's completion (None if the adapter cannot report it).
+    finish_reason: Optional[str] = None
+    # Index of the model-ladder tier (1 = cheap, 2 = mid, 3 = strong) this attempt dispatched to.
+    model_tier: Optional[int] = None
 
 
 @dataclass
@@ -86,7 +102,8 @@ class RecoveryOutcome:
     candidate_hash: str = ""
     verified: bool = False
     approved: bool = False
-    tier_used: Optional[int] = None
+    tier_used: Optional[int] = None  # patch (matcher) tier of the accepted edit, not the model tier
+    model_tier: Optional[int] = None  # model-ladder tier of the final attempt
     effort_used: Optional[str] = None
     routing_reasons: List[str] = field(default_factory=list)
     spend_uncertain: bool = False
@@ -98,6 +115,8 @@ class RecoveryOutcome:
     context_window: Dict[str, Any] = field(default_factory=dict)
     # Observable provider resolution result (notably for explicit 'auto').
     selected_provider: Optional[str] = None
+    # Project-policy notes/warnings (tightened limits, ignored keys, parse errors).
+    config_notes: List[str] = field(default_factory=list)
 
 
 def extract_context_frame(
@@ -407,9 +426,9 @@ class RecoveryController:
             ambiguity_margin=self.config.ambiguity_margin,
             enforce_ast=True,
             enable_tier4=getattr(self.config, "enable_tier4", False),
+            enable_tier3=getattr(self.config, "enable_tier3", True),
         )
         self.test_runner = SubprocessTestRunner(timeout_seconds=self.config.test_timeout_seconds)
-        self.model_cost = self.config.get_model_cost()
         self.adapter: Optional[ProviderAdapter] = adapter
         self.selected_provider: Optional[str] = None
         self.budget_tracker: Optional[TaskConditionBudget] = None
@@ -446,7 +465,7 @@ class RecoveryController:
 
         p_name = (self.config.provider or "").lower().strip()
         if p_name == "groq":
-            raise RuntimeError(
+            raise ProviderConfigurationError(
                 "Groq is strictly prohibited as an inference provider in Argus. "
                 "Please configure an authorized provider via 'argus provider set' (e.g. ollama, openai, deepseek, antigravity)."
             )
@@ -554,7 +573,7 @@ class RecoveryController:
                     pass
 
             if not api_key and preset.requires_key:
-                raise RuntimeError(
+                raise ProviderConfigurationError(
                     f"No API key configured for provider '{p_name}'. "
                     f"Please configure your API key via 'argus provider set' or set {preset.key.upper()}_API_KEY."
                 )
@@ -741,7 +760,49 @@ class RecoveryController:
 
         return None
 
+    @staticmethod
+    def _resolve_workspace_root(target_file: Optional[str | Path], workspace_root: Optional[str | Path]) -> Path:
+        if workspace_root:
+            return Path(workspace_root).resolve()
+        if target_file and Path(target_file).is_absolute():
+            return Path(target_file).parent
+        return Path.cwd().resolve()
+
     def run(
+        self,
+        target_file: Optional[str | Path] = None,
+        test_command: Optional[str] = None,
+        test_file: Optional[str | Path] = None,
+        workspace_root: Optional[str | Path] = None,
+        **kwargs: Any,
+    ) -> RecoveryOutcome:
+        """Run the bounded recovery loop in an isolated workspace.
+
+        The workspace's project policy (argus.yaml / pyproject [tool.argus]) is applied
+        tighten-only to a per-run copy of the config, so one run's policy never leaks into
+        the next run of the same controller.
+        """
+        ws_root = self._resolve_workspace_root(target_file, workspace_root)
+        base_config = self.config
+        run_config = copy.copy(base_config)
+        notes = run_config.apply_project_policy(ws_root)
+        self.config = run_config
+        self.test_runner.timeout_seconds = run_config.test_timeout_seconds
+        try:
+            outcome = self._run_impl(
+                target_file=target_file,
+                test_command=test_command,
+                test_file=test_file,
+                workspace_root=workspace_root,
+                **kwargs,
+            )
+        finally:
+            self.config = base_config
+            self.test_runner.timeout_seconds = base_config.test_timeout_seconds
+        outcome.config_notes = notes
+        return outcome
+
+    def _run_impl(
         self,
         target_file: Optional[str | Path] = None,
         test_command: Optional[str] = None,
@@ -753,10 +814,8 @@ class RecoveryController:
         cancel_event: Optional[Any] = None,
         **kwargs: Any,
     ) -> RecoveryOutcome:
-        """Run the bounded recovery loop in an isolated workspace."""
         start_time = time.perf_counter()
         history: List[AttemptRecord] = []
-        total_cost = 0.0
 
         # Handle flexible argument signatures: run(test_command="...") or run("pytest ...")
         if test_command is None and target_file and any(tok in str(target_file) for tok in ["pytest", "python -m", "unittest"]):
@@ -766,62 +825,92 @@ class RecoveryController:
         if not test_command:
             test_command = kwargs.get("cmd") or "pytest"
 
-        ws_root = Path(workspace_root).resolve() if workspace_root else None
-        if not ws_root:
-            if target_file and Path(target_file).is_absolute():
-                ws_root = Path(target_file).parent
-            else:
-                ws_root = Path.cwd().resolve()
+        ws_root = self._resolve_workspace_root(target_file, workspace_root)
 
-        # Step 0: Auto-localization if target_file was omitted
+        # Step 0: Auto-localization if target_file was omitted. Nothing runs in the
+        # user's tree: the configuration and workspace are validated first, then the
+        # preliminary test run and the localization happen inside an isolated copy.
         if target_file is None:
-            prelim_res = self.test_runner.run_test(test_command, cwd=ws_root)
-            if prelim_res.passed:
+            def _early(status: str, message: str, elapsed: bool = True) -> RecoveryOutcome:
                 return RecoveryOutcome(
-                    status="ALREADY_PASSING",
+                    status=status,
                     total_attempts=0,
                     total_cost_usd=0.0,
-                    total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-                    message="Target test suite already passes without any modifications.",
+                    total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2) if elapsed else 0.0,
+                    message=message,
                     run_id=f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
                     tests_executed=[test_command],
                 )
 
-            # Check if test framework failed before executing tests (e.g. file not found / syntax error in CLI)
-            is_runner_setup_error = (
-                prelim_res.exit_code in (4, 5)
-                or "file or directory not found" in (prelim_res.stderr or "").lower()
-                or "no tests ran" in (prelim_res.stdout or "").lower()
-            )
-            if is_runner_setup_error:
-                err_detail = (prelim_res.stderr or prelim_res.stdout).strip()
-                return RecoveryOutcome(
-                    status="TEST_SETUP_ERROR",
-                    total_attempts=0,
-                    total_cost_usd=0.0,
-                    total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-                    message=f"Test command failed to execute or find tests: {err_detail}",
-                    run_id=f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
-                    tests_executed=[test_command],
+            early_issues = self.config.validate(check_provider=self.adapter is None)
+            if early_issues:
+                return _early("CONFIG_ERROR", "; ".join(early_issues), elapsed=False)
+            if not ws_root.is_dir():
+                return _early("INVALID_TARGET", f"Workspace root is not a directory: {ws_root}")
+            pre_container = kwargs.get("container_evaluator", self.container_evaluator)
+            if pre_container is not None:
+                return _early(
+                    "LOCALIZATION_FAILED",
+                    "Auto-localization runs the test command on the host and is not available with "
+                    "container evaluation. Specify the target file explicitly (--file).",
+                )
+            if getattr(self.config, "require_container_isolation", False) or getattr(
+                self.config, "use_container_runner", False
+            ):
+                return _early(
+                    "CONTAINER_SETUP_ERROR",
+                    "SECURITY REFUSAL: Container runner or isolation is required by configuration, but no "
+                    "active container evaluator is available. Host execution of untrusted code is prohibited.",
                 )
 
-            localized = self.auto_localize_target_file(
-                repo_dir=ws_root,
-                failure_output=prelim_res.traceback_summary or (prelim_res.stdout + "\n" + prelim_res.stderr),
-                test_command=test_command,
-            )
-            if localized is None:
-                return RecoveryOutcome(
-                    status="LOCALIZATION_FAILED",
-                    total_attempts=0,
-                    total_cost_usd=0.0,
-                    total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-                    message="Could not auto-localize the target source file from test failure. Please specify target_file explicitly.",
-                    run_id=f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
-                    tests_executed=[test_command],
+            try:
+                with WorkspaceManager(
+                    repo_root=ws_root,
+                    snapshot_exclude=self.config.snapshot_exclude,
+                    snapshot_respect_gitignore=self.config.snapshot_respect_gitignore,
+                    snapshot_include_secrets=self.config.snapshot_include_secrets,
+                    snapshot_max_bytes=self.config.snapshot_max_bytes,
+                ) as loc_ws:
+                    scratch = (loc_ws.temp_dir or ws_root).resolve()
+                    scratch_cmd = test_command.replace(str(ws_root), str(scratch))
+                    prelim_res = self.test_runner.run_test(scratch_cmd, cwd=scratch)
+                    if prelim_res.passed:
+                        return _early("ALREADY_PASSING", "Target test suite already passes without any modifications.")
+
+                    # Check if test framework failed before executing tests (e.g. file not found / syntax error in CLI)
+                    is_runner_setup_error = (
+                        prelim_res.exit_code in (4, 5)
+                        or "file or directory not found" in (prelim_res.stderr or "").lower()
+                        or "no tests ran" in (prelim_res.stdout or "").lower()
+                    )
+                    if is_runner_setup_error:
+                        err_detail = (prelim_res.stderr or prelim_res.stdout).strip()
+                        return _early("TEST_SETUP_ERROR", f"Test command failed to execute or find tests: {err_detail}")
+
+                    localized_scratch = self.auto_localize_target_file(
+                        repo_dir=scratch,
+                        failure_output=prelim_res.traceback_summary or (prelim_res.stdout + "\n" + prelim_res.stderr),
+                        test_command=scratch_cmd,
+                    )
+                    localized_rel: Optional[Path] = None
+                    if localized_scratch is not None:
+                        try:
+                            localized_rel = Path(localized_scratch).resolve().relative_to(scratch)
+                        except ValueError:
+                            localized_rel = None
+            except SnapshotTooLargeError as exc:
+                return _early("CONFIG_ERROR", f"SnapshotTooLargeError: {exc}")
+            except (OSError, UnsupportedEncodingError) as exc:
+                return _early("INVALID_TARGET", f"{type(exc).__name__}: {exc}")
+
+            if localized_rel is None:
+                return _early(
+                    "LOCALIZATION_FAILED",
+                    "Could not auto-localize the target source file from test failure. "
+                    "Please specify target_file explicitly.",
                 )
-            target_path = localized
-            target_file = str(target_path.relative_to(ws_root))
+            target_path = (ws_root / localized_rel).resolve()
+            target_file = str(localized_rel)
         else:
             target_path = Path(target_file)
             if not target_path.is_absolute():
@@ -845,9 +934,9 @@ class RecoveryController:
 
         task_id = kwargs.get("task_id") or run_id
         condition_name = kwargs.get("condition") or "default"
+        # Product runs are bounded by the per-task budget alone. A process-wide experiment
+        # ceiling exists only when a research harness injects one explicitly.
         global_budget = kwargs.get("global_budget")
-        if global_budget is None:
-            global_budget = GlobalExperimentBudget.get_instance(self.config.global_experiment_budget_usd)
 
         self.budget_tracker = TaskConditionBudget(
             task_id=task_id,
@@ -857,6 +946,7 @@ class RecoveryController:
         )
 
         difficulty_decision = None
+        model_notes: List[str] = []  # provider-reported model differs from the requested one
 
         def _finalize(outcome: RecoveryOutcome) -> RecoveryOutcome:
             outcome.run_id = run_id
@@ -874,6 +964,12 @@ class RecoveryController:
             if difficulty_decision is not None:
                 outcome.effort_used = difficulty_decision.effort
                 outcome.routing_reasons = list(difficulty_decision.reasons)
+            outcome.routing_reasons.append(
+                f"model_ladder={self.config.ladder_source or 'unset'} "
+                f"models={','.join(self.config.ladder_models()) or 'none'} "
+                f"escalation={'on' if self.config.escalation_enabled else 'off'}"
+            )
+            outcome.routing_reasons.extend(model_notes)
             if outcome.history:
                 last_h = outcome.history[-1]
                 outcome.diagnostics = last_h.error_summary
@@ -889,7 +985,7 @@ class RecoveryController:
 
             # Persist isolated per-run artifact
             try:
-                CandidateArtifactStore.save_run_artifact(
+                run_dir = CandidateArtifactStore.save_run_artifact(
                     run_id=run_id,
                     target_file=str(target_file),
                     test_command=test_command,
@@ -908,8 +1004,40 @@ class RecoveryController:
                     parsed_patch=outcome.unapplied_patch,
                     context_window=outcome.context_window,
                 )
-            except Exception:
-                pass
+                # Per-attempt replay record: which model ran, patch tier, tokens, cost, stop reason.
+                (run_dir / "attempts.json").write_text(
+                    json.dumps(
+                        [
+                            {
+                                "attempt": h.attempt,
+                                "tier_used": h.tier_used,
+                                "model_tier": h.model_tier,
+                                "model_used": h.model_used,
+                                "prompt_tokens": h.prompt_tokens,
+                                "completion_tokens": h.completion_tokens,
+                                "cost_usd": h.cost_usd,
+                                "reserved_cost_usd": h.reserved_cost_usd,
+                                "finish_reason": h.finish_reason,
+                                "patch_success": h.patch_success,
+                                "test_passed": h.test_passed,
+                                "patch_strategy": h.patch_strategy,
+                                "refusal_reason": h.refusal_reason,
+                                "duration_ms": h.duration_ms,
+                                "error_summary": scrub_secrets(h.error_summary or "")[:500],
+                            }
+                            for h in outcome.history
+                        ],
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+            except Exception as persist_err:
+                # Not silent: without the stored run the candidate cannot be approved or applied.
+                outcome.message = (
+                    f"{outcome.message} WARNING: run artifacts could not be saved "
+                    f"({type(persist_err).__name__}: {scrub_secrets(str(persist_err))[:200]}); "
+                    "this run cannot be approved or applied."
+                ).strip()
 
             if event_emitter:
                 event_emitter.outcome(
@@ -956,10 +1084,8 @@ class RecoveryController:
             )
 
         # Validate configuration
-        issues = self.config.validate()
-        if self.adapter is not None:
-            # If an adapter was explicitly injected, ignore missing external provider settings
-            issues = [i for i in issues if "provider" not in i.lower()]
+        # If an adapter was explicitly injected, missing external provider settings are irrelevant.
+        issues = self.config.validate(check_provider=self.adapter is None)
         if issues:
             return _finalize(
                 RecoveryOutcome(
@@ -971,9 +1097,40 @@ class RecoveryController:
                 )
             )
 
-        # Step 1: Initialize Workspace
-        use_worktree = kwargs.get("use_worktree", getattr(self.config, "use_worktree", False))
-        with WorkspaceManager(repo_root=ws_root, target_file=target_path, test_file=test_file, use_worktree=use_worktree) as ws:
+        # Step 1: Initialize Workspace (copy-based; setup problems become typed outcomes)
+        with contextlib.ExitStack() as _ws_stack:
+            try:
+                ws = _ws_stack.enter_context(
+                    WorkspaceManager(
+                        repo_root=ws_root,
+                        target_file=target_path,
+                        test_file=test_file,
+                        snapshot_exclude=self.config.snapshot_exclude,
+                        snapshot_respect_gitignore=self.config.snapshot_respect_gitignore,
+                        snapshot_include_secrets=self.config.snapshot_include_secrets,
+                        snapshot_max_bytes=self.config.snapshot_max_bytes,
+                    )
+                )
+            except (TargetNotFoundError, TargetOutsideWorkspaceError, UnsupportedEncodingError) as exc:
+                return _finalize(
+                    RecoveryOutcome(
+                        status="INVALID_TARGET",
+                        total_attempts=0,
+                        total_cost_usd=0.0,
+                        total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                        message=f"{type(exc).__name__}: {exc}",
+                    )
+                )
+            except SnapshotTooLargeError as exc:
+                return _finalize(
+                    RecoveryOutcome(
+                        status="CONFIG_ERROR",
+                        total_attempts=0,
+                        total_cost_usd=0.0,
+                        total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                        message=f"SnapshotTooLargeError: {exc}",
+                    )
+                )
             exec_test_cmd = test_command
             if test_file and ws.test_file_rel:
                 orig_str = str(test_file)
@@ -1106,28 +1263,26 @@ class RecoveryController:
                         )
                     )
 
-                # 3-Tier Escalation Ladder
+                # Escalation ladder. Which MODEL runs at each tier is decided by the config
+                # (config.model_for_tier): the pinned model unless an explicit ladder or the
+                # documented provider cascade is in effect. Effort/context scale with the tier.
                 if not getattr(self.config, "escalation_enabled", True):
-                    tier_model = self.config.model
                     tier_effort = difficulty_decision.effort
                     context_radius = 25
                     tier_idx = 1
-                else:
-                    if attempt_idx == 1:
-                        tier_model = self.config.small_model or self.config.model
-                        tier_effort = getattr(self.config, "reasoning_effort", None) or ("low" if difficulty_decision.effort == "low" else "medium")
-                        context_radius = 25
-                        tier_idx = 1
-                    elif attempt_idx == 2:
-                        tier_model = self.config.small_model or self.config.model
-                        tier_effort = getattr(self.config, "reasoning_effort", None) or "high"
-                        context_radius = 25
-                        tier_idx = 2
-                    else:  # attempt 3+
-                        tier_model = self.config.large_model or self.config.model
-                        tier_effort = getattr(self.config, "reasoning_effort", None) or "high"
-                        context_radius = 45  # Deep reasoning + max context
-                        tier_idx = 3
+                elif attempt_idx == 1:
+                    tier_effort = getattr(self.config, "reasoning_effort", None) or ("low" if difficulty_decision.effort == "low" else "medium")
+                    context_radius = 25
+                    tier_idx = 1
+                elif attempt_idx == 2:
+                    tier_effort = getattr(self.config, "reasoning_effort", None) or "high"
+                    context_radius = 25
+                    tier_idx = 2
+                else:  # attempt 3+
+                    tier_effort = getattr(self.config, "reasoning_effort", None) or "high"
+                    context_radius = 45  # Deep reasoning + max context
+                    tier_idx = 3
+                tier_model = self.config.model_for_tier(tier_idx)
 
                 if on_attempt_start:
                     on_attempt_start(attempt_idx, self.config.max_attempts)
@@ -1184,35 +1339,19 @@ class RecoveryController:
                     model_cost=tier_cost_calc,
                 )
                 if not ok:
-                    # Escalation budget mitigation:
-                    # If on tier 3 (large model escalation) and task budget exceeded, check if small model fits!
-                    if tier_idx == 3 and "TASK_BUDGET_EXCEEDED" in reason:
-                        small_model_name = self.config.small_model or "qwen2.5-coder:7b"
-                        small_cost_calc = self.config.get_model_cost(small_model_name)
-                        small_ok, small_reserved, _ = self.budget_tracker.check_and_reserve(
-                            prompt_tokens=p_tokens_est,
-                            max_completion_tokens=eff_max_completion,
-                            model_cost=small_cost_calc,
+                    # Refuse before network dispatch. No cheaper model is substituted: the
+                    # configured tier model is the only model Argus will spend on.
+                    return _finalize(
+                        RecoveryOutcome(
+                            status="BUDGET_EXCEEDED",
+                            total_attempts=len(history),
+                            total_cost_usd=round(self.budget_tracker.total_committed, 6),
+                            total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                            history=history,
+                            message=f"Pre-dispatch budget refusal: {reason}",
+                            model_tier=tier_idx,
                         )
-                        if small_ok:
-                            tier_model = small_model_name
-                            tier_cost_calc = small_cost_calc
-                            reserved_cost = small_reserved
-                            ok = True
-
-                    if not ok:
-                        # Refuse before network dispatch
-                        return _finalize(
-                            RecoveryOutcome(
-                                status="BUDGET_EXCEEDED",
-                                total_attempts=len(history),
-                                total_cost_usd=round(self.budget_tracker.total_committed, 6),
-                                total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-                                history=history,
-                                message=f"Pre-dispatch budget refusal: {reason}",
-                                tier_used=tier_idx,
-                            )
-                        )
+                    )
 
                 # Model dispatch loop with 429 rate limit backoff
                 dispatch_success = False
@@ -1222,6 +1361,8 @@ class RecoveryController:
                 c_tokens = 0
                 cached_tokens = 0
                 tx_payload = {}
+                finish_reason: Optional[str] = None
+                executed_model = tier_model
 
                 while True:
                     # Check task deadline during retries
@@ -1236,7 +1377,7 @@ class RecoveryController:
                                 total_duration_ms=round(elapsed_task_sec * 1000, 2),
                                 history=history,
                                 message=f"Task deadline of {self.config.task_deadline_seconds}s exceeded during dispatch.",
-                                tier_used=tier_idx,
+                                model_tier=tier_idx,
                                 spend_uncertain=self.budget_tracker.spend_uncertain,
                                 quarantined_usd=round(self.budget_tracker.quarantined_spend, 6),
                             )
@@ -1250,15 +1391,10 @@ class RecoveryController:
                             model=tier_model,
                             cwd=str(ws.workspace_root),
                         )
-                        if len(call_res) >= 5:
-                            response_text, p_tokens, c_tokens, cached_tokens, tx_payload = call_res[:5]
-                        elif len(call_res) >= 4:
-                            response_text, p_tokens, c_tokens, cached_tokens = call_res[:4]
-                            tx_payload = {}
-                        else:
-                            response_text, p_tokens, c_tokens = call_res[:3]
-                            cached_tokens = 0
-                            tx_payload = {}
+                        (
+                            response_text, p_tokens, c_tokens, cached_tokens,
+                            tx_payload, finish_reason, executed_model,
+                        ) = self._unpack_call_result(call_res)
 
                         # Dispatch succeeded: settle reservation
                         call_cost = self.budget_tracker.settle(
@@ -1270,6 +1406,23 @@ class RecoveryController:
                         )
                         dispatch_success = True
                         break
+
+                    except ProviderConfigurationError as cfg_err:
+                        # Raised before any request is built or sent (unknown provider, missing
+                        # key, prohibited provider): nothing was spent, so release the reservation
+                        # and fail immediately with an actionable CONFIG_ERROR.
+                        self.budget_tracker.release(reserved_cost)
+                        return _finalize(
+                            RecoveryOutcome(
+                                status="CONFIG_ERROR",
+                                total_attempts=len(history),
+                                total_cost_usd=round(self.budget_tracker.total_committed, 6),
+                                total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                                history=history,
+                                message=f"{cfg_err.message} No request was made.",
+                                model_tier=tier_idx,
+                            )
+                        )
 
                     except ProviderError as p_err:
                         if p_err.is_retryable or p_err.status_code == 429:
@@ -1286,7 +1439,7 @@ class RecoveryController:
                                         total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                         history=history,
                                         message=f"Provider rate limited (429) and retries are disabled: {p_err}",
-                                        tier_used=tier_idx,
+                                        model_tier=tier_idx,
                                     )
                                 )
 
@@ -1305,7 +1458,7 @@ class RecoveryController:
                                         total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                         history=history,
                                         message=f"Rate limit backoff ceiling ({self.config.rate_limit_backoff_max_seconds}s) exceeded.",
-                                        tier_used=tier_idx,
+                                        model_tier=tier_idx,
                                     )
                                 )
 
@@ -1327,7 +1480,7 @@ class RecoveryController:
                                         total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                         history=history,
                                         message=f"Pre-dispatch budget refusal upon 429 retry: {re_reason}",
-                                        tier_used=tier_idx,
+                                        model_tier=tier_idx,
                                     )
                                 )
                             reserved_cost = re_cost
@@ -1343,7 +1496,8 @@ class RecoveryController:
                                 prompt_tokens=0,
                                 completion_tokens=0,
                                 cost_usd=0.0,
-                                tier_used=tier_idx,
+                                tier_used=None,
+                                model_tier=tier_idx,
                                 patch_success=False,
                                 test_passed=False,
                                 error_summary=f"Provider error ({p_err.status_code}): {str(p_err)[:120]}",
@@ -1373,6 +1527,12 @@ class RecoveryController:
                             # Post-dispatch client/gateway timeout, 504, 500, 502, 503, connection dropped:
                             # Provider received request or compute is UNCERTAIN! Quarantine!
                             self.budget_tracker.quarantine(reserved_cost)
+                            _timed_out = getattr(p_err, "status_code", None) in (408, 504) or "timed out" in str(p_err).lower()
+                            _failure_label = (
+                                "Inference timeout"
+                                if _timed_out
+                                else f"Provider error ({getattr(p_err, 'status_code', None)}), outcome unknown"
+                            )
                             attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
                             record = AttemptRecord(
                                 attempt=attempt_idx,
@@ -1380,10 +1540,11 @@ class RecoveryController:
                                 prompt_tokens=0,
                                 completion_tokens=0,
                                 cost_usd=reserved_cost,
-                                tier_used=tier_idx,
+                                tier_used=None,
+                                model_tier=tier_idx,
                                 patch_success=False,
                                 test_passed=False,
-                                error_summary=f"Inference timeout / uncertain spend (spend quarantined: ${reserved_cost:.6f}): {p_err}",
+                                error_summary=f"{_failure_label} / uncertain spend (spend quarantined: ${reserved_cost:.6f}): {p_err}",
                                 model_used=tier_model,
                                 prompt_text=curr_prompt,
                                 raw_response="",
@@ -1402,18 +1563,15 @@ class RecoveryController:
                                     cost_usd=reserved_cost,
                                     model=tier_model,
                                 )
-                            last_error = f"Inference timeout: {p_err}"
+                            last_error = f"{_failure_label}: {p_err}"
                             attempt_idx += 1
                             break
 
                     except Exception as ex:
-                        if not dispatched and is_conclusive_provider_refusal(ex):
-                            self.budget_tracker.release(reserved_cost)
-                            quarantined_usd = 0.0
-                        else:
-                            # Dispatched, timeout, cancellation, or connection abort: QUARANTINE!
-                            self.budget_tracker.quarantine(reserved_cost)
-                            quarantined_usd = reserved_cost
+                        # Unclassified failure after dispatch (timeout, cancellation, abort,
+                        # malformed usage): the provider may have billed it, so QUARANTINE.
+                        self.budget_tracker.quarantine(reserved_cost)
+                        quarantined_usd = reserved_cost
 
                         attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
                         record = AttemptRecord(
@@ -1422,7 +1580,8 @@ class RecoveryController:
                             prompt_tokens=0,
                             completion_tokens=0,
                             cost_usd=quarantined_usd,
-                            tier_used=tier_idx,
+                            tier_used=None,
+                            model_tier=tier_idx,
                             patch_success=False,
                             test_passed=False,
                             error_summary=f"Inference error: {str(ex)[:120]}",
@@ -1450,6 +1609,14 @@ class RecoveryController:
                 if not dispatch_success:
                     continue
 
+                # Record the model the provider reports it executed (cost stays priced at the
+                # requested tier model, which is what the reservation was made against).
+                if executed_model and executed_model != tier_model and not executed_model.startswith(tier_model):
+                    model_notes.append(
+                        f"attempt {attempt_idx}: requested model '{tier_model}', provider executed '{executed_model}'"
+                    )
+                    tier_model = executed_model
+
                 if event_emitter:
                     event_emitter.inference_done(
                         attempt=attempt_idx,
@@ -1463,6 +1630,10 @@ class RecoveryController:
                 # Parse patch blocks
                 curr_raw_response = response_text
                 patch_blocks = PatchParser.parse(response_text)
+                parse_errors = (
+                    PatchParser.parse_search_replace_detailed(response_text).errors if not patch_blocks else []
+                )
+                truncated = (finish_reason or "").lower() in ("length", "max_tokens")
                 if patch_blocks:
                     curr_parsed_patch = "\n".join(
                         getattr(b, "raw_block", f"<<<<<<< SEARCH\n{b.search_text}\n=======\n{b.replace_text}\n>>>>>>> REPLACE")
@@ -1476,10 +1647,19 @@ class RecoveryController:
                         prompt_tokens=p_tokens,
                         completion_tokens=c_tokens,
                         cost_usd=call_cost,
-                        tier_used=tier_idx,
+                        tier_used=None,
+                        model_tier=tier_idx,
                         patch_success=False,
                         test_passed=False,
-                        error_summary="Model did not produce recognizable SEARCH/REPLACE blocks.",
+                        error_summary=(
+                            "Model output was truncated (finish_reason=length) before a complete SEARCH/REPLACE block."
+                            if truncated
+                            else (
+                                "Malformed SEARCH/REPLACE response: " + " ".join(parse_errors)
+                                if parse_errors
+                                else "Model did not produce recognizable SEARCH/REPLACE blocks."
+                            )
+                        ),
                         model_used=tier_model,
                         prompt_tokens_est=p_tokens_est,
                         reserved_cost_usd=reserved_cost,
@@ -1489,6 +1669,7 @@ class RecoveryController:
                         parsed_patch=curr_parsed_patch,
                         context_window=curr_context_window,
                         cached_tokens=cached_tokens,
+                        finish_reason=finish_reason,
                     )
                     history.append(record)
                     if on_attempt_end:
@@ -1501,7 +1682,21 @@ class RecoveryController:
                             ast_valid=False,
                             error_summary=record.error_summary,
                         )
-                    last_error = "Formatting error: Please output exact SEARCH/REPLACE blocks."
+                    if parse_errors and not truncated:
+                        last_error = (
+                            "Malformed SEARCH/REPLACE response, nothing was applied: "
+                            + " ".join(parse_errors)
+                            + " Every block must be complete: '<<<<<<< SEARCH', the exact existing lines, "
+                            "'=======', the replacement, '>>>>>>> REPLACE'."
+                        )
+                    elif truncated:
+                        last_error = (
+                            "Truncation: your previous response hit the output token limit and was cut off before "
+                            "a complete SEARCH/REPLACE block. Respond again with ONE minimal SEARCH/REPLACE block "
+                            "(2-6 lines of context) and no explanation."
+                        )
+                    else:
+                        last_error = "Formatting error: Please output exact SEARCH/REPLACE blocks."
                     attempt_idx += 1
                     continue
 
@@ -1521,6 +1716,7 @@ class RecoveryController:
                         completion_tokens=c_tokens,
                         cost_usd=call_cost,
                         tier_used=None,
+                        model_tier=tier_idx,
                         patch_success=False,
                         test_passed=False,
                         error_summary=refusal_msg,
@@ -1533,6 +1729,7 @@ class RecoveryController:
                         parsed_patch=curr_parsed_patch,
                         context_window=curr_context_window,
                         cached_tokens=cached_tokens,
+                        finish_reason=finish_reason,
                         matched_file=str(ws.target_file_rel),
                         patch_strategy="none",
                         refusal_reason=exc.code,
@@ -1552,23 +1749,18 @@ class RecoveryController:
                     attempt_idx += 1
                     continue
 
-                # Apply patches sequentially to current workspace code
-                working_code = current_code
-                patch_success = True
-                patch_res: Optional[PatchResult] = None
-
-                for block in patch_blocks:
-                    patch_res = self.patch_engine.apply_patch(
-                        working_code,
-                        block,
-                        filename=str(ws.target_file_rel),
-                    )
-                    if patch_res.success:
-                        patch_res.matched_file = str(ws.target_file_rel)
-                    if not patch_res.success:
-                        patch_success = False
-                        break
-                    working_code = patch_res.patched_code or working_code
+                # Apply all blocks in order; the syntactic gate runs once on the final text.
+                patch_res: Optional[PatchResult] = self.patch_engine.apply_blocks(
+                    current_code,
+                    patch_blocks,
+                    filename=str(ws.target_file_rel),
+                )
+                patch_success = patch_res.success
+                if patch_success:
+                    patch_res.matched_file = str(ws.target_file_rel)
+                    working_code = patch_res.patched_code if patch_res.patched_code is not None else current_code
+                else:
+                    working_code = current_code
 
                 if not patch_success:
                     attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
@@ -1580,6 +1772,7 @@ class RecoveryController:
                         completion_tokens=c_tokens,
                         cost_usd=call_cost,
                         tier_used=patch_res.tier_used if patch_res else None,
+                        model_tier=tier_idx,
                         patch_success=False,
                         test_passed=False,
                         error_summary=refusal_msg,
@@ -1592,6 +1785,7 @@ class RecoveryController:
                         parsed_patch=curr_parsed_patch,
                         context_window=curr_context_window,
                         cached_tokens=cached_tokens,
+                        finish_reason=finish_reason,
                         matched_file=str(ws.target_file_rel) if patch_res else None,
                         patch_strategy=patch_res.strategy if patch_res else "",
                         patch_confidence=patch_res.confidence if patch_res else None,
@@ -1616,16 +1810,25 @@ class RecoveryController:
                     attempt_idx += 1
                     continue
 
-                # Write candidate to workspace
-                ws.write_target_file(working_code)
+                # Write candidate to workspace (strict encoding: no lossy replacement characters)
+                try:
+                    ws.write_target_file(working_code)
+                except UnsupportedEncodingError as exc:
+                    return _finalize(
+                        RecoveryOutcome(
+                            status="INVALID_TARGET",
+                            total_attempts=len(history),
+                            total_cost_usd=round(self.budget_tracker.total_committed, 6),
+                            total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                            history=history,
+                            message=f"UnsupportedEncodingError: {exc}",
+                        )
+                    )
 
                 # Optional AST safety check
-                ast_valid = True
-                if ws.target_file_rel.suffix == ".py":
-                    from argus.patch.ast_checker import ASTChecker
+                if is_python_filename(str(ws.target_file_rel)):
                     ast_check = ASTChecker.validate_python_code(working_code, filename=str(ws.target_file_rel))
                     if not ast_check.is_valid:
-                        ast_valid = False
                         attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
                         record = AttemptRecord(
                             attempt=attempt_idx,
@@ -1634,6 +1837,7 @@ class RecoveryController:
                             completion_tokens=c_tokens,
                             cost_usd=call_cost,
                             tier_used=patch_res.tier_used if patch_res else None,
+                            model_tier=tier_idx,
                             patch_success=False,
                             test_passed=False,
                             error_summary=f"AST Syntax Error: {ast_check.formatted_error()}",
@@ -1646,6 +1850,7 @@ class RecoveryController:
                             parsed_patch=curr_parsed_patch,
                             context_window=curr_context_window,
                             cached_tokens=cached_tokens,
+                            finish_reason=finish_reason,
                         )
                         history.append(record)
                         if on_attempt_end:
@@ -1691,7 +1896,7 @@ class RecoveryController:
                                 total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                 history=history,
                                 message=c_res.error or c_res.traceback_summary,
-                                tier_used=tier_idx,
+                                model_tier=tier_idx,
                             )
                         )
                     test_summary = "" if test_passed else (c_res.traceback_summary or c_res.error or c_res.stderr)
@@ -1705,7 +1910,7 @@ class RecoveryController:
                                 total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                                 history=history,
                                 message="SECURITY REFUSAL: Container runner or isolation is required by configuration, but no active container evaluator is available. Host execution of untrusted candidate code is prohibited.",
-                                tier_used=tier_idx,
+                                model_tier=tier_idx,
                             )
                         )
                     test_res = self.test_runner.run_test(exec_test_cmd, cwd=ws.temp_dir)
@@ -1720,6 +1925,7 @@ class RecoveryController:
                     completion_tokens=c_tokens,
                     cost_usd=call_cost,
                     tier_used=patch_res.tier_used if patch_res else None,
+                    model_tier=tier_idx,
                     patch_success=True,
                     test_passed=test_passed,
                     error_summary=test_summary,
@@ -1732,6 +1938,7 @@ class RecoveryController:
                     parsed_patch=curr_parsed_patch,
                     context_window=curr_context_window,
                     cached_tokens=cached_tokens,
+                    finish_reason=finish_reason,
                 )
                 history.append(record)
                 if on_attempt_end:
@@ -1756,10 +1963,14 @@ class RecoveryController:
                             total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                             unified_diff=diff,
                             history=history,
-                            message=f"Bug resolved and verified passing in attempt {attempt_idx}!",
+                            message=(
+                                f"The test command passed on the patched copy in attempt {attempt_idx}. "
+                                "Review the diff before applying: passing tests do not prove the change is correct."
+                            ),
                             patched_content=patched_code,
                             target_file=str(target_file),
                             tier_used=patch_res.tier_used if patch_res else None,
+                            model_tier=tier_idx,
                         )
                     )
                 else:
@@ -1779,14 +1990,32 @@ class RecoveryController:
                 )
             )
 
+    @staticmethod
+    def _unpack_call_result(call_res: tuple) -> tuple:
+        """Normalise a `_call_model` result to (text, prompt_tok, completion_tok, cached_tok,
+        payload, finish_reason, executed_model); trailing fields are optional."""
+        padded = tuple(call_res) + (None,) * (7 - len(call_res))
+        text, p_tok, c_tok, cached, payload, finish_reason, executed_model = padded[:7]
+        return (
+            text, p_tok, c_tok, cached or 0, payload or {},
+            finish_reason if isinstance(finish_reason, str) else None,
+            executed_model if isinstance(executed_model, str) else None,
+        )
+
     def _call_model(
         self,
         prompt: str,
         effort: Optional[str] = None,
         model: Optional[str] = None,
         cwd: Optional[str] = None,
-    ) -> tuple[str, int, int, int]:
-        """Invoke configured inference provider via adapter."""
+    ) -> tuple:
+        """Invoke the configured inference provider via its adapter.
+
+        Optional keyword arguments (effort, cwd, max_completion_tokens) are dropped only if the
+        adapter's signature does not accept them. The model override is mandatory: an adapter
+        that cannot take one is a configuration error, never a silent run on its own model.
+        A TypeError raised inside the adapter is never retried (it could duplicate a paid call).
+        """
         adapter = self._get_adapter()
         messages = [
             {"role": "system", "content": ARGUS_SYSTEM_PROMPT},
@@ -1808,19 +2037,26 @@ class RecoveryController:
             kwargs["model"] = model
         if cwd:
             kwargs["cwd"] = cwd
+
         try:
-            resp = adapter.chat_completion(**kwargs)
-        except TypeError:
-            kwargs.pop("effort", None)
-            kwargs.pop("cwd", None)
-            try:
-                resp = adapter.chat_completion(**kwargs)
-            except TypeError:
-                kwargs.pop("model", None)
-                resp = adapter.chat_completion(**kwargs)
+            params = inspect.signature(adapter.chat_completion).parameters
+        except (TypeError, ValueError):
+            params = None
+        if params is not None and not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            if model and "model" not in params:
+                raise ProviderConfigurationError(
+                    f"Provider adapter {type(adapter).__name__} does not accept a model override, "
+                    f"so the configured model '{model}' cannot be honoured. No request was made."
+                )
+            kwargs = {k: v for k, v in kwargs.items() if k in params}
+
+        resp = adapter.chat_completion(**kwargs)
         cached_tokens = getattr(resp, "cache_read_tokens", 0) or 0
         tx_payload = getattr(resp, "transmitted_payload", {}) or {}
-        return resp.content, resp.prompt_tokens, resp.completion_tokens, cached_tokens, tx_payload
+        return (
+            resp.content, resp.prompt_tokens, resp.completion_tokens, cached_tokens, tx_payload,
+            getattr(resp, "finish_reason", None), getattr(resp, "model", None),
+        )
 
     def _build_prompt(
         self,
@@ -1836,9 +2072,9 @@ class RecoveryController:
         """Construct the prompt with code context and execution feedback."""
         # Centralized secret scrubbing: ensure credentials in error traces, problem statements,
         # or code context never reach model prompts.
-        safe_error_feedback = scrub_secrets(error_feedback or "")
-        safe_original_failure = scrub_secrets(original_failure or "")
-        safe_problem_statement = scrub_secrets(problem_statement) if problem_statement else None
+        safe_error_feedback = scrub_prompt(error_feedback or "")
+        safe_original_failure = scrub_prompt(original_failure or "")
+        safe_problem_statement = scrub_prompt(problem_statement) if problem_statement else None
 
         total_lines = len(code.splitlines())
         annotated_code, start_line, end_line, target_line = extract_context_frame(
@@ -1922,7 +2158,7 @@ Test Command: `{test_command}`
 4. Do NOT include line numbers or pipe symbols (' | ') in the SEARCH or REPLACE blocks. Output pure code.
 5. Ensure your replacement contains 100% valid Python syntax.
 """
-        return scrub_secrets(full_prompt)
+        return scrub_prompt(full_prompt)
 
     execute_recovery = run
 

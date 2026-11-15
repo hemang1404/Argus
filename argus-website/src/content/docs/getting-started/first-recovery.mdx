@@ -41,9 +41,10 @@ argus run \
 
 What happens next:
 
-1. **Workspace creation.** Argus copies the project into a temporary directory,
-   excluding `.git`, virtual environments, `node_modules`, caches, build output,
-   and `.argus/`. Heavy data directories are excluded by name.
+1. **Workspace creation.** Argus copies the project into a temporary directory:
+   tracked files plus untracked files that are not ignored, with your current
+   edits. `.git`, `.argus/`, caches, and root-level virtual environments and
+   `node_modules` are excluded.
 2. **Reproduction.** It tokenizes the test command and executes it directly with
    `shell=False`. The test fails; the exit code becomes the recovery trigger.
 3. **Localization.** With `--file` supplied, the target is already known.
@@ -54,11 +55,12 @@ What happens next:
 5. **Reconciliation.** The engine tries the tiers in order. Suppose the model
    emitted the correct replacement but indented it with four spaces inside a
    function body that uses eight: Tier 1 fails, Tier 2 normalizes indentation,
-   and the patch is accepted. The result must parse as Python.
+   and the patch is accepted. The result must parse as Python (a syntactic check
+   only).
 6. **Verification.** The patch is applied inside the workspace and the test
    command runs again. This time it passes.
 7. **Artifact.** Argus records the baseline hash, candidate hash, diff, test
-   command, attempt count, cost, and duration.
+   command, attempt count, cost, and duration, and signs the metadata.
 
 The CLI prints the candidate ID and a diff. The source file on disk — the one in
 your project — is still the original.
@@ -104,7 +106,8 @@ feature: a verified candidate is only valid against the file it was verified
 against.
 
 The write itself is atomic and preserves the existing file permissions where
-possible. A successful apply prints `[APPLIED]` and the target path.
+possible. A successful apply prints `[APPLIED]` and the target path. Applying the same
+run again reports that it was already applied.
 
 ## What you have now
 
@@ -119,8 +122,8 @@ baseline hash in the artifact identifies what was replaced, and the pre-change
 content is recoverable from Git if the file was tracked.
 
 <Aside type="note" title="Nothing was committed">
-Argus writes files. It does not create commits, branches, or pushes. The Git
-worktree remains yours to manage.
+Argus writes files. It does not create commits, branches, or pushes. Your Git
+repository remains yours to manage.
 </Aside>
 
 ## When there is no candidate

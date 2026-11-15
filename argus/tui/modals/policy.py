@@ -123,7 +123,7 @@ class PolicyModal(ModalScreen[Optional[dict[str, Any]]]):
 
                 with Vertical(classes="policy-field"):
                     yield Static("SANDBOX", classes="field-label")
-                    yield Static("git worktree", classes="policy-static-value")
+                    yield Static("temp copy", classes="policy-static-value")
 
             yield Static("", id="config-error")
 

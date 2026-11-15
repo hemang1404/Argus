@@ -26,7 +26,7 @@ cockpit, an agent, or a Python script.
       Manager                  (tiers 1–5)  adapter
             │          │           │           │
             │          │           ▼           ▼
-            │          │        AST check   model endpoint
+            │          │     syntactic gate  your model endpoint
             │          │           │
             └──────────┴───────────┴──► candidate artifact
                                             │
@@ -40,25 +40,28 @@ cockpit, an agent, or a Python script.
 | Module | Responsibility |
 | --- | --- |
 | `argus/runtime/controller.py` | Recovery loop, localization integration, attempts, outcome |
-| `argus/runtime/workspace.py` | Ephemeral copy and worktree lifecycle, cleanup |
+| `argus/runtime/workspace.py` | Temporary copy lifecycle, snapshot rules, cleanup |
 | `argus/runtime/runner.py` | Bounded subprocess execution and output capture |
-| `argus/runtime/candidate.py` | Artifact persistence, approval, authoritative apply |
-| `argus/runtime/budget.py` | Spend accounting and reservations |
+| `argus/runtime/candidate.py` | Signed artifact persistence, approval, authoritative apply |
+| `argus/runtime/budget.py` | Spend accounting, reservations, fail-closed pricing |
 | `argus/runtime/container.py` | Optional Docker/Podman evaluation harness |
 | `argus/runtime/events.py` | JSON Lines progress events |
-| `argus/patch/fuzzy_engine.py` | Reconciliation tiers and AST gate integration |
+| `argus/patch/fuzzy_engine.py` | Reconciliation tiers and syntactic gate integration |
+| `argus/patch/textio.py` | Strict decode/encode, BOM, line-ending restoration |
 | `argus/patch/parser.py` | Search/replace and unified-diff parsing |
-| `argus/patch/ast_checker.py` | Full-file Python syntax validation |
+| `argus/patch/ast_checker.py` | Full-file Python syntactic gate (`ast.parse` + `compile`) |
 | `argus/patch/paths.py` | Target path validation |
 | `argus/providers/adapter.py` | OpenAI-compatible HTTP adapter |
 | `argus/providers/antigravity.py` | Host CLI adapter |
 | `argus/providers/models.py` | Provider presets and configuration types |
 | `argus/providers/storage.py` | Provider records and keyring-backed secrets |
-| `argus/routing/difficulty.py` | Adaptive reasoning-effort classification |
+| `argus/config.py` | `ArgusConfig`, model ladder resolution, price table, project policy |
+| `argus/routing/difficulty.py` | Reasoning-effort classification (not a model router) |
 | `argus/localization/` | Traceback-to-target localization |
 | `argus/mcp/server.py` | FastMCP stdio surface |
 | `argus/tui/` | Textual screens, widgets, and renderers |
 | `argus/gateway/` | Experimental inference proxy |
+| `argus/api/`, `argus/ui/` | Experimental desktop HTTP/SSE API and web app; no CLI command starts them |
 
 ## Request flow
 
@@ -90,7 +93,9 @@ presentation and in the operations they expose:
 | Configure provider | yes | palette | no | via config |
 
 The absence of approval over MCP is an architectural boundary, not an unfinished
-handler.
+handler. Approval records are HMAC-signed, so an agent that can only write files in
+the workspace cannot forge one. Code that runs as your user, including the test
+command, can read the key; see the security model.
 
 ## Data ownership
 
@@ -106,14 +111,18 @@ are scrubbed before persistence.
 
 ## Invariants enforced in code
 
-1. The CLI clamps attempts to three.
-2. Test commands execute with `shell=False` after tokenization.
+1. Attempts are bounded (default 3) and the budget must be finite and positive.
+2. Test commands execute with `shell=False` after tokenization. This is host
+   execution with your permissions, not a sandbox.
 3. Output collection is bounded in memory.
 4. Process trees are terminated on timeout.
-5. Every accepted patch passes a full-file AST parse.
+5. Every accepted patch passes a full-file syntactic gate (`ast.parse` + `compile`).
 6. A candidate is written only after a passing verification.
-7. Application re-checks approval, hashes, syntax, and path containment.
+7. Application re-checks the signature, approval, hashes, syntax, and path
+   containment.
 8. A requested container path fails closed rather than falling back to host.
+9. Only the configured provider is called; a named model is never replaced; an
+   unpriced model is refused.
 
 ## Deferred architecture
 
@@ -124,6 +133,6 @@ The roadmap extends the same design rather than replacing it:
 - microVM isolation for untrusted execution;
 - static-analysis diagnostics during candidate validation.
 
-None of these are available in `0.2.0b1`; see
+None of these are available in the current release; see
 [Research and benchmarks](/project/research/) for the boundary between current
 capability and planned work.

@@ -93,7 +93,7 @@ class ExecutionTimelineScreen(Screen[None]):
                 yield Button("Review Diff", variant="primary", id="btn-review-diff", disabled=True)
                 yield Button("Return", variant="default", id="btn-return-menu", disabled=True)
 
-        yield StatusBar(workspace=self.workspace, version="v0.2.0")
+        yield StatusBar(workspace=self.workspace)
 
     def on_mount(self) -> None:
         """Start execution worker on mount."""
@@ -259,7 +259,9 @@ class ExecutionTimelineScreen(Screen[None]):
         self.cumulative_cost += record.cost_usd
         self.current_phase = "[3/3] Executing verification test suite..."
         status_text = "[bold green]PASS[/bold green]" if record.test_passed else "[bold red]FAIL[/bold red]"
-        tier_info = f"Tier {record.tier_used}" if record.tier_used else "No Patch"
+        tier_info = f"Patch tier {record.tier_used}" if record.tier_used else "No Patch"
+        if record.model_tier:
+            tier_info += f" | [dim]Model tier:[/dim] {record.model_tier}"
         msg = (
             f"  [dim]Result:[/dim] {status_text} | "
             f"[dim]Reconciliation:[/dim] {tier_info} | "
@@ -296,6 +298,12 @@ class ExecutionTimelineScreen(Screen[None]):
 
         self.current_phase = "Recovery loop completed"
         has_patch = bool(outcome.unified_diff and outcome.patched_content)
+
+        for note in outcome.config_notes:
+            self._append_event(f"[yellow]policy:[/yellow] [dim]{note}[/dim]")
+        for reason in outcome.routing_reasons:
+            if reason.startswith("model_ladder="):
+                self._append_event(f"[dim]models: {reason}[/dim]")
 
         metrics = self.query_one("#exec-header-metrics", Static)
         if outcome.status == "SUCCESS":

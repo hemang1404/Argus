@@ -11,6 +11,7 @@ import httpx
 
 from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
 from argus.providers.storage import scrub_secrets
+from argus.utils.redaction import scrub_prompt
 
 
 class ProviderError(Exception):
@@ -42,6 +43,11 @@ class CompletionResponse:
     thinking_tokens: int = 0
     net_prompt_tokens: Optional[int] = None
     transmitted_payload: Dict[str, Any] = field(default_factory=dict)
+    # Provider-reported stop reason ("stop", "length", ...); None when the adapter cannot report it.
+    finish_reason: Optional[str] = None
+    # True when prompt/completion token counts were estimated locally (e.g. len/4)
+    # because the provider did not report usage. Consumers must label such counts honestly.
+    usage_estimated: bool = False
 
 
 @dataclass
@@ -161,7 +167,7 @@ class OpenAICompatibleAdapter(ProviderAdapter):
 
         # Scrub all outgoing message contents to prevent accidental secret leakage
         safe_messages = [
-            {"role": m.get("role", "user"), "content": scrub_secrets(m.get("content", ""))}
+            {"role": m.get("role", "user"), "content": scrub_prompt(m.get("content", ""), [self.config.api_key] if self.config.api_key else None)}
             for m in messages
         ]
 
@@ -184,11 +190,9 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         try:
             resp = client.post(url, headers=headers, json=payload)
         except httpx.TimeoutException as ex:
-            dur = (time.perf_counter() - start_time) * 1000
             err_msg = self._scrub(f"Request to {self.config.name} timed out after {self.config.timeout_seconds}s: {ex}")
             raise ProviderError(err_msg, status_code=504) from None
         except httpx.RequestError as ex:
-            dur = (time.perf_counter() - start_time) * 1000
             err_msg = self._scrub(f"Network error connecting to {self.config.name} ({url}): {ex}")
             raise ProviderError(err_msg) from None
 
@@ -253,10 +257,11 @@ class OpenAICompatibleAdapter(ProviderAdapter):
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             duration_ms=duration_ms,
-            model=data.get("model", self.config.model),
+            model=data.get("model") or active_model,
             raw_response=data,
             cache_read_tokens=cache_read_tokens,
             transmitted_payload=logged_payload,
+            finish_reason=choice.get("finish_reason"),
         )
 
     def test_connection(self) -> ConnectionTestResult:

@@ -138,7 +138,7 @@
       resultsEl.innerHTML = `
         <div class="search-empty">
           <strong>No results for “${escapeHtml(query)}”</strong>
-          Try a shorter phrase, a command such as <code>argus recover</code>, or a concept such as “fuzzy matching”.
+          Try a shorter phrase, a command such as <code>argus recover</code>, or a concept such as “token-equal matching”.
         </div>`;
       if (statusEl) statusEl.textContent = 'No results';
       activeIndex = -1;

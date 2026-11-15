@@ -20,17 +20,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 from unittest.mock import patch
-import pytest
 from click.testing import CliRunner
 
 from argus.cli import main
 from argus.runtime.candidate import (
     AuthoritativePatchApplier,
     CandidateArtifactStore,
-    CandidateMetadata,
 )
 
 
@@ -483,7 +480,8 @@ def test_cli_apply_command_integration(tmp_path: Path):
     assert "APPLIED" in res.output
     assert target_file.read_text(encoding="utf-8") == "print('after')\n"
 
-    # 4. Failure case: applying again should fail with STALE_TARGET_CONFLICT because content changed to 'after'
-    res_stale = runner.invoke(main, ["apply", "--run-id", run_id, "--workspace", str(tmp_path)])
-    assert res_stale.exit_code == 1
-    assert "STALE_TARGET_CONFLICT" in res_stale.output
+    # 4. Applying again reports "already applied" (idempotent) instead of a misleading stale-target conflict
+    res_again = runner.invoke(main, ["apply", "--run-id", run_id, "--workspace", str(tmp_path)])
+    assert res_again.exit_code == 0
+    assert "already applied" in res_again.output
+    assert target_file.read_text(encoding="utf-8") == "print('after')\n"

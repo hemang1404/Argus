@@ -4,6 +4,7 @@ import '@fontsource-variable/geist-mono/index.css';
 import Wordmark from '../components/Wordmark.astro';
 import Mark from '../components/Mark.astro';
 
+import { version } from '../data/nav.mjs';
 const repoUrl = 'https://github.com/hemang1404/Argus';
 ---
 
@@ -225,7 +226,7 @@ const repoUrl = 'https://github.com/hemang1404/Argus';
                   </div>
                   <div class="command-sub">
                     <span class="command-context"
-                      >Recover <i>·</i> <strong>argus/auto</strong> <i>·</i> $0.03 cap</span
+                      >Recover <i>·</i> <strong>auto ladder</strong> <i>·</i> $0.03 cap</span
                     >
                     <span class="command-keys"
                       ><kbd>tab</kbd> policy <kbd>ctrl+p</kbd> commands</span
@@ -580,7 +581,7 @@ const repoUrl = 'https://github.com/hemang1404/Argus';
                   </label>
                   <div class="field-box is-readout">
                     <span class="micro-label">Sandbox</span>
-                    <span class="readout-value">git worktree</span>
+                    <span class="readout-value">temporary copy</span>
                     <span class="readout-note">isolated from the working tree</span>
                   </div>
                 </div>
@@ -791,7 +792,7 @@ const repoUrl = 'https://github.com/hemang1404/Argus';
                   </div>
 
                   <p class="empty-note">
-                    Argus will reproduce the failure in an isolated git worktree,
+                    Argus will reproduce the failure in a temporary copy of the project,
                     synthesize a patch, and stage the candidate diff here for verification
                     and approval.
                   </p>
@@ -829,7 +830,7 @@ const repoUrl = 'https://github.com/hemang1404/Argus';
                     <p class="kicker">New run</p>
                     <h2 class="modal-title">Recovery runtime</h2>
                     <p class="modal-sub">
-                      Non-destructive patch synthesis in an isolated git worktree.
+                      Non-destructive patch synthesis in a temporary project copy.
                     </p>
                   </div>
                   <span class="esc-hint">esc back</span>
@@ -876,7 +877,7 @@ const repoUrl = 'https://github.com/hemang1404/Argus';
                 <div class="runtime-bar">
                   <div>
                     <span class="micro-label">Tier</span>
-                    <strong>argus/auto</strong>
+                    <strong>auto ladder</strong>
                   </div>
                   <div>
                     <span class="micro-label">Model</span>
@@ -894,7 +895,7 @@ const repoUrl = 'https://github.com/hemang1404/Argus';
 
                 <p class="guardrail">
                   <span class="guardrail-dot"></span>
-                  Isolated worktree · no writes before approval · verified candidate only
+                  Temporary copy · no writes before approval · tests-pass candidate only
                 </p>
 
                 <footer class="modal-foot">
@@ -913,7 +914,7 @@ const repoUrl = 'https://github.com/hemang1404/Argus';
 
             <div class="statusbar">
               <span>argus-runtime</span>
-              <span class="statusbar-version">✦ v0.2.0</span>
+              <span class="statusbar-version">✦ v{version}</span>
             </div>
           </div>
 

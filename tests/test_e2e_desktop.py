@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import tempfile
 from pathlib import Path
@@ -16,7 +17,8 @@ from argus.runtime.controller import AttemptRecord, RecoveryOutcome
 
 def test_end_to_end_desktop_workflow():
     """Verify complete end-to-end flow: dispatch task -> stream SSE -> review diff -> apply patch -> check history."""
-    with tempfile.TemporaryDirectory() as tmp_root:
+    # One TestClient context = one event loop: the background recovery worker must outlive the POST request.
+    with tempfile.TemporaryDirectory() as tmp_root, contextlib.ExitStack() as stack:
         root = Path(tmp_root).resolve()
         target_file = root / "src" / "service.py"
         target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -25,7 +27,7 @@ def test_end_to_end_desktop_workflow():
 
         test_token = "e2e-master-token-999"
         app = create_app(workspace=str(root), token=test_token)
-        client = TestClient(app)
+        client = stack.enter_context(TestClient(app))
 
         # 1. Healthcheck probe (readiness check)
         health_resp = client.get("/api/v1/health")
@@ -36,7 +38,7 @@ def test_end_to_end_desktop_workflow():
         patched_code = "def get_status(): return 'online'\n"
         expected_diff = "--- a/src/service.py\n+++ b/src/service.py\n@@ -1 +1 @@\n-def get_status(): return 'offline'\n+def get_status(): return 'online'\n"
 
-        def mock_controller_run(target_file, test_command, test_file=None, on_attempt_start=None, on_attempt_end=None):
+        def mock_controller_run(target_file, test_command, test_file=None, workspace_root=None, on_attempt_start=None, on_attempt_end=None):
             if on_attempt_start:
                 on_attempt_start(1, 4)
             record = AttemptRecord(

@@ -20,24 +20,17 @@ import hashlib
 import io
 import subprocess
 import tarfile
-import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from unittest.mock import MagicMock, patch
+from typing import Any, Dict, List, Optional, Tuple
+from unittest.mock import patch
 
-import pytest
 
 from argus.config import ArgusConfig
 from argus.runtime.container import (
-    BaseCommitMismatchError,
-    CandidateIntegrityError,
     ContainerConfig,
     ContainerEvaluator,
-    ContainerExecutionResult,
-    ContainerSecurityRefusal,
-    build_candidate_tar_stream,
 )
-from argus.runtime.controller import RecoveryController, RecoveryOutcome
+from argus.runtime.controller import RecoveryController
 
 
 class MockContainerEnvironment:
@@ -159,7 +152,7 @@ def test_exact_intended_candidate_reaches_container_and_hash_verified():
     evaluator = ContainerEvaluator(config=config, raw_executor=mock_env.executor)
 
     candidate = "def solve():\n    return 42\n"
-    expected_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+    hashlib.sha256(candidate.encode("utf-8")).hexdigest()
 
     res = evaluator.evaluate(
         candidate_content=candidate,

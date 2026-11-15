@@ -8,16 +8,15 @@ pytest.importorskip("PIL", reason="Pillow is required for terminal graphics; ins
 
 from PIL import Image
 
-pytestmark = pytest.mark.graphics
-
 from argus.utils.terminal_graphics import (
-    detect_graphics_protocol,
     encode_iterm2,
     encode_kitty,
     encode_sixel,
     get_default_banner_path,
     render_image_escape,
 )
+
+pytestmark = pytest.mark.graphics
 
 
 def test_encode_kitty():

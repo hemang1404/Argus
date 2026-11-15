@@ -14,8 +14,9 @@ A candidate can be applied only when:
 2. it is approved (`approved == true`), unless `--force` is used;
 3. the target file still matches the recorded baseline hash;
 4. the stored candidate content still matches its recorded hash;
-5. the patched content parses as Python;
-6. the target path resolves inside the workspace and is a regular file.
+5. the run ID is well formed and the metadata signature is valid;
+6. the patched content parses as Python;
+7. the target path resolves inside the workspace and is a regular file.
 
 ## Apply
 
@@ -50,7 +51,7 @@ For reviewed non-interactive automation inside `argus run`, use
 
 ## What happens during the write
 
-1. Metadata is loaded and validated.
+1. Metadata is loaded and its signature validated.
 2. The candidate content and patched file are hashed.
 3. The live target is read and compared with `baseline_hash`.
 4. A temporary sibling file is created with the candidate content.
@@ -79,7 +80,9 @@ cryptographic candidate artifacts are meant to prevent.
 ## After applying
 
 - The source file contains the candidate content.
-- The candidate is marked applied; applying it again is refused.
+- The candidate is marked applied; applying it again prints "already
+  applied" and changes nothing (library callers get `STALE_TARGET_CONFLICT` with an
+  "already applied" message).
 - `.argus/runs/<run_id>/` retains the diff and metadata.
 - No commit is created.
 
@@ -95,13 +98,17 @@ of responsibility.
 
 ## Applying in the TUI
 
-The diff review screen applies on `a` or `Enter` after recording approval. There
-is no separate "apply without approval" action in the interface.
+The diff review screen records approval and applies only after two deliberate
+steps (`a` to arm, `y` to confirm); `Enter` and a stray key press on arrival do not
+apply anything. There is no
+separate "apply without approval" action in the interface.
 
 ## Failure codes
 
 | Code | Meaning |
 | --- | --- |
+| `INVALID_RUN_ID` | The run ID is malformed (for example contains `..`) |
+| `CANDIDATE_SIGNATURE_INVALID` | Metadata is unsigned or was edited; re-run recovery |
 | `CANDIDATE_NOT_VERIFIED` | The candidate never passed its test |
 | `CANDIDATE_NOT_APPROVED` | Approval is missing |
 | `CANDIDATE_CONTENT_MISSING` | The stored patched content is absent |
@@ -114,6 +121,8 @@ is no separate "apply without approval" action in the interface.
 | `STALE_TARGET_CONFLICT` | The live file no longer matches baseline |
 | `CONCURRENT_MODIFICATION_DETECTED` | The file changed during apply |
 | `PERMISSION_PRESERVATION_FAILED` | File mode could not be preserved |
+| `UNSUPPORTED_ENCODING` | The target is not valid UTF-8 / its declared encoding |
+| `APPLY_IN_PROGRESS` | Another process is applying this run |
 | `READ_ERROR` / `APPLY_IO_ERROR` | Filesystem failure |
 
 The full error reference is in [Error codes](/reference/error-codes/).

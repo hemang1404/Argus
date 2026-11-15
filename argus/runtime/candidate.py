@@ -12,18 +12,20 @@ Implements Stage A Architectural Requirements:
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
-import shutil
+import re
+import secrets
 import stat
-import tempfile
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from argus.patch.ast_checker import ASTChecker
+from argus.patch.ast_checker import ASTChecker, is_python_filename
+from argus.patch.textio import UnsupportedEncodingError, decode_source, encode_source
 from argus.utils.redaction import scrub_object, scrub_secrets
 
 
@@ -83,6 +85,148 @@ class ConcurrentModificationError(CandidateApplicationError):
 class SyntaxValidationError(CandidateApplicationError):
     def __init__(self, message: str = "Candidate code contains Python syntax errors.") -> None:
         super().__init__("SYNTAX_VALIDATION_FAILED", message)
+
+
+class InvalidRunIdError(CandidateApplicationError):
+    def __init__(self, message: str = "Run identifier is not valid.") -> None:
+        super().__init__("INVALID_RUN_ID", message)
+
+
+class CandidateSignatureError(CandidateApplicationError):
+    def __init__(
+        self,
+        message: str = (
+            "Run metadata is missing or has an invalid signature. Argus only trusts run "
+            "artifacts it wrote itself on this machine; re-run recovery to create a new candidate."
+        ),
+    ) -> None:
+        super().__init__("CANDIDATE_SIGNATURE_INVALID", message)
+
+
+# Run ids are generated as ``run_<utc timestamp>_<hex>``; accept a conservative
+# superset (no separators, no leading dot, bounded length) so a user-supplied or
+# workspace-supplied id can never address a path outside ``.argus/runs``.
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+
+SIGNING_KEY_FILENAME = "artifact_signing.key"
+SIGNATURE_FILENAME = "metadata.sig"
+
+
+def validate_run_id(run_id: str) -> str:
+    """Return ``run_id`` if it is a safe identifier, else raise InvalidRunIdError."""
+    if not isinstance(run_id, str) or not _RUN_ID_RE.fullmatch(run_id):
+        raise InvalidRunIdError(
+            "Invalid run id: use the id printed by Argus (letters, digits, '_' and '-' only)."
+        )
+    return run_id
+
+
+def _read_key_file(key_path: Path) -> Optional[bytes]:
+    """The key stored at ``key_path`` if it is exactly 32 bytes of hex, else None.
+
+    An empty or short file must never be accepted: an HMAC under an empty key is
+    computable by anyone.
+    """
+    try:
+        raw = key_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if len(raw) != 64:
+        return None
+    try:
+        return bytes.fromhex(raw)
+    except ValueError:
+        return None
+
+
+def _load_signing_key(workspace_root: Optional[Path] = None) -> bytes:
+    """Load (or create) the per-user HMAC key used to authenticate run metadata.
+
+    The key lives in the user's Argus config directory (``ARGUS_CONFIG_DIR`` or
+    the platform default), never in the workspace, so a repository, a test, or an
+    agent with only workspace write access cannot forge approval state. The file
+    is created with mode 0600 (POSIX); on Windows it inherits the per-user
+    ``%APPDATA%`` ACL. This authenticates against *workspace-level* forgery, not
+    against another process running as the same OS user.
+    """
+    from argus.providers.storage import get_config_dir
+
+    key_path = get_config_dir() / SIGNING_KEY_FILENAME
+    if workspace_root is not None:
+        try:
+            key_path.resolve().relative_to(Path(workspace_root).resolve())
+        except ValueError:
+            pass
+        else:
+            raise CandidateSignatureError(
+                f"Refusing to use a signing key stored inside the workspace ({key_path})."
+            )
+    existing = _read_key_file(key_path)
+    if existing is not None:
+        return existing
+    # Missing, empty, short or corrupt: (re)generate. The new key is written
+    # completely to a private temp file first and then moved into place, so a
+    # concurrent reader never sees a half-written key.
+    key_hex = secrets.token_hex(32)
+    tmp_path = key_path.with_name(f".{SIGNING_KEY_FILENAME}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    try:
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(key_hex)
+        if key_path.exists():
+            os.replace(tmp_path, key_path)  # replaces an invalid (empty/short/corrupt) key file
+        else:
+            try:
+                os.link(tmp_path, key_path)  # atomic create; fails if another process won
+            except FileExistsError:
+                pass
+            except OSError:
+                os.replace(tmp_path, key_path)  # filesystem without hard links
+    except OSError as ex:
+        raise CandidateSignatureError(f"Cannot create the run-signing key at {key_path}: {ex}")
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+    stored = _read_key_file(key_path)
+    if stored is None:
+        raise CandidateSignatureError(f"Signing key at {key_path} is unreadable or corrupt.")
+    return stored
+
+
+def _sign_metadata(data: Dict[str, Any], workspace_root: Optional[Path] = None) -> str:
+    payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return hmac.new(_load_signing_key(workspace_root), payload, hashlib.sha256).hexdigest()
+
+
+def _write_signed_metadata(run_dir: Path, data: Dict[str, Any], workspace_root: Optional[Path] = None) -> None:
+    signature = _sign_metadata(data, workspace_root)
+    (run_dir / "metadata.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    (run_dir / SIGNATURE_FILENAME).write_text(signature, encoding="utf-8")
+
+
+def _read_verified_metadata(run_dir: Path, workspace_root: Optional[Path] = None) -> Dict[str, Any]:
+    meta_path = run_dir / "metadata.json"
+    sig_path = run_dir / SIGNATURE_FILENAME
+    if not meta_path.is_file():
+        raise CandidateNotFoundError(f"Run metadata not found at {meta_path}")
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as ex:
+        raise CandidateNotFoundError(f"Corrupted run metadata at {meta_path}: {ex}")
+    if not isinstance(data, dict):
+        raise CandidateNotFoundError(f"Corrupted run metadata at {meta_path}: not an object")
+    try:
+        supplied = sig_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        raise CandidateSignatureError()
+    if not hmac.compare_digest(supplied, _sign_metadata(data, workspace_root)):
+        raise CandidateSignatureError()
+    if data.get("run_id") != run_dir.name:
+        raise CandidateSignatureError("Run metadata does not belong to this run directory.")
+    return data
 
 
 @dataclass
@@ -183,6 +327,7 @@ class CandidateArtifactStore:
         context_window: Optional[Dict[str, Any]] = None,
     ) -> Path:
         """Persist candidate patch, forensic logs, and metadata into an isolated per-run folder."""
+        validate_run_id(run_id)
         root = (workspace_root or Path.cwd()).resolve()
         run_dir = cls.get_runs_dir(root) / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -207,25 +352,26 @@ class CandidateArtifactStore:
             created_at=now_iso,
         )
 
-        # 1. Write metadata.json
-        meta_path = run_dir / "metadata.json"
-        meta_path.write_text(json.dumps(metadata.to_dict(), indent=2), encoding="utf-8")
+        # 1. Write metadata.json plus its HMAC signature (key lives outside the workspace)
+        _write_signed_metadata(run_dir, metadata.to_dict(), root)
 
         # 2. Write candidate.patched (if present)
         if patched_content is not None:
-            (run_dir / "candidate.patched").write_text(patched_content, encoding="utf-8")
+            # Bytes, not write_text: no newline translation, so CRLF/LF content is
+            # stored exactly and hashes the same on every platform.
+            (run_dir / "candidate.patched").write_bytes(patched_content.encode("utf-8"))
 
         # 3. Write patch.diff (if present)
         if unified_diff:
-            (run_dir / "patch.diff").write_text(unified_diff, encoding="utf-8")
+            (run_dir / "patch.diff").write_bytes(unified_diff.encode("utf-8"))  # no newline translation
 
         # 4. Write forensic artifacts (scrubbed to prevent credential retention on disk)
         if prompt_text:
-            (run_dir / "prompt.txt").write_text(scrub_secrets(prompt_text), encoding="utf-8")
+            (run_dir / "prompt.txt").write_bytes(scrub_secrets(prompt_text).encode("utf-8"))
         if raw_response:
-            (run_dir / "raw_response.txt").write_text(scrub_secrets(raw_response), encoding="utf-8")
+            (run_dir / "raw_response.txt").write_bytes(scrub_secrets(raw_response).encode("utf-8"))
         if parsed_patch and not unified_diff:
-            (run_dir / "unapplied_patch.txt").write_text(scrub_secrets(parsed_patch), encoding="utf-8")
+            (run_dir / "unapplied_patch.txt").write_bytes(scrub_secrets(parsed_patch).encode("utf-8"))
         if context_window:
             safe_context = scrub_object(context_window)
             (run_dir / "context_window.json").write_text(json.dumps(safe_context, indent=2), encoding="utf-8")
@@ -233,22 +379,31 @@ class CandidateArtifactStore:
         # 5. Update pointer to most recent run
         last_run_file = root / cls.DEFAULT_DIR / "last_run_id"
         last_run_file.parent.mkdir(parents=True, exist_ok=True)
+        # Keep run artifacts (prompts, responses, diffs) out of `git status`.
+        gitignore = last_run_file.parent / ".gitignore"
+        if not gitignore.exists():
+            gitignore.write_text("*\n", encoding="utf-8")
         last_run_file.write_text(run_id, encoding="utf-8")
 
         return run_dir
 
     @classmethod
     def resolve_run_dir(cls, run_id: str, workspace_root: Optional[Path] = None) -> Path:
-        """Resolve run directory with support for exact name or unique prefix/suffix match."""
+        """Resolve a run directory by exact id or unique substring match.
+
+        The id is validated against a strict pattern and only direct, non-symlink
+        children of ``.argus/runs`` are returned, so ``../`` ids cannot escape.
+        """
+        validate_run_id(run_id)
         root = (workspace_root or Path.cwd()).resolve()
         runs_dir = cls.get_runs_dir(root)
         direct = runs_dir / run_id
-        if direct.is_dir():
+        if direct.is_dir() and not direct.is_symlink():
             return direct
         if runs_dir.is_dir():
             matches = [
                 d for d in runs_dir.iterdir()
-                if d.is_dir() and (d.name.startswith(run_id) or d.name.endswith(run_id) or run_id in d.name)
+                if d.is_dir() and not d.is_symlink() and run_id in d.name
             ]
             if len(matches) == 1:
                 return matches[0]
@@ -264,21 +419,20 @@ class CandidateArtifactStore:
     ) -> Tuple[CandidateMetadata, Optional[str]]:
         """Load metadata and candidate patched content for a specific run ID."""
         run_dir = cls.resolve_run_dir(run_id, workspace_root)
-
-        meta_path = run_dir / "metadata.json"
-        if not meta_path.is_file():
-            raise CandidateNotFoundError(f"Run metadata not found at {meta_path}")
-
+        root = (workspace_root or Path.cwd()).resolve()
+        meta_data = _read_verified_metadata(run_dir, root)
         try:
-            meta_data = json.loads(meta_path.read_text(encoding="utf-8"))
             metadata = CandidateMetadata.from_dict(meta_data)
-        except Exception as ex:
-            raise CandidateNotFoundError(f"Corrupted run metadata at {meta_path}: {ex}")
+        except (KeyError, TypeError) as ex:
+            raise CandidateNotFoundError(f"Corrupted run metadata in {run_dir}: {ex}")
 
         patched_content: Optional[str] = None
         candidate_file = run_dir / "candidate.patched"
         if candidate_file.is_file():
-            patched_content = candidate_file.read_text(encoding="utf-8")
+            try:
+                patched_content = candidate_file.read_bytes().decode("utf-8")
+            except UnicodeDecodeError as ex:
+                raise CandidateTamperedError(f"Candidate content is not valid UTF-8: {ex}")
 
         return metadata, patched_content
 
@@ -289,7 +443,8 @@ class CandidateArtifactStore:
         pointer = root / cls.DEFAULT_DIR / "last_run_id"
         if pointer.is_file():
             run_id = pointer.read_text(encoding="utf-8").strip()
-            if run_id:
+            # The pointer is workspace-writable and therefore untrusted input.
+            if run_id and _RUN_ID_RE.fullmatch(run_id):
                 return run_id
         return None
 
@@ -304,12 +459,12 @@ class CandidateArtifactStore:
         results: List[CandidateMetadata] = []
         for run_path in runs_dir.iterdir():
             if run_path.is_dir():
-                meta_file = run_path / "metadata.json"
-                if meta_file.is_file():
+                if (run_path / "metadata.json").is_file():
                     try:
-                        data = json.loads(meta_file.read_text(encoding="utf-8"))
+                        data = _read_verified_metadata(run_path, root)
                         results.append(CandidateMetadata.from_dict(data))
-                    except Exception:
+                    except (CandidateApplicationError, KeyError, TypeError):
+                        # Unsigned, forged or corrupt runs are not trusted and not listed.
                         pass
         # Sort by creation time descending
         results.sort(key=lambda m: m.created_at, reverse=True)
@@ -322,7 +477,8 @@ class CandidateArtifactStore:
             run_dir = cls.resolve_run_dir(run_id, workspace_root)
             diff_file = run_dir / "patch.diff"
             if diff_file.is_file():
-                return diff_file.read_text(encoding="utf-8")
+                with diff_file.open("r", encoding="utf-8", newline="") as fh:  # keep CRLF as stored
+                    return fh.read()
         except CandidateNotFoundError:
             pass
         return ""
@@ -344,11 +500,8 @@ class CandidateArtifactStore:
         must never be recorded as a human reviewer.
         """
         run_dir = cls.resolve_run_dir(run_id, workspace_root)
-        meta_file = run_dir / "metadata.json"
-        if not meta_file.is_file():
-            raise CandidateNotFoundError(f"Run metadata not found for {run_id}")
-
-        data = json.loads(meta_file.read_text(encoding="utf-8"))
+        root = (workspace_root or Path.cwd()).resolve()
+        data = _read_verified_metadata(run_dir, root)
         now_iso = datetime.now(timezone.utc).isoformat() if approved else None
         data["approved"] = approved
         data["approved_at"] = now_iso
@@ -356,15 +509,80 @@ class CandidateArtifactStore:
         data["approval_source"] = approval_source if approved else None
         data["approval_timestamp"] = now_iso
 
-        meta_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _write_signed_metadata(run_dir, data, root)
         return CandidateMetadata.from_dict(data)
 
 
 class AuthoritativePatchApplier:
     """Authoritatively applies verified candidate patches with atomic replace and TOCTOU defense."""
 
+    APPLY_LOCK_NAME = ".apply.lock"
+    APPLY_LOCK_STALE_SECONDS = 120.0
+
     @classmethod
     def apply(
+        cls,
+        run_id: str,
+        workspace_root: Optional[str | Path] = None,
+        expected_target: Optional[str | Path] = None,
+        require_approval: bool = False,
+    ) -> ApplyResult:
+        """Apply a candidate under a per-run lock so a run is reported applied at most once.
+
+        See ``_apply_unlocked`` for the verification steps. A concurrent second
+        applier of the same run gets ``APPLY_IN_PROGRESS`` (or, once the first
+        has finished, the stale/already-applied conflict) instead of a second
+        success report.
+        """
+        root = Path(workspace_root or Path.cwd()).resolve()
+        try:
+            run_dir = CandidateArtifactStore.resolve_run_dir(run_id, root)
+        except CandidateApplicationError:
+            # Let the unlocked path produce the typed error result.
+            return cls._apply_unlocked(run_id, workspace_root, expected_target, require_approval)
+
+        lock_path = run_dir / cls.APPLY_LOCK_NAME
+        fd: Optional[int] = None
+        for _ in range(2):
+            try:
+                fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                try:
+                    age = datetime.now(timezone.utc).timestamp() - lock_path.stat().st_mtime
+                except OSError:
+                    continue
+                if age > cls.APPLY_LOCK_STALE_SECONDS:
+                    try:
+                        lock_path.unlink()
+                    except OSError:
+                        pass
+                    continue
+                break
+            except OSError:
+                break
+        if fd is None:
+            return ApplyResult(
+                success=False,
+                run_id=run_id,
+                target_file=str(expected_target or "unknown"),
+                error_code="APPLY_IN_PROGRESS",
+                message=f"Another apply of run '{run_id}' is in progress (or the apply lock could not be created).",
+            )
+        try:
+            os.write(fd, str(os.getpid()).encode("ascii"))
+            return cls._apply_unlocked(run_id, workspace_root, expected_target, require_approval)
+        finally:
+            try:
+                os.close(fd)
+            finally:
+                try:
+                    lock_path.unlink()
+                except OSError:
+                    pass
+
+    @classmethod
+    def _apply_unlocked(
         cls,
         run_id: str,
         workspace_root: Optional[str | Path] = None,
@@ -516,7 +734,8 @@ class AuthoritativePatchApplier:
             )
 
         # Step 7: Universal AST syntax check
-        if target_path.suffix == ".py":
+        if is_python_filename(target_path.name):
+            # Syntactic gate only (ast.parse + compile); not a semantic check.
             ast_res = ASTChecker.validate_python_code(candidate_content, filename=str(target_path))
             if not ast_res.is_valid:
                 return ApplyResult(
@@ -540,7 +759,35 @@ class AuthoritativePatchApplier:
                 message=f"Failed to read target file {target_path}: {ex}",
             )
 
+        # The bytes that were tested are the bytes that are written: the candidate is
+        # encoded with the target's own encoding and BOM (line endings are already
+        # in the candidate text). Undecodable targets are refused, never rewritten.
+        try:
+            decoded_target = decode_source(target_bytes, name=target_path.name)
+            candidate_bytes = encode_source(
+                candidate_content, decoded_target.encoding, decoded_target.bom, name=target_path.name
+            )
+        except UnsupportedEncodingError as ex:
+            return ApplyResult(
+                success=False,
+                run_id=run_id,
+                target_file=target_file_str,
+                error_code="UNSUPPORTED_ENCODING",
+                message=f"{ex} Original file left untouched.",
+            )
+
         if current_target_hash != metadata.baseline_hash:
+            if target_bytes == candidate_bytes or metadata.applied:
+                return ApplyResult(
+                    success=False,
+                    run_id=run_id,
+                    target_file=target_file_str,
+                    error_code="STALE_TARGET_CONFLICT",
+                    message=(
+                        f"Run '{run_id}' was already applied: '{target_path.name}' already holds "
+                        "the candidate content (nothing to do)."
+                    ),
+                )
             return ApplyResult(
                 success=False,
                 run_id=run_id,
@@ -555,7 +802,7 @@ class AuthoritativePatchApplier:
 
         # Step 9: Atomic replacement via temporary file in same directory
         temp_dir = target_path.parent
-        temp_name = f".argus_tmp_{run_id}_{uuid.uuid4().hex[:8]}"
+        temp_name = f".argus_tmp_{metadata.run_id}_{uuid.uuid4().hex[:8]}"
         temp_path = temp_dir / temp_name
 
         mode_preserved = False
@@ -563,7 +810,7 @@ class AuthoritativePatchApplier:
 
         try:
             with open(temp_path, "wb") as f:
-                f.write(candidate_content.encode("utf-8"))
+                f.write(candidate_bytes)
                 f.flush()
                 os.fsync(f.fileno())
 
@@ -651,9 +898,9 @@ class AuthoritativePatchApplier:
         metadata.applied = True
         metadata.applied_at = applied_at
         try:
-            meta_path = CandidateArtifactStore.get_runs_dir(root) / run_id / "metadata.json"
-            meta_path.write_text(json.dumps(metadata.to_dict(), indent=2), encoding="utf-8")
-        except Exception:
+            run_dir = CandidateArtifactStore.resolve_run_dir(run_id, root)
+            _write_signed_metadata(run_dir, metadata.to_dict(), root)
+        except (OSError, CandidateApplicationError):
             pass  # Non-fatal if metadata update fails after successful code write
 
         ownership_note = ""

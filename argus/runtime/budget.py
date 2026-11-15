@@ -11,7 +11,9 @@ import math
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+
+from argus.config import DEFAULT_BUDGET_USD
 
 if TYPE_CHECKING:
     from argus.config import ModelCost
@@ -28,22 +30,40 @@ ARGUS_SYSTEM_PROMPT = (
 )
 
 
+_TOKENIZER_CACHE: Dict[str, object] = {}
+_TOKENIZER_LOCK = threading.Lock()
+
+
 def get_gpt_oss_tokenizer(model: str = "openai/gpt-oss-20b"):
-    """Retrieve the native tokenizer for GPT-OSS models.
-    
-    GPT-OSS (20B and 120B) uses the o200k_harmony BPE vocabulary.
-    Falls back gracefully to o200k_base or cl100k_base if harmony is unavailable.
+    """Retrieve the native tokenizer for GPT-OSS models, or None when it is unavailable.
+
+    GPT-OSS (20B and 120B) uses the o200k_harmony BPE vocabulary; falls back to o200k_base or
+    cl100k_base. tiktoken downloads a vocabulary on first use, so the outcome (including
+    "unavailable", e.g. offline) is cached per process: a failed download is attempted once, not
+    on every budget estimate. Set ARGUS_OFFLINE=1 (or ARGUS_TOKENIZER=heuristic) to skip tiktoken
+    entirely and use the conservative byte-based estimate. Callers treat ``None`` as "estimate
+    from bytes", which over-reserves rather than under-reserves.
     """
-    try:
-        import tiktoken
-        for name in ("o200k_harmony", "o200k_base", "cl100k_base"):
-            try:
-                return tiktoken.get_encoding(name)
-            except Exception:
-                continue
-    except Exception:
-        pass
-    return None
+    if os.getenv("ARGUS_OFFLINE", "").strip().lower() in ("1", "true", "yes") or (
+        os.getenv("ARGUS_TOKENIZER", "").strip().lower() == "heuristic"
+    ):
+        return None
+    with _TOKENIZER_LOCK:
+        if "encoding" in _TOKENIZER_CACHE:
+            return _TOKENIZER_CACHE["encoding"]
+        encoding = None
+        try:
+            import tiktoken
+            for name in ("o200k_harmony", "o200k_base", "cl100k_base"):
+                try:
+                    encoding = tiktoken.get_encoding(name)
+                    break
+                except Exception:
+                    continue
+        except ImportError:
+            encoding = None
+        _TOKENIZER_CACHE["encoding"] = encoding
+        return encoding
 
 
 def count_prompt_tokens(
@@ -150,8 +170,17 @@ def is_conclusive_provider_refusal(err: Exception) -> bool:
     return False
 
 
+def _require_finite_non_negative(name: str, value: float) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be a finite number >= 0, got {value!r}.")
+
+
 class GlobalExperimentBudget:
-    """Thread-safe global experiment budget ceiling.
+    """Thread-safe global ceiling for RESEARCH runs only.
+
+    The product controller does not use this: product runs are bounded by their
+    per-task budget alone. Research harnesses create one explicitly and pass it to
+    ``RecoveryController.run(global_budget=...)``.
 
     EXECUTION MODEL CONSTRAINT:
     Argus experiments are strictly constrained to a single-process execution model.
@@ -164,6 +193,8 @@ class GlobalExperimentBudget:
     _lock = threading.Lock()
 
     def __init__(self, global_cap_usd: float = 5.0, initial_settled_usd: float = 0.0) -> None:
+        _require_finite_non_negative("global_cap_usd", global_cap_usd)
+        _require_finite_non_negative("initial_settled_usd", initial_settled_usd)
         self.global_cap_usd = float(global_cap_usd)
         self.global_settled: float = float(initial_settled_usd)
         self.global_quarantined: float = 0.0
@@ -216,7 +247,9 @@ class GlobalExperimentBudget:
     def reserve(self, amount: float) -> bool:
         """Atomically reserve funds against the global ceiling."""
         self.check_process_affinity()
-        if amount <= 0.0:
+        if not math.isfinite(amount) or amount < 0.0:
+            return False  # fail closed: a NaN/negative reservation must never pass the ceiling
+        if amount == 0.0:
             return True
         with self._mutex:
             projected = self.global_settled + self.global_quarantined + self.global_reserved + amount
@@ -259,13 +292,19 @@ class TaskConditionBudget:
     """Manages atomic budget reservation and settlement for a single task-condition run."""
     task_id: str = "task_default"
     condition: str = "condition_default"
-    budget_limit_usd: float = 0.030
+    budget_limit_usd: float = DEFAULT_BUDGET_USD
     settled_spend: float = 0.0
     quarantined_spend: float = 0.0
     outstanding_reservations: float = 0.0
     spend_uncertain: bool = False
     global_budget: Optional[GlobalExperimentBudget] = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def __post_init__(self) -> None:
+        # NaN/inf/negative limits would make every `projected > limit` comparison
+        # pass or misbehave (fail open); refuse to construct such a budget.
+        if not math.isfinite(self.budget_limit_usd) or self.budget_limit_usd < 0:
+            raise ValueError(f"budget_limit_usd must be a finite number >= 0, got {self.budget_limit_usd!r}.")
 
     @property
     def total_committed(self) -> float:
@@ -288,6 +327,13 @@ class TaskConditionBudget:
         Always uses uncached input rate for worst-case conservative reservation.
         Strictly divides token counts by 1,000,000.0.
         """
+        if (
+            isinstance(prompt_tokens, bool) or isinstance(max_completion_tokens, bool)
+            or not isinstance(prompt_tokens, int) or not isinstance(max_completion_tokens, int)
+            or prompt_tokens < 0 or max_completion_tokens < 0
+        ):
+            return (False, 0.0, "INVALID_TOKEN_COUNT (token counts must be non-negative integers)")
+
         # Worst-case cost calculation
         input_usd = (prompt_tokens / 1_000_000.0) * model_cost.input_cost_per_m
         output_usd = (max_completion_tokens / 1_000_000.0) * model_cost.output_cost_per_m

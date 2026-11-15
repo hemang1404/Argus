@@ -2,28 +2,22 @@
 
 from __future__ import annotations
 
-import collections
 import concurrent.futures
 import json
 import os
 import psutil
 import shutil
-import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
 
-import pytest
 
 from argus.config import ArgusConfig
 from argus.providers.adapter import OpenAICompatibleAdapter
 from argus.providers.models import ProviderConfig
 from argus.runtime.controller import RecoveryController
-from argus.runtime.runner import BoundedOutputCollector, SubprocessTestRunner
+from argus.runtime.runner import SubprocessTestRunner
 from argus.runtime.workspace import (
-    WorkspaceManager,
     cleanup_stale_temp_workspaces,
     get_process_create_time,
     is_process_alive,
@@ -239,7 +233,7 @@ def test_concurrent_garbage_collection_during_active_sessions(tmp_path: Path):
         # Run 8 concurrent garbage collector threads simultaneously
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             futures = [executor.submit(cleanup_stale_temp_workspaces, 1.0) for _ in range(8)]
-            results = [f.result() for f in futures]
+            [f.result() for f in futures]
 
         # Active workspaces MUST remain intact
         assert ws1.exists()

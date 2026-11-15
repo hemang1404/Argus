@@ -1,11 +1,13 @@
 ---
+import { currentOnPypi, installSpec, pypiUrl, pypiVersion, version } from '../data/install.mjs';
+
 interface Props {
   /** Include the optional TUI dependency bundle in the displayed command. */
   tui?: boolean;
 }
 
 const { tui = false } = Astro.props;
-const spec = tui ? 'argus-recovery[tui]' : 'argus-recovery';
+const spec = installSpec(tui ? 'tui' : '');
 
 const tabs = [
   { id: 'uv', label: 'uv', command: `uv pip install "${spec}"` },
@@ -51,9 +53,19 @@ const tabs = [
       </div>
     ))
   }
-  <p class="install-note">
-    Published on PyPI as <a href="https://pypi.org/project/argus-recovery/" target="_blank" rel="noopener noreferrer"><code>argus-recovery</code></a>. Requires Python &gt;= 3.11.
-  </p>
+  {
+    currentOnPypi ? (
+      <p class="install-note">
+        Published on PyPI as <a href={pypiUrl} target="_blank" rel="noopener noreferrer"><code>argus-recovery</code></a>. Requires Python &gt;= 3.11.
+      </p>
+    ) : (
+      <p class="install-note">
+        Installs <code>{version}</code> from the repository (needs Git and Python &gt;= 3.11). PyPI
+        currently has <code>{pypiVersion}</code>, which predates the behaviour documented here;
+        <code>{version}</code> is not on PyPI yet.
+      </p>
+    )
+  }
   <p class="sr-only" role="status" aria-live="polite" data-install-status></p>
 </div>
 

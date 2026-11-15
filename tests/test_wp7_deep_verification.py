@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
-import os
 import threading
-from typing import Dict, Any
-from unittest.mock import patch, MagicMock
 
 import pytest
 from starlette.testclient import TestClient
@@ -20,7 +15,6 @@ from argus.gateway.server import (
     init_gateway,
     estimate_request_cost,
     GatewayRateLimiter,
-    extract_rate_limit_identity,
     lifespan,
 )
 
@@ -30,7 +24,6 @@ def deep_gateway_client(monkeypatch: pytest.MonkeyPatch):
     """Set up gateway client with explicit test configuration and keys."""
     test_key = "argus-secret-test-key-67890"
     monkeypatch.setenv("ARGUS_GATEWAY_API_KEY", test_key)
-    monkeypatch.setenv("ARGUS_TEST_MODE", "1")
 
     cfg = GatewayConfig(
         gateway_api_key=test_key,
@@ -106,8 +99,6 @@ def test_route_inventory_authentication_boundary(deep_gateway_client):
 async def test_direct_asgi_startup_without_key_fails_closed(monkeypatch: pytest.MonkeyPatch):
     """Direct ASGI lifespan startup raises RuntimeError if ARGUS_GATEWAY_API_KEY is unset."""
     monkeypatch.delenv("ARGUS_GATEWAY_API_KEY", raising=False)
-    monkeypatch.delenv("ARGUS_TEST_MODE", raising=False)
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
 
     # Empty config with no key
     init_gateway(GatewayConfig(gateway_api_key=None))
@@ -121,21 +112,20 @@ async def test_direct_asgi_startup_without_key_fails_closed(monkeypatch: pytest.
 # 3. Host, Origin & Testserver Boundary
 # ============================================================================
 
-def test_testserver_host_permitted_only_in_test_mode(monkeypatch: pytest.MonkeyPatch):
-    """Host 'testserver' is only permitted when running under test environment."""
+def test_testserver_host_rejected_unless_injected(monkeypatch: pytest.MonkeyPatch):
+    """Host 'testserver' is only accepted when a test explicitly injects it; env vars never enable it."""
+    from argus.gateway import server as gw_server
+
     test_key = "test-key"
-    monkeypatch.setenv("ARGUS_GATEWAY_API_KEY", test_key)
     init_gateway(GatewayConfig(gateway_api_key=test_key))
-
-    # In test mode: testserver is accepted
-    monkeypatch.setenv("ARGUS_TEST_MODE", "1")
     client = TestClient(app)
-    res = client.get("/health", headers={"Host": "testserver"})
-    assert res.status_code == 200
 
-    # In production mode (no test env flags): testserver must be rejected
-    monkeypatch.delenv("ARGUS_TEST_MODE", raising=False)
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(gw_server, "_EXTRA_ALLOWED_HOSTS", {"testserver"})
+    assert client.get("/health", headers={"Host": "testserver"}).status_code == 200
+
+    # Production default: no injected hosts; ARGUS_TEST_MODE / PYTEST_CURRENT_TEST are ignored
+    monkeypatch.setattr(gw_server, "_EXTRA_ALLOWED_HOSTS", set())
+    monkeypatch.setenv("ARGUS_TEST_MODE", "1")
     res_prod = client.get("/health", headers={"Host": "testserver"})
     assert res_prod.status_code == 400
     assert "rejected" in res_prod.json()["error"]["message"]

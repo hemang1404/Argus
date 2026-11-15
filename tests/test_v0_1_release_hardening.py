@@ -11,8 +11,6 @@ Covers:
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,12 +20,11 @@ from click.testing import CliRunner
 from argus.cli import main
 from argus.config import ArgusConfig
 from argus.mcp.server import create_mcp_server
-from argus.providers.models import PROVIDER_PRESETS, ProviderConfig
+from argus.providers.models import PROVIDER_PRESETS
 from argus.providers.storage import ProviderStorage
 from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
 from argus.runtime.controller import (
     RecoveryController,
-    RecoveryOutcome,
     validate_target_file,
 )
 
@@ -144,8 +141,9 @@ def test_recovery_controller_boundary_rejects_test_target(tmp_path: Path):
     assert "SECURITY REFUSAL" in outcome.message
 
 
-def test_mcp_recover_boundary_rejects_test_target(tmp_path: Path):
+def test_mcp_recover_boundary_rejects_test_target(tmp_path: Path, monkeypatch):
     """FastMCP argus_recover tool must reject test files via shared controller boundary."""
+    monkeypatch.setenv("ARGUS_MCP_WORKSPACE_ROOT", str(tmp_path))
     server = create_mcp_server()
     recover_tool = server._tool_manager._tools["argus_recover"].fn
 
@@ -181,8 +179,9 @@ def test_cli_provider_set_refuses_groq():
     assert "Groq is strictly prohibited" in res.output
 
 
-def test_mcp_recover_refuses_groq(tmp_path: Path):
+def test_mcp_recover_refuses_groq(tmp_path: Path, monkeypatch):
     """MCP argus_recover must immediately refuse groq provider requests."""
+    monkeypatch.setenv("ARGUS_MCP_WORKSPACE_ROOT", str(tmp_path))
     server = create_mcp_server()
     recover_tool = server._tool_manager._tools["argus_recover"].fn
 
@@ -236,7 +235,7 @@ def test_run_apply_flag_approves_and_applies_atomically(tmp_path: Path):
     )
 
     runner = CliRunner()
-    res = runner.invoke(main, [
+    runner.invoke(main, [
         "run",
         "--file", str(target),
         "--test", "pytest test_calc.py",

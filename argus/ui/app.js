@@ -52,6 +52,15 @@
   function initSession() {
     activePortEl.textContent = activePort;
 
+    // Show the real package version reported by the server (no hard-coded string).
+    fetch('/api/v1/health')
+      .then((r) => r.json())
+      .then((h) => {
+        const badge = document.getElementById('version-badge');
+        if (badge && h.version) badge.textContent = 'v' + h.version;
+      })
+      .catch(() => {});
+
     // Extract ephemeral Bearer token from URL hash (#token=xyz)
     if (window.location.hash.startsWith('#token=')) {
       sessionToken = window.location.hash.replace('#token=', '').trim();
@@ -182,7 +191,7 @@
       target_file: formData.get('target_file'),
       test_command: formData.get('test_command'),
       test_file: formData.get('test_file') || null,
-      model: formData.get('model'),
+      model: (formData.get('model') || '').trim() || null,
       max_attempts: parseInt(formData.get('max_attempts'), 10),
       budget: parseFloat(formData.get('budget'))
     };

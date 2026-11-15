@@ -4,14 +4,11 @@ Labels: real-host integration test.
 Exercises end-to-end task execution and test repair against the installed Antigravity CLI.
 """
 
-import os
-from pathlib import Path
 
 import pytest
 
 from argus.config import ArgusConfig
 from argus.providers.antigravity import AntigravityHostAdapter, find_antigravity_cli
-from argus.providers.models import ProviderConfig
 from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
 from argus.runtime.controller import RecoveryController
 
@@ -77,7 +74,7 @@ def test_real_host_deliberately_failing_toy_repo_recovery(tmp_path):
     # 1. Run recovery through Antigravity host runtime
     cfg = ArgusConfig(
         provider="antigravity",
-        model="gemini-2.5-pro",
+        model="gemini-3.8-flash-low",
         max_attempts=2,
     )
     controller = RecoveryController(config=cfg)

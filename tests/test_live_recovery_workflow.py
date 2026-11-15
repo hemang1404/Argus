@@ -2,7 +2,7 @@
 
 Validates the genuine end-to-end coding recovery workflow using real authorized Antigravity host inference:
 1. Real client request forwarding and streaming through Argus Gateway.
-2. Verified automated test recovery executed in a temporary isolated Git worktree.
+2. Verified automated test recovery executed in a temporary isolated workspace copy.
 3. Patch validation, AST checking, and closed-loop test execution.
 4. Workspace preservation invariant on failed recovery attempts.
 """
@@ -12,13 +12,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
-import httpx
 import pytest
 from starlette.testclient import TestClient
 
@@ -52,7 +49,7 @@ def get_live_antigravity_config() -> ProviderConfig:
 @pytest.mark.live_antigravity
 def test_live_gateway_forwarding_and_streaming(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Verify request forwarding, response handling, telemetry, and SSE streaming over live Antigravity."""
-    host_cfg = get_live_antigravity_config()
+    get_live_antigravity_config()
 
     monkeypatch.chdir(tmp_path)
     TelemetryRegistry._instance = None
@@ -136,8 +133,8 @@ def test_live_gateway_forwarding_and_streaming(tmp_path: Path, monkeypatch: pyte
 
 
 @pytest.mark.live_antigravity
-def test_live_recovery_success_in_git_worktree(tmp_path: Path):
-    """Verify live closed-loop test repair in an isolated Git worktree."""
+def test_live_recovery_success_in_isolated_copy(tmp_path: Path):
+    """Verify live closed-loop test repair in an isolated workspace copy."""
     host_cfg = get_live_antigravity_config()
 
     # 1. Initialize a clean temporary Git repository
@@ -188,13 +185,12 @@ def test_live_recovery_success_in_git_worktree(tmp_path: Path):
     )
     controller = RecoveryController(config=config)
 
-    # Run recovery inside isolated Git worktree
+    # Run recovery inside the isolated workspace copy
     outcome: RecoveryOutcome = controller.run(
         target_file=src_file,
         test_command=f"{sys.executable} -m pytest {test_file.name}",
         test_file=test_file,
         workspace_root=repo_dir,
-        use_worktree=True,
     )
 
     # 4. Verify recovery outcome
@@ -285,7 +281,6 @@ def test_live_recovery_failure_preserves_workspace(tmp_path: Path):
         test_command=f"{sys.executable} -m pytest {test_file.name}",
         test_file=test_file,
         workspace_root=repo_dir,
-        use_worktree=True,
     )
 
     # 4. Verify failed status

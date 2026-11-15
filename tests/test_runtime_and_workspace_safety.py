@@ -15,17 +15,15 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from argus.providers.adapter import OpenAICompatibleAdapter
 from argus.providers.models import ProviderConfig
-from argus.runtime.runner import BoundedOutputCollector, SubprocessTestRunner, TestExecutionResult
+from argus.runtime.runner import BoundedOutputCollector, SubprocessTestRunner
 from argus.runtime.workspace import (
     WorkspaceManager,
     cleanup_stale_temp_workspaces,
@@ -162,7 +160,7 @@ def test_cleanup_stale_temp_workspaces_preserves_active_session() -> None:
         two_hours_ago = time.time() - 7200
         os.utime(ws_dir, (two_hours_ago, two_hours_ago))
 
-        cleaned = cleanup_stale_temp_workspaces(max_age_hours=1.0)
+        cleanup_stale_temp_workspaces(max_age_hours=1.0)
         # Active workspace MUST still exist!
         assert ws_dir.exists() is True
     finally:
@@ -187,7 +185,7 @@ def test_cleanup_stale_temp_workspaces_reclaims_dead_session() -> None:
         two_hours_ago = time.time() - 7200
         os.utime(ws_dir, (two_hours_ago, two_hours_ago))
 
-        cleaned = cleanup_stale_temp_workspaces(max_age_hours=1.0)
+        cleanup_stale_temp_workspaces(max_age_hours=1.0)
         assert ws_dir.exists() is False
     finally:
         import shutil

@@ -1,13 +1,12 @@
 """Tests for Argus CLI Commands: Provider, Candidates, Approval, and MCP."""
 
-import json
 import tempfile
 from pathlib import Path
 from click.testing import CliRunner
 import pytest
 
 from argus.cli import main
-from argus.providers.mock_server import MockOpenAIServer
+from tests.mock_server import MockOpenAIServer
 from argus.runtime.candidate import CandidateArtifactStore
 
 
@@ -122,7 +121,7 @@ def test_cli_candidates_approval_and_inspect():
         assert candidates[0].approved is False
 
 
-def test_cli_mcp_commands():
+def test_cli_mcp_commands(repo_on_pythonpath):
     """Verify mcp verify and install commands via CLI."""
     runner = CliRunner()
 
@@ -149,8 +148,6 @@ def test_cli_provider_interactive_prompt_and_secret_redaction(monkeypatch: pytes
     """Verify that omitting --api-key triggers interactive hidden input and redaction."""
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmp_dir:
-        import os
-        from unittest.mock import patch
         monkeypatch.setenv("ARGUS_CONFIG_DIR", str(tmp_dir))
 
         # 1. Interactive hidden prompt when --api-key is omitted

@@ -8,17 +8,19 @@ stage either advances, retries within the bound, or terminates with a status.
 
 ## 1. Validation
 
-Before doing any work, Argus checks the target path, the test file, and the test
-command. Targets must resolve inside the workspace. Absolute paths, `..`
+Before doing any work, Argus checks the configuration (a provider must be
+configured, every model on the ladder must have a known price unless the provider
+is local, and budgets must be finite and positive), the target path, the test
+file, and the test command. Targets must resolve inside the workspace. Absolute paths, `..`
 traversal, null bytes, and non-canonical paths are rejected. A request that fails
 this stage returns `INVALID_TARGET` without creating a workspace.
 
 ## 2. Workspace creation
 
-`WorkspaceManager` creates an ephemeral copy of the repository, excluding heavy
-and generated directories. The copy preserves the file layout needed to run the
-tests. If a Git worktree is used instead, uncommitted changes and untracked files
-are overlaid so the reproduction sees the same working state.
+`WorkspaceManager` creates a temporary copy of the repository (tracked files plus
+untracked files that are not ignored, with your current working-tree content). See
+[Workspace isolation](/core-concepts/workspace-isolation/) for exactly what is and
+is not copied.
 
 ## 3. Reproduction
 
@@ -36,7 +38,10 @@ When `--file` is absent, Argus parses the traceback and identifies the project
 source file involved in the failure. If no file can be identified with
 confidence, the run ends as `LOCALIZATION_FAILED`.
 
-Localization is deterministic. It does not ask the model which file to edit.
+Localization is deterministic. It does not ask the model which file to edit. It is
+also the weakest link: the research results behind Argus were obtained with the
+target file supplied, and the localizer's recall in separate measurements was about
+27%, so pass `--file` whenever you know the file.
 
 ## 5. Patch generation
 
@@ -48,13 +53,16 @@ returns a patch in one of two accepted formats:
   pair.
 
 The generated patch is parsed into structured blocks before any matching occurs.
-A response with no parsable block counts as a failed attempt.
+A response with no parsable block counts as a failed attempt. A truncated or
+malformed block applies nothing, and the model is told which part was damaged. A
+reply cut off by the token limit is reported as truncation, not as a format error.
 
 ## 6. Reconciliation and validation
 
 Each block is matched through the tier ladder. A match is only a candidate; the
-patched file must then parse as Python. Ambiguity, low similarity, a missing
-match, or a syntax error all reject the attempt. Tier 5 is a refusal, not a
+final patched file must then pass the syntactic gate (`ast.parse` and `compile`).
+Ambiguity, a near miss that changes a token, a missing match, or a syntax error
+all reject the attempt. Tier 5 is a refusal, not a
 fallback that modifies something else.
 
 ## 7. Verification
@@ -70,7 +78,12 @@ the duration.
 The run ends in one of two ways:
 
 - **`SUCCESS`** — a verified candidate exists and is waiting for review.
+  "Verified" means the supplied test command passed in the copy.
 - **Failure** — no candidate is offered for application.
+
+Each attempt's patch tier, model, tokens and cost are written to `attempts.json`
+in the run directory, and the model ladder that was used is reported with the
+outcome.
 
 The working tree is unchanged in both cases.
 
@@ -82,7 +95,7 @@ The working tree is unchanged in both cases.
 | `TEST_SETUP_ERROR` | The test command could not run correctly | Fix the command or environment |
 | `LOCALIZATION_FAILED` | No target file could be identified | Pass `--file` explicitly |
 | `INVALID_TARGET` | The target failed path validation | Use a path inside the workspace |
-| `CONFIG_ERROR` | No provider, or an invalid provider configuration | Configure a provider |
+| `CONFIG_ERROR` | No provider, an unknown provider, an unpriced model, or an invalid budget | Configure a provider; pass a priced `--model` or supply a price |
 | `BUDGET_EXCEEDED` | The run hit its spend ceiling | Raise `--budget` deliberately |
 | `DEADLINE_EXCEEDED` | The task deadline elapsed | Reduce scope or raise the bound |
 | `PROVIDER_RATE_LIMITED` | The provider refused due to rate limits | Wait or switch providers |
@@ -96,8 +109,8 @@ still be written for diagnosis.
 ## Retry behaviour
 
 Retries are driven by test outcomes, not by a fixed schedule. Each turn receives
-the latest failure context. The loop stops at `max_attempts` (three by default,
-and the CLI clamps larger values). Provider rate limits are handled within the
+the latest failure context. The loop stops at `max_attempts` (three by default;
+values above the configured ceiling are rejected). Provider rate limits are handled within the
 run when allowed, with a bounded backoff ceiling; exhausting the allowance ends
 the run as `PROVIDER_RATE_LIMITED` rather than looping indefinitely.
 

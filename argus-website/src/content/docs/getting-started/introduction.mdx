@@ -4,6 +4,7 @@ description: What Argus is, the failure modes it addresses, and where it sits in
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import { version, currentOnPypi, pypiVersion } from '../../../data/install.mjs';
 
 Argus is a local, test-gated code recovery runtime for patches produced by large
 language models and coding agents. It runs beneath your editor, terminal, and
@@ -38,27 +39,29 @@ problem.
 
 | Failure | Argus response |
 | --- | --- |
-| Formatting drift in a search block | Tiered reconciliation with syntax validation |
-| Multiple plausible match sites | Ambiguity margin check and safe refusal |
-| Live tree mutation | Ephemeral workspace copy or detached worktree |
+| Formatting drift in a search block | Tiered reconciliation with a syntactic gate |
+| Multiple plausible match sites | Ambiguity detection and safe refusal |
+| Live tree mutation | Temporary workspace copy; apply only after approval |
 | Runaway recovery | Hard turn, timeout, output, and budget bounds |
 
 ## What it does
 
 A recovery run has a fixed shape:
 
-1. Copy the project into a temporary workspace, excluding caches, virtual
-   environments, and other heavy directories.
+1. Copy the project into a temporary workspace (tracked and untracked-not-ignored
+   files, minus caches and virtual environments).
 2. Execute your reproduction command with `shell=False`, a timeout, and a
    bounded output buffer.
 3. Parse the failure and identify the target Python file when you did not name
    one.
-4. Ask the configured provider for a search/replace patch.
+4. Ask the provider **you configured** for a search/replace patch. Argus has no
+   provider or keys of its own, and never switches provider silently.
 5. Reconcile that patch through the matching tiers, rejecting ambiguity and
-   anything that does not parse as Python.
+   anything that does not parse as Python (a syntactic check, not a correctness
+   check).
 6. Apply it inside the workspace and rerun the test command.
-7. If the test passes, write a candidate artifact with SHA-256 digests into
-   `.argus/runs/<run_id>/`.
+7. If the test passes ("verified" means exactly that), write a signed candidate
+   artifact with SHA-256 digests into `.argus/runs/<run_id>/`.
 8. Wait. The working tree changes only after explicit approval and
    `argus apply`.
 
@@ -107,16 +110,20 @@ Argus is intentionally narrow. It is not:
 Two boundaries deserve emphasis. Patch reconciliation currently targets
 **single-file Python changes**, and successful application requires that the
 result parses as Python. Host subprocess execution runs with **your user
-privileges**; the ephemeral workspace prevents repository contamination, not
-process-level compromise. Both are covered in the [security model](/project/security-model/).
+privileges** and is not sandboxed; the temporary workspace prevents repository
+contamination, not process-level compromise. Both are covered in the [security model](/project/security-model/).
 
 ## Project status
 
-Argus is pre-release. The current package version is `0.2.0b1` and it is not yet
-published on PyPI; installation is from the GitHub repository. Interfaces may
-change before a stable release. The [changelog](/project/changelog/) records the
-release history and the [research page](/project/research/) separates reported
-experimental results from guarantees.
+Argus is pre-release (beta). This site documents `{version}`.
+{currentOnPypi
+  ? <>It is published on PyPI as <code>argus-recovery</code>.</>
+  : <>PyPI has <code>{pypiVersion}</code>, which predates a large audit remediation and is not what these pages describe; install from the repository for the documented behaviour.</>}
+See [Installation](/getting-started/installation/).
+Interfaces may change before a stable release. The
+[changelog](/project/changelog/) records the release history and the
+[research page](/project/research/) separates what the evidence supports from what
+it does not.
 
 <Aside type="note" title="Distribution name">
 The Python distribution is `argus-recovery`. The installed command is `argus`.

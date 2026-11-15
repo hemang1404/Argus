@@ -58,7 +58,7 @@ class RecoveryWorkflowScreen(Screen[None]):
                     yield Static("[#667085]esc back[/]", id="workflow-esc")
 
                 yield Static(
-                    "Non-destructive patch synthesis in an isolated git worktree.",
+                    "Non-destructive patch synthesis in a temporary copy of your project.",
                     id="workflow-card-subtitle",
                 )
 
@@ -86,7 +86,7 @@ class RecoveryWorkflowScreen(Screen[None]):
                 yield Static(self._format_context_text(), id="context-info")
                 yield Static(
                     # Exactly CONTEXT_LINE_MAX_WIDTH cells: the card clips wider lines.
-                    "[#7bc79e]●[/] Isolated worktree · no writes before approval · verified output only",
+                    "[#7bc79e]●[/] Temporary copy · no writes before approval · test-verified only",
                     id="workflow-guardrail",
                 )
 
@@ -94,7 +94,7 @@ class RecoveryWorkflowScreen(Screen[None]):
                     yield Button("Cancel (Esc)", id="btn-cancel")
                     yield Button("Run Recovery (Enter)", variant="primary", id="btn-run")
 
-        yield StatusBar(workspace=self.workspace, version="v0.2.0")
+        yield StatusBar(workspace=self.workspace)
 
     def on_mount(self) -> None:
         """Focus input and initialize context view."""
@@ -126,13 +126,15 @@ class RecoveryWorkflowScreen(Screen[None]):
     def _format_context_text(self) -> Text:
         """Render the runtime summary as a single line that never wraps in the card."""
         tier_name = getattr(self.app, "current_tier", "argus/auto")
+        if tier_name in ("argus/auto", "auto", ""):
+            tier_name = "auto ladder"
         display_model = self.config.model
         if not display_model:
             try:
                 from argus.providers.discovery import resolve_dynamic_tiers
                 display_model = resolve_dynamic_tiers()["t1"]["model"]
             except Exception:
-                display_model = "gemini-2.5-flash"
+                display_model = ""
 
         def build(model: str) -> Text:
             line = Text()
