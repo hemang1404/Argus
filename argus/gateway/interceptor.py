@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import Optional
 from argus.patch.fuzzy_engine import ResilientPatchEngine, PatchResult
-from argus.patch.parser import PatchBlock, PatchParser
+from argus.patch.parser import PatchParser
 
 
 class StreamPatchHealer:

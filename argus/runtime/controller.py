@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
+import inspect
+import json
 import os
 import re
 import time
@@ -11,25 +14,24 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from argus.config import ArgusConfig
 from argus.patch.fuzzy_engine import PatchResult, RefusalReason, ResilientPatchEngine
-from argus.patch.parser import PatchBlock, PatchParser
+from argus.patch.parser import PatchParser
 from argus.patch.paths import PatchTargetError, validate_patch_blocks
 from argus.providers.models import ProviderConfigurationError
 from argus.providers.adapter import OpenAICompatibleAdapter, ProviderAdapter, ProviderError
 from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
 from argus.runtime.budget import (
     ARGUS_SYSTEM_PROMPT,
-    GlobalExperimentBudget,
     TaskConditionBudget,
     count_prompt_tokens,
     is_conclusive_provider_refusal,
 )
 from argus.runtime.candidate import CandidateArtifactStore
 from argus.runtime.events import JsonLinesEmitter
-from argus.runtime.runner import SubprocessTestRunner, TestExecutionResult
+from argus.runtime.runner import SubprocessTestRunner
 from argus.runtime.workspace import WorkspaceManager
 from argus.utils.redaction import scrub_secrets
 
@@ -64,6 +66,8 @@ class AttemptRecord:
     patch_strategy: str = ""
     patch_confidence: Optional[float] = None
     refusal_reason: Optional[str] = None
+    # Provider-reported stop reason for this attempt's completion (None if the adapter cannot report it).
+    finish_reason: Optional[str] = None
 
 
 @dataclass
@@ -98,6 +102,8 @@ class RecoveryOutcome:
     context_window: Dict[str, Any] = field(default_factory=dict)
     # Observable provider resolution result (notably for explicit 'auto').
     selected_provider: Optional[str] = None
+    # Project-policy notes/warnings (tightened limits, ignored keys, parse errors).
+    config_notes: List[str] = field(default_factory=list)
 
 
 def extract_context_frame(
@@ -409,7 +415,6 @@ class RecoveryController:
             enable_tier4=getattr(self.config, "enable_tier4", False),
         )
         self.test_runner = SubprocessTestRunner(timeout_seconds=self.config.test_timeout_seconds)
-        self.model_cost = self.config.get_model_cost()
         self.adapter: Optional[ProviderAdapter] = adapter
         self.selected_provider: Optional[str] = None
         self.budget_tracker: Optional[TaskConditionBudget] = None
@@ -446,7 +451,7 @@ class RecoveryController:
 
         p_name = (self.config.provider or "").lower().strip()
         if p_name == "groq":
-            raise RuntimeError(
+            raise ProviderConfigurationError(
                 "Groq is strictly prohibited as an inference provider in Argus. "
                 "Please configure an authorized provider via 'argus provider set' (e.g. ollama, openai, deepseek, antigravity)."
             )
@@ -554,7 +559,7 @@ class RecoveryController:
                     pass
 
             if not api_key and preset.requires_key:
-                raise RuntimeError(
+                raise ProviderConfigurationError(
                     f"No API key configured for provider '{p_name}'. "
                     f"Please configure your API key via 'argus provider set' or set {preset.key.upper()}_API_KEY."
                 )
@@ -741,7 +746,49 @@ class RecoveryController:
 
         return None
 
+    @staticmethod
+    def _resolve_workspace_root(target_file: Optional[str | Path], workspace_root: Optional[str | Path]) -> Path:
+        if workspace_root:
+            return Path(workspace_root).resolve()
+        if target_file and Path(target_file).is_absolute():
+            return Path(target_file).parent
+        return Path.cwd().resolve()
+
     def run(
+        self,
+        target_file: Optional[str | Path] = None,
+        test_command: Optional[str] = None,
+        test_file: Optional[str | Path] = None,
+        workspace_root: Optional[str | Path] = None,
+        **kwargs: Any,
+    ) -> RecoveryOutcome:
+        """Run the bounded recovery loop in an isolated workspace.
+
+        The workspace's project policy (argus.yaml / pyproject [tool.argus]) is applied
+        tighten-only to a per-run copy of the config, so one run's policy never leaks into
+        the next run of the same controller.
+        """
+        ws_root = self._resolve_workspace_root(target_file, workspace_root)
+        base_config = self.config
+        run_config = copy.copy(base_config)
+        notes = run_config.apply_project_policy(ws_root)
+        self.config = run_config
+        self.test_runner.timeout_seconds = run_config.test_timeout_seconds
+        try:
+            outcome = self._run_impl(
+                target_file=target_file,
+                test_command=test_command,
+                test_file=test_file,
+                workspace_root=workspace_root,
+                **kwargs,
+            )
+        finally:
+            self.config = base_config
+            self.test_runner.timeout_seconds = base_config.test_timeout_seconds
+        outcome.config_notes = notes
+        return outcome
+
+    def _run_impl(
         self,
         target_file: Optional[str | Path] = None,
         test_command: Optional[str] = None,
@@ -753,10 +800,8 @@ class RecoveryController:
         cancel_event: Optional[Any] = None,
         **kwargs: Any,
     ) -> RecoveryOutcome:
-        """Run the bounded recovery loop in an isolated workspace."""
         start_time = time.perf_counter()
         history: List[AttemptRecord] = []
-        total_cost = 0.0
 
         # Handle flexible argument signatures: run(test_command="...") or run("pytest ...")
         if test_command is None and target_file and any(tok in str(target_file) for tok in ["pytest", "python -m", "unittest"]):
@@ -766,12 +811,7 @@ class RecoveryController:
         if not test_command:
             test_command = kwargs.get("cmd") or "pytest"
 
-        ws_root = Path(workspace_root).resolve() if workspace_root else None
-        if not ws_root:
-            if target_file and Path(target_file).is_absolute():
-                ws_root = Path(target_file).parent
-            else:
-                ws_root = Path.cwd().resolve()
+        ws_root = self._resolve_workspace_root(target_file, workspace_root)
 
         # Step 0: Auto-localization if target_file was omitted
         if target_file is None:
@@ -845,9 +885,9 @@ class RecoveryController:
 
         task_id = kwargs.get("task_id") or run_id
         condition_name = kwargs.get("condition") or "default"
+        # Product runs are bounded by the per-task budget alone. A process-wide experiment
+        # ceiling exists only when a research harness injects one explicitly.
         global_budget = kwargs.get("global_budget")
-        if global_budget is None:
-            global_budget = GlobalExperimentBudget.get_instance(self.config.global_experiment_budget_usd)
 
         self.budget_tracker = TaskConditionBudget(
             task_id=task_id,
@@ -857,6 +897,7 @@ class RecoveryController:
         )
 
         difficulty_decision = None
+        model_notes: List[str] = []  # provider-reported model differs from the requested one
 
         def _finalize(outcome: RecoveryOutcome) -> RecoveryOutcome:
             outcome.run_id = run_id
@@ -874,6 +915,12 @@ class RecoveryController:
             if difficulty_decision is not None:
                 outcome.effort_used = difficulty_decision.effort
                 outcome.routing_reasons = list(difficulty_decision.reasons)
+            outcome.routing_reasons.append(
+                f"model_ladder={self.config.ladder_source or 'unset'} "
+                f"models={','.join(self.config.ladder_models()) or 'none'} "
+                f"escalation={'on' if self.config.escalation_enabled else 'off'}"
+            )
+            outcome.routing_reasons.extend(model_notes)
             if outcome.history:
                 last_h = outcome.history[-1]
                 outcome.diagnostics = last_h.error_summary
@@ -889,7 +936,7 @@ class RecoveryController:
 
             # Persist isolated per-run artifact
             try:
-                CandidateArtifactStore.save_run_artifact(
+                run_dir = CandidateArtifactStore.save_run_artifact(
                     run_id=run_id,
                     target_file=str(target_file),
                     test_command=test_command,
@@ -907,6 +954,32 @@ class RecoveryController:
                     raw_response=outcome.raw_response,
                     parsed_patch=outcome.unapplied_patch,
                     context_window=outcome.context_window,
+                )
+                # Per-attempt replay record: which model ran, patch tier, tokens, cost, stop reason.
+                (run_dir / "attempts.json").write_text(
+                    json.dumps(
+                        [
+                            {
+                                "attempt": h.attempt,
+                                "tier_used": h.tier_used,
+                                "model_used": h.model_used,
+                                "prompt_tokens": h.prompt_tokens,
+                                "completion_tokens": h.completion_tokens,
+                                "cost_usd": h.cost_usd,
+                                "reserved_cost_usd": h.reserved_cost_usd,
+                                "finish_reason": h.finish_reason,
+                                "patch_success": h.patch_success,
+                                "test_passed": h.test_passed,
+                                "patch_strategy": h.patch_strategy,
+                                "refusal_reason": h.refusal_reason,
+                                "duration_ms": h.duration_ms,
+                                "error_summary": scrub_secrets(h.error_summary or "")[:500],
+                            }
+                            for h in outcome.history
+                        ],
+                        indent=2,
+                    ),
+                    encoding="utf-8",
                 )
             except Exception:
                 pass
@@ -956,10 +1029,8 @@ class RecoveryController:
             )
 
         # Validate configuration
-        issues = self.config.validate()
-        if self.adapter is not None:
-            # If an adapter was explicitly injected, ignore missing external provider settings
-            issues = [i for i in issues if "provider" not in i.lower()]
+        # If an adapter was explicitly injected, missing external provider settings are irrelevant.
+        issues = self.config.validate(check_provider=self.adapter is None)
         if issues:
             return _finalize(
                 RecoveryOutcome(
@@ -1106,28 +1177,26 @@ class RecoveryController:
                         )
                     )
 
-                # 3-Tier Escalation Ladder
+                # Escalation ladder. Which MODEL runs at each tier is decided by the config
+                # (config.model_for_tier): the pinned model unless an explicit ladder or the
+                # documented provider cascade is in effect. Effort/context scale with the tier.
                 if not getattr(self.config, "escalation_enabled", True):
-                    tier_model = self.config.model
                     tier_effort = difficulty_decision.effort
                     context_radius = 25
                     tier_idx = 1
-                else:
-                    if attempt_idx == 1:
-                        tier_model = self.config.small_model or self.config.model
-                        tier_effort = getattr(self.config, "reasoning_effort", None) or ("low" if difficulty_decision.effort == "low" else "medium")
-                        context_radius = 25
-                        tier_idx = 1
-                    elif attempt_idx == 2:
-                        tier_model = self.config.small_model or self.config.model
-                        tier_effort = getattr(self.config, "reasoning_effort", None) or "high"
-                        context_radius = 25
-                        tier_idx = 2
-                    else:  # attempt 3+
-                        tier_model = self.config.large_model or self.config.model
-                        tier_effort = getattr(self.config, "reasoning_effort", None) or "high"
-                        context_radius = 45  # Deep reasoning + max context
-                        tier_idx = 3
+                elif attempt_idx == 1:
+                    tier_effort = getattr(self.config, "reasoning_effort", None) or ("low" if difficulty_decision.effort == "low" else "medium")
+                    context_radius = 25
+                    tier_idx = 1
+                elif attempt_idx == 2:
+                    tier_effort = getattr(self.config, "reasoning_effort", None) or "high"
+                    context_radius = 25
+                    tier_idx = 2
+                else:  # attempt 3+
+                    tier_effort = getattr(self.config, "reasoning_effort", None) or "high"
+                    context_radius = 45  # Deep reasoning + max context
+                    tier_idx = 3
+                tier_model = self.config.model_for_tier(tier_idx)
 
                 if on_attempt_start:
                     on_attempt_start(attempt_idx, self.config.max_attempts)
@@ -1184,35 +1253,19 @@ class RecoveryController:
                     model_cost=tier_cost_calc,
                 )
                 if not ok:
-                    # Escalation budget mitigation:
-                    # If on tier 3 (large model escalation) and task budget exceeded, check if small model fits!
-                    if tier_idx == 3 and "TASK_BUDGET_EXCEEDED" in reason:
-                        small_model_name = self.config.small_model or "qwen2.5-coder:7b"
-                        small_cost_calc = self.config.get_model_cost(small_model_name)
-                        small_ok, small_reserved, _ = self.budget_tracker.check_and_reserve(
-                            prompt_tokens=p_tokens_est,
-                            max_completion_tokens=eff_max_completion,
-                            model_cost=small_cost_calc,
+                    # Refuse before network dispatch. No cheaper model is substituted: the
+                    # configured tier model is the only model Argus will spend on.
+                    return _finalize(
+                        RecoveryOutcome(
+                            status="BUDGET_EXCEEDED",
+                            total_attempts=len(history),
+                            total_cost_usd=round(self.budget_tracker.total_committed, 6),
+                            total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                            history=history,
+                            message=f"Pre-dispatch budget refusal: {reason}",
+                            tier_used=tier_idx,
                         )
-                        if small_ok:
-                            tier_model = small_model_name
-                            tier_cost_calc = small_cost_calc
-                            reserved_cost = small_reserved
-                            ok = True
-
-                    if not ok:
-                        # Refuse before network dispatch
-                        return _finalize(
-                            RecoveryOutcome(
-                                status="BUDGET_EXCEEDED",
-                                total_attempts=len(history),
-                                total_cost_usd=round(self.budget_tracker.total_committed, 6),
-                                total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
-                                history=history,
-                                message=f"Pre-dispatch budget refusal: {reason}",
-                                tier_used=tier_idx,
-                            )
-                        )
+                    )
 
                 # Model dispatch loop with 429 rate limit backoff
                 dispatch_success = False
@@ -1222,6 +1275,8 @@ class RecoveryController:
                 c_tokens = 0
                 cached_tokens = 0
                 tx_payload = {}
+                finish_reason: Optional[str] = None
+                executed_model = tier_model
 
                 while True:
                     # Check task deadline during retries
@@ -1250,15 +1305,10 @@ class RecoveryController:
                             model=tier_model,
                             cwd=str(ws.workspace_root),
                         )
-                        if len(call_res) >= 5:
-                            response_text, p_tokens, c_tokens, cached_tokens, tx_payload = call_res[:5]
-                        elif len(call_res) >= 4:
-                            response_text, p_tokens, c_tokens, cached_tokens = call_res[:4]
-                            tx_payload = {}
-                        else:
-                            response_text, p_tokens, c_tokens = call_res[:3]
-                            cached_tokens = 0
-                            tx_payload = {}
+                        (
+                            response_text, p_tokens, c_tokens, cached_tokens,
+                            tx_payload, finish_reason, executed_model,
+                        ) = self._unpack_call_result(call_res)
 
                         # Dispatch succeeded: settle reservation
                         call_cost = self.budget_tracker.settle(
@@ -1270,6 +1320,23 @@ class RecoveryController:
                         )
                         dispatch_success = True
                         break
+
+                    except ProviderConfigurationError as cfg_err:
+                        # Raised before any request is built or sent (unknown provider, missing
+                        # key, prohibited provider): nothing was spent, so release the reservation
+                        # and fail immediately with an actionable CONFIG_ERROR.
+                        self.budget_tracker.release(reserved_cost)
+                        return _finalize(
+                            RecoveryOutcome(
+                                status="CONFIG_ERROR",
+                                total_attempts=len(history),
+                                total_cost_usd=round(self.budget_tracker.total_committed, 6),
+                                total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
+                                history=history,
+                                message=f"{cfg_err.message} No request was made.",
+                                tier_used=tier_idx,
+                            )
+                        )
 
                     except ProviderError as p_err:
                         if p_err.is_retryable or p_err.status_code == 429:
@@ -1407,13 +1474,10 @@ class RecoveryController:
                             break
 
                     except Exception as ex:
-                        if not dispatched and is_conclusive_provider_refusal(ex):
-                            self.budget_tracker.release(reserved_cost)
-                            quarantined_usd = 0.0
-                        else:
-                            # Dispatched, timeout, cancellation, or connection abort: QUARANTINE!
-                            self.budget_tracker.quarantine(reserved_cost)
-                            quarantined_usd = reserved_cost
+                        # Unclassified failure after dispatch (timeout, cancellation, abort,
+                        # malformed usage): the provider may have billed it, so QUARANTINE.
+                        self.budget_tracker.quarantine(reserved_cost)
+                        quarantined_usd = reserved_cost
 
                         attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
                         record = AttemptRecord(
@@ -1450,6 +1514,14 @@ class RecoveryController:
                 if not dispatch_success:
                     continue
 
+                # Record the model the provider reports it executed (cost stays priced at the
+                # requested tier model, which is what the reservation was made against).
+                if executed_model and executed_model != tier_model and not executed_model.startswith(tier_model):
+                    model_notes.append(
+                        f"attempt {attempt_idx}: requested model '{tier_model}', provider executed '{executed_model}'"
+                    )
+                    tier_model = executed_model
+
                 if event_emitter:
                     event_emitter.inference_done(
                         attempt=attempt_idx,
@@ -1463,6 +1535,7 @@ class RecoveryController:
                 # Parse patch blocks
                 curr_raw_response = response_text
                 patch_blocks = PatchParser.parse(response_text)
+                truncated = (finish_reason or "").lower() in ("length", "max_tokens")
                 if patch_blocks:
                     curr_parsed_patch = "\n".join(
                         getattr(b, "raw_block", f"<<<<<<< SEARCH\n{b.search_text}\n=======\n{b.replace_text}\n>>>>>>> REPLACE")
@@ -1479,7 +1552,11 @@ class RecoveryController:
                         tier_used=tier_idx,
                         patch_success=False,
                         test_passed=False,
-                        error_summary="Model did not produce recognizable SEARCH/REPLACE blocks.",
+                        error_summary=(
+                            "Model output was truncated (finish_reason=length) before a complete SEARCH/REPLACE block."
+                            if truncated
+                            else "Model did not produce recognizable SEARCH/REPLACE blocks."
+                        ),
                         model_used=tier_model,
                         prompt_tokens_est=p_tokens_est,
                         reserved_cost_usd=reserved_cost,
@@ -1489,6 +1566,7 @@ class RecoveryController:
                         parsed_patch=curr_parsed_patch,
                         context_window=curr_context_window,
                         cached_tokens=cached_tokens,
+                        finish_reason=finish_reason,
                     )
                     history.append(record)
                     if on_attempt_end:
@@ -1501,7 +1579,14 @@ class RecoveryController:
                             ast_valid=False,
                             error_summary=record.error_summary,
                         )
-                    last_error = "Formatting error: Please output exact SEARCH/REPLACE blocks."
+                    if truncated:
+                        last_error = (
+                            "Truncation: your previous response hit the output token limit and was cut off before "
+                            "a complete SEARCH/REPLACE block. Respond again with ONE minimal SEARCH/REPLACE block "
+                            "(2-6 lines of context) and no explanation."
+                        )
+                    else:
+                        last_error = "Formatting error: Please output exact SEARCH/REPLACE blocks."
                     attempt_idx += 1
                     continue
 
@@ -1533,6 +1618,7 @@ class RecoveryController:
                         parsed_patch=curr_parsed_patch,
                         context_window=curr_context_window,
                         cached_tokens=cached_tokens,
+                        finish_reason=finish_reason,
                         matched_file=str(ws.target_file_rel),
                         patch_strategy="none",
                         refusal_reason=exc.code,
@@ -1592,6 +1678,7 @@ class RecoveryController:
                         parsed_patch=curr_parsed_patch,
                         context_window=curr_context_window,
                         cached_tokens=cached_tokens,
+                        finish_reason=finish_reason,
                         matched_file=str(ws.target_file_rel) if patch_res else None,
                         patch_strategy=patch_res.strategy if patch_res else "",
                         patch_confidence=patch_res.confidence if patch_res else None,
@@ -1620,12 +1707,10 @@ class RecoveryController:
                 ws.write_target_file(working_code)
 
                 # Optional AST safety check
-                ast_valid = True
                 if ws.target_file_rel.suffix == ".py":
                     from argus.patch.ast_checker import ASTChecker
                     ast_check = ASTChecker.validate_python_code(working_code, filename=str(ws.target_file_rel))
                     if not ast_check.is_valid:
-                        ast_valid = False
                         attempt_dur = round((time.perf_counter() - attempt_start) * 1000, 2)
                         record = AttemptRecord(
                             attempt=attempt_idx,
@@ -1646,6 +1731,7 @@ class RecoveryController:
                             parsed_patch=curr_parsed_patch,
                             context_window=curr_context_window,
                             cached_tokens=cached_tokens,
+                            finish_reason=finish_reason,
                         )
                         history.append(record)
                         if on_attempt_end:
@@ -1732,6 +1818,7 @@ class RecoveryController:
                     parsed_patch=curr_parsed_patch,
                     context_window=curr_context_window,
                     cached_tokens=cached_tokens,
+                    finish_reason=finish_reason,
                 )
                 history.append(record)
                 if on_attempt_end:
@@ -1779,14 +1866,32 @@ class RecoveryController:
                 )
             )
 
+    @staticmethod
+    def _unpack_call_result(call_res: tuple) -> tuple:
+        """Normalise a `_call_model` result to (text, prompt_tok, completion_tok, cached_tok,
+        payload, finish_reason, executed_model); trailing fields are optional."""
+        padded = tuple(call_res) + (None,) * (7 - len(call_res))
+        text, p_tok, c_tok, cached, payload, finish_reason, executed_model = padded[:7]
+        return (
+            text, p_tok, c_tok, cached or 0, payload or {},
+            finish_reason if isinstance(finish_reason, str) else None,
+            executed_model if isinstance(executed_model, str) else None,
+        )
+
     def _call_model(
         self,
         prompt: str,
         effort: Optional[str] = None,
         model: Optional[str] = None,
         cwd: Optional[str] = None,
-    ) -> tuple[str, int, int, int]:
-        """Invoke configured inference provider via adapter."""
+    ) -> tuple:
+        """Invoke the configured inference provider via its adapter.
+
+        Optional keyword arguments (effort, cwd, max_completion_tokens) are dropped only if the
+        adapter's signature does not accept them. The model override is mandatory: an adapter
+        that cannot take one is a configuration error, never a silent run on its own model.
+        A TypeError raised inside the adapter is never retried (it could duplicate a paid call).
+        """
         adapter = self._get_adapter()
         messages = [
             {"role": "system", "content": ARGUS_SYSTEM_PROMPT},
@@ -1808,19 +1913,26 @@ class RecoveryController:
             kwargs["model"] = model
         if cwd:
             kwargs["cwd"] = cwd
+
         try:
-            resp = adapter.chat_completion(**kwargs)
-        except TypeError:
-            kwargs.pop("effort", None)
-            kwargs.pop("cwd", None)
-            try:
-                resp = adapter.chat_completion(**kwargs)
-            except TypeError:
-                kwargs.pop("model", None)
-                resp = adapter.chat_completion(**kwargs)
+            params = inspect.signature(adapter.chat_completion).parameters
+        except (TypeError, ValueError):
+            params = None
+        if params is not None and not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            if model and "model" not in params:
+                raise ProviderConfigurationError(
+                    f"Provider adapter {type(adapter).__name__} does not accept a model override, "
+                    f"so the configured model '{model}' cannot be honoured. No request was made."
+                )
+            kwargs = {k: v for k, v in kwargs.items() if k in params}
+
+        resp = adapter.chat_completion(**kwargs)
         cached_tokens = getattr(resp, "cache_read_tokens", 0) or 0
         tx_payload = getattr(resp, "transmitted_payload", {}) or {}
-        return resp.content, resp.prompt_tokens, resp.completion_tokens, cached_tokens, tx_payload
+        return (
+            resp.content, resp.prompt_tokens, resp.completion_tokens, cached_tokens, tx_payload,
+            getattr(resp, "finish_reason", None), getattr(resp, "model", None),
+        )
 
     def _build_prompt(
         self,

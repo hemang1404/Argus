@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import email.utils
 import logging
 import random
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Optional, Tuple
 import httpx
 
 logger = logging.getLogger("argus.gateway.retry")

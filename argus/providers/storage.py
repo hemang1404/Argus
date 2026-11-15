@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import stat
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
+from argus.utils.redaction import scrub_secrets  # noqa: F401  (re-exported for adapters, gateway and tests)
 
 SERVICE_NAME = "argus_ai_inference"
 
@@ -301,5 +301,4 @@ class ProviderStorage:
         return False
 
 
-from argus.utils.redaction import scrub_secrets
 

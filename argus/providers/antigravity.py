@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -296,22 +295,25 @@ class AntigravityHostAdapter(ProviderAdapter):
             cmd_args.append("--sandbox")
             cmd_args.append("--disable-slash-commands")
 
+            # Same-class aliases only: legacy flash names and Argus tier words map to the
+            # host's flash tiers. Pro/frontier-class names are passed through UNCHANGED, so a
+            # "pro" request is never silently run on a flash model (the host rejects names it
+            # does not know). Any rewrite is logged and the executed model is returned in
+            # CompletionResponse.model, which the controller records.
             model_alias_map = {
                 "gemini-2.5-flash": "gemini-3.8-flash-low",
                 "gemini-2.5-flash-lite": "gemini-3.8-flash-low",
-                "gemini-2.5-pro": "gemini-3.8-flash-high",
                 "gemini-3-flash": "gemini-3.8-flash-medium",
-                "gemini-3-pro": "gemini-3.8-flash-high",
                 "gemini-3.8-flash": f"gemini-3.8-flash-{effort_val}",
-                "gemini-3.8-pro": "gemini-3.8-flash-high",
                 "flash": f"gemini-3.8-flash-{effort_val}",
-                "pro": "gemini-3.8-flash-high",
                 "cheap": "gemini-3.8-flash-low",
                 "strong": "gemini-3.8-flash-medium",
                 "frontier": "gemini-3.8-flash-high",
             }
 
             resolved_model = model_alias_map.get((active_model or "").lower(), active_model) if active_model else f"gemini-3.8-flash-{effort_val}"
+            if active_model and resolved_model != active_model:
+                logger.warning(f"Antigravity host model '{active_model}' mapped to '{resolved_model}'.")
             if resolved_model and resolved_model not in ("host-default", "antigravity"):
                 cmd_args.extend(["--model", resolved_model])
 
@@ -391,11 +393,9 @@ class AntigravityHostAdapter(ProviderAdapter):
                 stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired:
-            dur = (time.perf_counter() - start_time) * 1000
             err_msg = f"Antigravity host CLI invocation timed out after {self._timeout_seconds}s."
             raise ProviderError(err_msg, status_code=504) from None
         except Exception as ex:
-            dur = (time.perf_counter() - start_time) * 1000
             err_msg = scrub_secrets(f"Failed to launch Antigravity CLI process: {ex}")
             raise ProviderError(err_msg) from None
 
@@ -514,7 +514,7 @@ class AntigravityHostAdapter(ProviderAdapter):
         **kwargs: Any,
     ) -> Iterator[str]:
         """Stream incremental text deltas from Antigravity CLI in real-time using stream-json."""
-        cli = self.get_cli_path()
+        self.get_cli_path()
         if self._is_agentapi:
             resp = self.chat_completion(messages, temperature, max_tokens, effort, model, cwd=cwd, **kwargs)
             yield resp.content

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import collections
 import threading
+import time
 import uuid
 from typing import Dict, Optional, Tuple
 from argus.config import MODEL_REGISTRY, ModelCost
@@ -22,8 +24,17 @@ def _to_usd(micro: int) -> float:
 class BudgetGuard:
     """Thread-safe budget enforcer with exact integer micro-dollar accounting and two-phase reservations."""
 
-    def __init__(self, config: BudgetConfig) -> None:
+    # A reservation whose request never reaches commit/release/record_uncertain (handler
+    # crash, malformed upstream body) would otherwise hold budget forever. After this many
+    # seconds it is dropped; a late commit still records its real spend.
+    RESERVATION_TTL_SECONDS = 900.0
+    _MAX_RECONCILED_IDS = 50_000
+
+    def __init__(self, config: BudgetConfig, reservation_ttl_seconds: Optional[float] = None) -> None:
         self.config = config
+        self._reservation_ttl = (
+            self.RESERVATION_TTL_SECONDS if reservation_ttl_seconds is None else reservation_ttl_seconds
+        )
         self._lock = threading.RLock()
         self._session_spend_micro = 0
         self._task_spend_micro: Dict[str, int] = {}
@@ -32,7 +43,9 @@ class BudgetGuard:
         self._uncertain_spend_micro = 0
         self._task_uncertain_micro: Dict[str, int] = {}
         self._active_reservations: Dict[str, Tuple[str, int]] = {}
+        self._reservation_started: Dict[str, float] = {}
         self._reconciled_reservations: set[str] = set()
+        self._reconciled_order: collections.deque[str] = collections.deque()
 
     @property
     def _session_spend_usd(self) -> float:
@@ -69,6 +82,7 @@ class BudgetGuard:
         """Check if request would violate task or session budget limits using exact integer arithmetic."""
         cost_micro = _to_micro(estimated_cost)
         with self._lock:
+            self._expire_stale_reservations_locked()
             # 1. Session check: confirmed spend + active reservations + uncertain liabilities
             total_session_micro = (
                 self._session_spend_micro
@@ -103,6 +117,19 @@ class BudgetGuard:
 
             return True, ""
 
+    def _expire_stale_reservations_locked(self) -> None:
+        if self._reservation_ttl <= 0 or not self._reservation_started:
+            return
+        cutoff = time.monotonic() - self._reservation_ttl
+        for res_id in [r for r, t in self._reservation_started.items() if t < cutoff]:
+            self._release_locked(res_id)
+
+    def _mark_reconciled_locked(self, reservation_id: str) -> None:
+        self._reconciled_reservations.add(reservation_id)
+        self._reconciled_order.append(reservation_id)
+        while len(self._reconciled_order) > self._MAX_RECONCILED_IDS:
+            self._reconciled_reservations.discard(self._reconciled_order.popleft())
+
     def reserve(
         self,
         run_id: str,
@@ -121,6 +148,7 @@ class BudgetGuard:
             self._reserved_session_micro += amount_micro
             self._task_reserved_micro[run_id] = self._task_reserved_micro.get(run_id, 0) + amount_micro
             self._active_reservations[res_id] = (run_id, amount_micro)
+            self._reservation_started[res_id] = time.monotonic()
             return True, "", res_id
 
     def _release_locked(self, reservation_id: Optional[str]) -> None:
@@ -129,6 +157,7 @@ class BudgetGuard:
             return
         if reservation_id in self._active_reservations:
             run_id, amount_micro = self._active_reservations.pop(reservation_id)
+            self._reservation_started.pop(reservation_id, None)
             self._reserved_session_micro = max(0, self._reserved_session_micro - amount_micro)
             self._task_reserved_micro[run_id] = max(0, self._task_reserved_micro.get(run_id, 0) - amount_micro)
 
@@ -139,7 +168,7 @@ class BudgetGuard:
         with self._lock:
             if reservation_id in self._reconciled_reservations:
                 return
-            self._reconciled_reservations.add(reservation_id)
+            self._mark_reconciled_locked(reservation_id)
             self._release_locked(reservation_id)
 
     def record_uncertain(
@@ -155,7 +184,7 @@ class BudgetGuard:
             if reservation_id:
                 if reservation_id in self._reconciled_reservations:
                     return 0.0
-                self._reconciled_reservations.add(reservation_id)
+                self._mark_reconciled_locked(reservation_id)
             self._release_locked(reservation_id)
             self._uncertain_spend_micro += est_micro
             self._task_uncertain_micro[run_id] = self._task_uncertain_micro.get(run_id, 0) + est_micro
@@ -182,7 +211,7 @@ class BudgetGuard:
             if reservation_id:
                 if reservation_id in self._reconciled_reservations:
                     return 0.0
-                self._reconciled_reservations.add(reservation_id)
+                self._mark_reconciled_locked(reservation_id)
             self._release_locked(reservation_id)
             self._session_spend_micro += cost_micro
             self._task_spend_micro[run_id] = self._task_spend_micro.get(run_id, 0) + cost_micro

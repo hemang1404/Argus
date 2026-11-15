@@ -2,17 +2,29 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional
 from argus.providers.storage import maybe_load_dotenv
-
-if TYPE_CHECKING:
-    from argus.providers.models import ProviderConfig
 
 # Conditionally load .env only if explicitly enabled via ARGUS_LOAD_DOTENV=1 or ARGUS_DOTENV_PATH
 maybe_load_dotenv()
+
+# Single source of truth for recovery-loop defaults and bounds. Surfaces (CLI, MCP,
+# API, TUI) must import these instead of re-encoding their own numbers.
+DEFAULT_MAX_ATTEMPTS = 3
+MAX_ATTEMPTS_CEILING = 10
+DEFAULT_BUDGET_USD = 0.030
+
+
+class UnpricedModelError(ValueError):
+    """Raised when a model has no known price and none was supplied explicitly.
+
+    Argus refuses to guess a price: an under-priced model silently defeats the
+    per-task budget guard.
+    """
 
 
 @dataclass(frozen=True)
@@ -25,8 +37,17 @@ class ModelCost:
     def calculate_cost(self, prompt_tokens: int, completion_tokens: int, cached_prompt_tokens: int = 0) -> float:
         """Calculate total USD cost for a given token usage.
         
-        Strictly divides token counts by 1,000,000.0.
+        Strictly divides token counts by 1,000,000.0. Negative or non-integer usage
+        (a buggy or hostile endpoint) is rejected rather than turned into a credit.
         """
+        for name, value in (
+            ("prompt_tokens", prompt_tokens),
+            ("completion_tokens", completion_tokens),
+            ("cached_prompt_tokens", cached_prompt_tokens),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"Invalid token usage: {name}={value!r} must be a non-negative integer.")
+        cached_prompt_tokens = min(cached_prompt_tokens, prompt_tokens)
         uncached_prompt = max(0, prompt_tokens - cached_prompt_tokens)
         input_usd = (uncached_prompt / 1_000_000.0) * self.input_cost_per_m
         cached_rate = self.cached_input_cost_per_m if self.cached_input_cost_per_m > 0 else self.input_cost_per_m
@@ -99,28 +120,69 @@ MODEL_REGISTRY: Dict[str, ModelCost] = {
 }
 
 
+# Cheap-first model cascade, used ONLY when the caller did not name a model and the
+# provider is listed here: attempts 1-2 use the small model (with failure feedback),
+# attempt 3+ uses the large one. Any provider not listed gets no cascade and no
+# model substitution. A caller that names a model (or an explicit small/large model)
+# always overrides this table.
+CASCADE_LADDERS: Dict[str, tuple[str, str]] = {
+    "openai": ("gpt-4o-mini", "gpt-4o"),
+    "deepseek": ("deepseek-flash", "deepseek-chat"),
+    "gemini": ("gemini-2.5-flash", "gemini-2.5-pro"),
+    "antigravity": ("gemini-3.8-flash-low", "gemini-3.8-flash-high"),
+}
+
+# Gateway-style pseudo-models that mean "no model chosen" rather than a real model id.
+_PSEUDO_MODELS = {"argus/auto", "auto"}
+
+# Providers whose inference does not bill per token at an Argus-visible price.
+_FREE_PROVIDERS = {"ollama", "lmstudio", "antigravity"}
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
 @dataclass
 class ArgusConfig:
-    """Runtime configuration for Argus recovery sessions."""
+    """Runtime configuration for Argus recovery sessions.
+
+    Precedence for limits and model choice (highest first):
+      1. Values passed by the caller (CLI flags, MCP/API arguments).
+      2. Project policy file (``argus.yaml`` / ``.argus.yaml`` / ``pyproject.toml``
+         ``[tool.argus]`` in the *workspace root*), applied by ``apply_project_policy``.
+         The repository being analysed is untrusted input, so it may only TIGHTEN
+         caps (lower ``max_attempts`` / ``budget_limit_usd`` / ``test_timeout_seconds``,
+         disable escalation, set ``reasoning_effort`` when the caller left it unset).
+         It can never raise a cap and never selects a model or provider.
+      3. Built-in defaults (``DEFAULT_*`` constants above).
+    Environment variables are consulted only for provider selection (``ARGUS_PROVIDER``).
+
+    Model dispatch: ``model`` is authoritative. Only an explicit ``small_model`` /
+    ``large_model`` ladder, or the documented provider cascade (``CASCADE_LADDERS``,
+    only when no model was named), ever sends a different model. ``ladder_source``
+    records which rule produced the models.
+    """
     # Active provider and model (None by default on fresh install until configured)
     provider: Optional[str] = None
     model: Optional[str] = None
     deepseek_api_key: Optional[str] = None
-    
+
     # Adaptive reasoning effort configuration
     effort: Optional[str] = None
     adaptive_routing: bool = True
 
-    # Multi-Tier Escalation Ladder Configuration
+    # Escalation ladder configuration (see class docstring)
     escalation_enabled: bool = True
     small_model: Optional[str] = None
     large_model: Optional[str] = None
+    ladder_source: str = ""
+
+    # User-supplied prices (USD per 1M tokens) for models absent from MODEL_REGISTRY.
+    model_prices: Dict[str, ModelCost] = field(default_factory=dict)
 
     # Explicit provider configuration (if using Argus provider subsystem)
     provider_config: Optional[Any] = None
 
-    # Recovery Loop Bounds (at most 3 turns by default)
-    max_attempts: int = 3
+    # Recovery Loop Bounds
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS
     test_timeout_seconds: int = 30
     repo_test_timeout_seconds: int = 180
     provider_timeout_seconds: float = 45.0
@@ -132,8 +194,7 @@ class ArgusConfig:
     reasoning_effort: Optional[str] = None
     temperature: float = 0.0
     include_feedback: bool = True
-    budget_limit_usd: float = 0.030
-    global_experiment_budget_usd: float = 5.000
+    budget_limit_usd: float = DEFAULT_BUDGET_USD
 
     # Container evaluation harness parameters (Milestone 2)
     use_container_runner: bool = False
@@ -141,7 +202,7 @@ class ArgusConfig:
     container_image: Optional[str] = None
     base_commit: Optional[str] = None
     expected_candidate_hash: Optional[str] = None
-    
+
     # Patch Engine Parameters
     similarity_threshold: float = 0.82
     ambiguity_margin: float = 0.10
@@ -158,12 +219,15 @@ class ArgusConfig:
         if p_name == "groq":
             raise ValueError("Groq is strictly prohibited as an inference provider in Argus.")
 
-        # Load project-level declarative policy configuration (argus.yaml, .argus.yaml, or pyproject.toml [tool.argus])
-        self._load_declarative_policy()
+        if self.model is not None:
+            self.model = self.model.strip() or None
+        if self.model is not None and self.model.lower() in _PSEUDO_MODELS:
+            self.model = None  # gateway alias, not a real model id: use the provider's own default
 
         if self.provider_config is not None:
             self.provider = self.provider_config.name
-            self.model = self.provider_config.model
+            # An explicitly named model wins over the stored provider's default model.
+            self.model = self.model or self.provider_config.model
             if self.provider == "deepseek" and self.provider_config.api_key:
                 self.deepseek_api_key = self.provider_config.api_key
         elif not self.provider:
@@ -191,110 +255,161 @@ class ArgusConfig:
             except Exception:
                 pass
 
-        # Populate escalation tier model defaults if not explicitly set
+        self._resolve_model_ladder()
+
+    def _resolve_model_ladder(self) -> None:
+        """Decide which model each attempt tier dispatches; never substitute silently."""
         p_norm = (self.provider or "").strip().lower()
-        if not self.small_model:
-            if p_norm == "openai":
-                self.small_model = "gpt-4o-mini"
-            elif p_norm == "deepseek":
-                self.small_model = "deepseek-flash"
-            elif p_norm == "gemini":
-                self.small_model = "gemini-2.5-flash"
-            elif p_norm == "groq":
-                self.small_model = "llama-3.1-8b-instant"
-            elif p_norm == "antigravity":
-                self.small_model = "gemini-2.5-flash"
-            elif p_norm == "ollama":
-                self.small_model = "qwen2.5-coder:7b"
-            else:
-                self.small_model = self.model or "qwen2.5-coder:7b"
 
-        if not self.large_model:
-            if p_norm == "openai":
-                self.large_model = "gpt-4o"
-            elif p_norm == "deepseek":
-                self.large_model = "deepseek-chat"
-            elif p_norm == "gemini":
-                self.large_model = "gemini-2.5-pro"
-            elif p_norm == "groq":
-                self.large_model = "llama-3.3-70b-versatile"
-            elif p_norm == "antigravity":
-                self.large_model = "gemini-2.5-pro"
-            elif p_norm == "ollama":
-                self.large_model = "qwen2.5-coder:7b"
-            else:
-                self.large_model = self.model or "gpt-4o"
+        if self.small_model or self.large_model:
+            # Caller supplied the ladder explicitly; a missing rung falls back to the
+            # pinned model (or the other rung), never to a provider default.
+            fallback = self.model or self.small_model or self.large_model
+            self.small_model = self.small_model or fallback
+            self.large_model = self.large_model or fallback
+            self.model = self.model or self.small_model
+            self.ladder_source = "explicit-ladder"
+            return
 
-    def _load_declarative_policy(self) -> None:
-        """Load declarative policy settings from local argus.yaml, .argus.yaml, or pyproject.toml."""
-        cwd = Path.cwd()
-        candidate_files = [
-            cwd / "argus.yaml",
-            cwd / "argus.yml",
-            cwd / ".argus.yaml",
-            cwd / ".argus.yml",
-        ]
-        policy_dict: dict = {}
-        for p in candidate_files:
-            if p.is_file():
-                try:
-                    import yaml
-                    data = yaml.safe_load(p.read_text(encoding="utf-8"))
-                    if isinstance(data, dict):
-                        policy_dict = data
-                        break
-                except Exception:
-                    pass
+        if self.model:
+            self.small_model = self.large_model = self.model
+            self.ladder_source = "pinned-model"
+            return
 
-        if not policy_dict and (cwd / "pyproject.toml").is_file():
+        if self.escalation_enabled and p_norm in CASCADE_LADDERS:
+            self.small_model, self.large_model = CASCADE_LADDERS[p_norm]
+            self.model = self.small_model
+            self.ladder_source = "provider-cascade"
+            return
+
+        from argus.providers.models import PROVIDER_PRESETS
+        preset = PROVIDER_PRESETS.get(p_norm)
+        self.model = preset.default_model if preset is not None else None
+        self.small_model = self.large_model = self.model
+        self.ladder_source = "provider-default" if self.model else "unresolved"
+
+    def model_for_tier(self, tier_idx: int) -> Optional[str]:
+        """Model dispatched at escalation tier ``tier_idx`` (1-2: small rung, 3: large rung)."""
+        if not self.escalation_enabled or self.ladder_source not in ("explicit-ladder", "provider-cascade"):
+            return self.model  # single model: read live so later `config.model = ...` is honoured
+        return (self.small_model if tier_idx < 3 else self.large_model) or self.model
+
+    def ladder_models(self) -> List[str]:
+        """Distinct models this configuration may dispatch, in tier order."""
+        models = [self.model_for_tier(t) for t in (1, 2, 3)]
+        return list(dict.fromkeys(m for m in models if m))
+
+    def apply_project_policy(self, workspace_root: Path) -> List[str]:
+        """Apply the workspace's declarative policy, tighten-only. Returns notes/warnings.
+
+        Reads ``argus.yaml``, ``argus.yml``, ``.argus.yaml``, ``.argus.yml`` or
+        ``pyproject.toml`` ``[tool.argus]`` from ``workspace_root`` (never the process
+        cwd). Parse errors and invalid values are returned as warnings, not swallowed.
+        """
+        policy, source, notes = _read_project_policy(Path(workspace_root))
+        if not policy:
+            return notes
+
+        def tighten(key: str, cast, current):
+            if key not in policy:
+                return current
             try:
-                import tomli
-                t_data = tomli.loads((cwd / "pyproject.toml").read_text(encoding="utf-8"))
-                policy_dict = t_data.get("tool", {}).get("argus", {})
-            except Exception:
-                try:
-                    import tomllib
-                    t_data = tomllib.loads((cwd / "pyproject.toml").read_text(encoding="utf-8"))
-                    policy_dict = t_data.get("tool", {}).get("argus", {})
-                except Exception:
-                    pass
+                value = cast(policy[key])
+            except (TypeError, ValueError):
+                notes.append(f"Ignored {key} in {source}: not a valid {cast.__name__}.")
+                return current
+            if not math.isfinite(value) or value <= 0:
+                notes.append(f"Ignored {key} in {source}: value must be finite and positive.")
+                return current
+            if value < current:
+                notes.append(f"Project policy ({source}) tightened {key}: {current} -> {value}.")
+                return value
+            if value > current:
+                notes.append(
+                    f"Ignored {key}={value} in {source}: a project file cannot raise a limit "
+                    f"above the caller's value ({current})."
+                )
+            return current
 
-        if policy_dict:
-            if "max_attempts" in policy_dict:
-                self.max_attempts = int(policy_dict["max_attempts"])
-            if "budget_limit_usd" in policy_dict:
-                self.budget_limit_usd = float(policy_dict["budget_limit_usd"])
-            if "test_timeout_seconds" in policy_dict:
-                self.test_timeout_seconds = int(policy_dict["test_timeout_seconds"])
-            if "model" in policy_dict and not self.model:
-                self.model = str(policy_dict["model"])
-            if "small_model" in policy_dict and not self.small_model:
-                self.small_model = str(policy_dict["small_model"])
-            if "large_model" in policy_dict and not self.large_model:
-                self.large_model = str(policy_dict["large_model"])
-            if "escalation_enabled" in policy_dict:
-                self.escalation_enabled = bool(policy_dict["escalation_enabled"])
-            if "reasoning_effort" in policy_dict:
-                self.reasoning_effort = str(policy_dict["reasoning_effort"])
+        self.max_attempts = tighten("max_attempts", int, self.max_attempts)
+        self.budget_limit_usd = tighten("budget_limit_usd", float, self.budget_limit_usd)
+        self.test_timeout_seconds = tighten("test_timeout_seconds", int, self.test_timeout_seconds)
+        if policy.get("escalation_enabled") is False and self.escalation_enabled:
+            self.escalation_enabled = False
+            notes.append(f"Project policy ({source}) disabled escalation.")
+        if "reasoning_effort" in policy and not self.reasoning_effort:
+            self.reasoning_effort = str(policy["reasoning_effort"])
+            notes.append(f"Project policy ({source}) set reasoning_effort={self.reasoning_effort}.")
+        for key in ("model", "small_model", "large_model", "provider"):
+            if key in policy:
+                notes.append(
+                    f"Ignored {key} in {source}: a project file cannot select the model or provider; "
+                    "use --provider/--model."
+                )
+        return notes
+
+    def _is_free_provider(self) -> bool:
+        """True when inference is host-native or served from this machine, so an unpriced
+        model has no Argus-visible price. Remote endpoints are never assumed free."""
+        name = (self.provider or "").strip().lower()
+        if name in _FREE_PROVIDERS:
+            return True
+        base_url = getattr(self.provider_config, "base_url", "") if self.provider_config is not None else ""
+        if not base_url and name == "custom":
+            base_url = "http://localhost"  # the 'custom' preset defaults to a local endpoint
+        if not base_url:
+            return False
+        from urllib.parse import urlparse
+        return (urlparse(base_url).hostname or "").lower() in _LOCAL_HOSTS
 
     def get_model_cost(self, model: Optional[str] = None) -> ModelCost:
-        """Lookup pricing for configured or specified model, fallback to conservative estimate."""
+        """Look up the price of ``model`` (default: the configured model).
+
+        Fails closed: a model with no registry or user-supplied price raises
+        ``UnpricedModelError`` unless the provider is local/host-native (free).
+        """
         target_model = model or self.model
         if not target_model:
-            return ModelCost(input_cost_per_m=0.50, output_cost_per_m=0.50)
-        return MODEL_REGISTRY.get(target_model, ModelCost(input_cost_per_m=0.50, output_cost_per_m=0.50))
+            raise UnpricedModelError(
+                "No model is configured, so the cost cannot be bounded. "
+                "Pass --model or configure a provider model."
+            )
+        if target_model in self.model_prices:
+            return self.model_prices[target_model]
+        if target_model in MODEL_REGISTRY:
+            return MODEL_REGISTRY[target_model]
+        if self._is_free_provider():
+            return ModelCost(input_cost_per_m=0.0, output_cost_per_m=0.0)
+        raise UnpricedModelError(
+            f"Model '{target_model}' has no known price for provider '{self.provider}'. "
+            "Argus will not guess a price; add it to ArgusConfig.model_prices "
+            "(USD per 1M tokens) or use a priced model."
+        )
 
-    def validate(self) -> list[str]:
-        """Check configuration health and return any missing requirements."""
-        issues = []
+    def validate(self, check_provider: bool = True) -> List[str]:
+        """Check configuration health and return any missing requirements.
 
-        if self.provider_config is not None:
+        ``check_provider=False`` skips provider/credential checks (an adapter was injected).
+        Pricing is always checked: every model the ladder may dispatch must be priced.
+        """
+        issues: List[str] = []
+
+        if not check_provider:
+            pass
+        elif self.provider_config is not None:
             from argus.providers.models import PROVIDER_PRESETS
             preset = PROVIDER_PRESETS.get(self.provider_config.name.lower())
             if preset and preset.requires_key and not self.provider_config.api_key:
                 issues.append(f"API key is not configured for provider '{self.provider_config.name}'. Set it via 'argus provider set' or environment variable.")
         elif self.provider:
-            if self.provider == "deepseek" and not self.deepseek_api_key and not os.getenv("DEEPSEEK_API_KEY"):
+            from argus.providers.models import PROVIDER_PRESETS
+            p_key = self.provider.strip().lower()
+            if p_key not in PROVIDER_PRESETS and p_key != "auto":
+                issues.append(
+                    f"Unknown provider '{self.provider}'. Known providers: "
+                    f"{', '.join(sorted(PROVIDER_PRESETS))}, or 'auto'. Configure one with 'argus provider set'."
+                )
+            elif self.provider == "deepseek" and not self.deepseek_api_key and not os.getenv("DEEPSEEK_API_KEY"):
                 issues.append("DEEPSEEK_API_KEY is not set in environment or OS credential store.")
             elif self.provider == "openai" and not os.getenv("OPENAI_API_KEY"):
                 from argus.providers.storage import ProviderStorage
@@ -304,18 +419,62 @@ class ArgusConfig:
                 from argus.providers.storage import ProviderStorage
                 if not ProviderStorage().get_api_key("gemini") and not ProviderStorage().get_api_key("google"):
                     issues.append("GEMINI_API_KEY / GOOGLE_API_KEY is not configured.")
-            elif self.provider == "groq" and not os.getenv("GROQ_API_KEY"):
-                from argus.providers.storage import ProviderStorage
-                if not ProviderStorage().get_api_key("groq"):
-                    issues.append("GROQ_API_KEY is not configured.")
-            elif self.provider == "antigravity":
-                # Antigravity uses host-native authentication and does not require an API key
-                pass
+            # Antigravity uses host-native authentication and does not require an API key
         else:
             issues.append("No active LLM provider configured. Run 'argus provider set' to configure a provider.")
 
-        if self.max_attempts < 1 or self.max_attempts > 10:
-            issues.append("max_attempts must be between 1 and 10.")
-        if self.budget_limit_usd <= 0:
-            issues.append("budget_limit_usd must be greater than 0.")
+        models = self.ladder_models()
+        if not models:
+            issues.append("No model is configured, so cost cannot be bounded. Pass --model or configure a provider model.")
+        for model_name in models:
+            try:
+                self.get_model_cost(model_name)
+            except UnpricedModelError as ex:
+                issues.append(str(ex))
+
+        if (
+            not isinstance(self.max_attempts, int)
+            or isinstance(self.max_attempts, bool)
+            or not 1 <= self.max_attempts <= MAX_ATTEMPTS_CEILING
+        ):
+            issues.append(f"max_attempts must be an integer between 1 and {MAX_ATTEMPTS_CEILING}.")
+        if not _is_positive_finite(self.budget_limit_usd):
+            issues.append("budget_limit_usd must be a finite number greater than 0.")
+        for name in ("task_deadline_seconds", "provider_timeout_seconds", "rate_limit_backoff_max_seconds"):
+            value = getattr(self, name)
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value < 0:
+                issues.append(f"{name} must be a finite non-negative number.")
         return issues
+
+
+def _is_positive_finite(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
+
+
+def _read_project_policy(root: Path) -> tuple[dict, str, List[str]]:
+    """Return (policy dict, source file name, warnings) for the workspace root."""
+    warnings: List[str] = []
+    for name in ("argus.yaml", "argus.yml", ".argus.yaml", ".argus.yml"):
+        path = root / name
+        if not path.is_file():
+            continue
+        try:
+            import yaml
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except Exception as ex:  # parse/IO errors are reported, never swallowed
+            warnings.append(f"Could not read project policy {name}: {type(ex).__name__}: {ex}")
+            continue
+        if isinstance(data, dict):
+            return data, name, warnings
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            import tomllib
+            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        except Exception as ex:
+            warnings.append(f"Could not parse pyproject.toml for [tool.argus]: {type(ex).__name__}: {ex}")
+            return {}, "", warnings
+        section = data.get("tool", {}).get("argus", {})
+        if isinstance(section, dict) and section:
+            return section, "pyproject.toml", warnings
+    return {}, "", warnings

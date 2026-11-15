@@ -1,6 +1,5 @@
 """End-to-End Toy Repository Recovery Test with Real Provider Inference, Feedback, Approval, and Application."""
 
-import json
 import os
 import subprocess
 import sys
@@ -14,7 +13,7 @@ from argus.providers.mock_server import MockOpenAIServer
 from argus.runtime.candidate import CandidateArtifactStore
 
 
-def test_complete_toy_repo_recovery_workflow():
+def test_complete_toy_repo_recovery_workflow(monkeypatch):
     """Verify full end-to-end recovery workflow on an actual toy repository:
     1. Toy repo created with failing test.
     2. Real provider inference (MockOpenAIServer).
@@ -30,9 +29,9 @@ def test_complete_toy_repo_recovery_workflow():
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         toy_repo = Path(tmp_dir).resolve()
-        config_dir = toy_repo / ".argus_cfg"
-        config_dir.mkdir(parents=True, exist_ok=True)
-        os.environ["ARGUS_CONFIG_DIR"] = str(config_dir)
+        # The config dir (which holds the run-signing key) must live outside the workspace.
+        config_dir = Path(tempfile.mkdtemp(prefix="argus_cfg_")).resolve()
+        monkeypatch.setenv("ARGUS_CONFIG_DIR", str(config_dir))
 
         # 1. Create toy repository structure
         src_dir = toy_repo / "src"

@@ -3,7 +3,7 @@
 import pytest
 
 from argus.patch.ast_checker import ASTChecker
-from argus.patch.fuzzy_engine import PatchResult, RefusalReason, ResilientPatchEngine
+from argus.patch.fuzzy_engine import RefusalReason, ResilientPatchEngine
 from argus.patch.parser import PatchBlock, PatchParser
 
 
@@ -117,18 +117,17 @@ class TestResilientPatchEngine:
         assert res.tier_used in (1, 2)
         assert "total = 100" in res.patched_code
 
-    def test_tier3_fuzzy_sliding_window(self, engine):
+    def test_tier3_token_equal_match_tolerates_spacing_and_comments(self, engine):
         source = (
             "def calculate_total(cart, tax_rate):\n"
             "    subtotal = sum(item.price for item in cart)\n"
-            "    tax = subtotal * tax_rate\n"
+            "    tax=subtotal*tax_rate  # sales tax\n"
             "    return subtotal + tax\n"
         )
-        # LLM slightly misremembered variable name or line
         patch = PatchBlock(
             search_text=(
                 "    subtotal = sum(item.price for item in cart)\n"
-                "    tax = subtotal * 0.05\n"
+                "    tax = subtotal * tax_rate\n"
                 "    return subtotal + tax"
             ),
             replace_text=(
@@ -141,7 +140,28 @@ class TestResilientPatchEngine:
         res = engine.apply_patch(source, patch)
         assert res.success is True
         assert res.tier_used == 3
+        assert res.strategy == "token_equal"
         assert "discount = 5.0" in res.patched_code
+
+    def test_tier3_refuses_misremembered_literal(self, engine):
+        """A model that misremembers a value must not overwrite the real code (PATCH-03)."""
+        source = (
+            "def calculate_total(cart, tax_rate):\n"
+            "    subtotal = sum(item.price for item in cart)\n"
+            "    tax = subtotal * tax_rate\n"
+            "    return subtotal + tax\n"
+        )
+        patch = PatchBlock(
+            search_text=(
+                "    subtotal = sum(item.price for item in cart)\n"
+                "    tax = subtotal * 0.05\n"
+                "    return subtotal + tax"
+            ),
+            replace_text="    return 0",
+        )
+        res = engine.apply_patch(source, patch)
+        assert res.success is False
+        assert res.refusal_reason == RefusalReason.REFUSED_NO_MATCH
 
     def test_tier4_requires_high_confidence_interior(self, engine):
         """Tier 4 refuses a low-similarity interior instead of replacing the span."""
@@ -188,20 +208,19 @@ class TestResilientPatchEngine:
         assert "SyntaxError" in res.details
 
     def test_tier3_ambiguity_refuses_when_competing_region_exists(self, engine):
-        """Verify that Tier 3 refuses when another distinct non-overlapping block matches closely."""
+        """Tier 3 refuses when two distinct regions are token-equal to the search block."""
         source = (
             "def worker_alpha():\n"
-            "    val = compute_item_alpha()\n"
-            "    return val * 10\n\n"
+            "    val=compute_item()\n"
+            "    return val*10\n\n"
             "# middle separator\n\n"
             "def worker_beta():\n"
-            "    val = compute_item_beta()\n"
-            "    return val * 10\n"
+            "    val=compute_item()   # same call\n"
+            "    return val*10\n"
         )
-        # Search block is generic enough to match both worker_alpha and worker_beta with near-equal ratio
         patch = PatchBlock(
             search_text=(
-                "    val = compute_item_gamma()\n"
+                "    val = compute_item()\n"
                 "    return val * 10"
             ),
             replace_text="    return 0",
@@ -365,13 +384,13 @@ class TestTier4Boundaries:
             "        pass\n"
             "        return value"
         )
-        # The replacement is de-indented relative to the nested function and
-        # would produce invalid/incorrect structure if applied.
+        # The search block differs in token content (an extra `pass`), so no tier
+        # may apply it; Tier 4 is off by default.
         res = engine.apply_patch(
             source,
             PatchBlock(search_text=search, replace_text="def inner():\n    return 0"),
             filename="module.py",
         )
         assert res.success is False
-        assert res.refusal_reason == RefusalReason.REFUSED_SYNTAX_ERROR
+        assert res.refusal_reason == RefusalReason.REFUSED_NO_MATCH
 

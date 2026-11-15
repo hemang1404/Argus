@@ -1,4 +1,4 @@
-"""Workspace Manager: Virtualizes execution into an isolated temporary copy ensuring 0 git pollution."""
+"""Workspace Manager: runs tests in an isolated temporary copy of the project (no git pollution)."""
 
 from __future__ import annotations
 
@@ -14,35 +14,36 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Iterable, List, Optional, Sequence, Set
 
 from argus.patch.fuzzy_engine import PatchResult, ResilientPatchEngine
 from argus.patch.parser import PatchBlock
+from argus.patch.textio import decode_source, encode_source
 
 
-# Directory names to exclude during full project snapshots
-IGNORED_SNAPSHOT_DIRS: Set[str] = {
-    ".git",
+# Names that are never part of a workspace snapshot, at any depth: VCS
+# internals, Argus's own run directory, and bytecode caches.
+ALWAYS_EXCLUDED_NAMES: Set[str] = {".git", ".argus", "__pycache__"}
+
+# Heavy tool/venv caches skipped only when they sit at the project ROOT (a
+# nested ``data/`` or ``build/`` directory is project content and is copied).
+# Extend per run with ``WorkspaceManager(snapshot_exclude=...)``.
+DEFAULT_SNAPSHOT_EXCLUDES: Set[str] = {
     ".venv",
     "venv",
-    "env",
     "node_modules",
-    "__pycache__",
+    ".tox",
+    ".nox",
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
-    ".tox",
-    ".argus",
-    "dist",
-    "build",
-    "logs",
-    "scratch",
-    "data",
-    "packages",
-    "experiments_archive",
-    "results",
-    "figures",
+    ".hg",
+    ".svn",
 }
+
+# Upper bound on the copied project size, so a mis-rooted run (for example a
+# home directory) fails fast instead of copying everything. None disables it.
+DEFAULT_SNAPSHOT_MAX_BYTES: int = 2 * 1024**3
 
 
 def _handle_remove_readonly(func, path, exc_info):
@@ -201,59 +202,6 @@ def cleanup_stale_temp_workspaces(max_age_hours: float = 1.0) -> int:
     return cleaned
 
 
-def cleanup_stale_worktrees(repo_root: Path) -> int:
-    """Prune dangling Git worktrees left by crashed, interrupted, or aborted processes."""
-    repo_root = Path(repo_root).resolve()
-    git_dir = repo_root / ".git"
-    if not git_dir.exists():
-        return 0
-
-    cleaned_count = 0
-    try:
-        # First let git prune any worktrees whose target directory was deleted
-        subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=str(repo_root),
-            capture_output=True,
-            timeout=10,
-        )
-
-        # Inspect any remaining worktrees
-        res = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
-            cwd=str(repo_root),
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if res.returncode == 0:
-            for line in res.stdout.splitlines():
-                if line.startswith("worktree "):
-                    wt_path = line.split(" ", 1)[1].strip()
-                    if "argus_wt_" in wt_path:
-                        try:
-                            subprocess.run(
-                                ["git", "worktree", "remove", "--force", wt_path],
-                                cwd=str(repo_root),
-                                capture_output=True,
-                                timeout=10,
-                            )
-                            cleaned_count += 1
-                        except Exception:
-                            pass
-
-        subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=str(repo_root),
-            capture_output=True,
-            timeout=10,
-        )
-    except Exception:
-        pass
-
-    return cleaned_count
-
-
 @dataclass
 class WorkspaceSnapshot:
     """State metadata for an active isolated workspace."""
@@ -263,11 +211,115 @@ class WorkspaceSnapshot:
     original_content: str
 
 
-class WorkspaceManager:
-    """Manages ephemeral directory copies or Git worktrees for non-destructive test execution.
+class TargetNotFoundError(FileNotFoundError):
+    """The configured target file does not exist."""
 
-    Preserves full project snapshots, sibling module imports, uncommitted changes,
-    and provides robust worktree cleanup.
+
+class SnapshotTooLargeError(ValueError):
+    """The project snapshot would exceed the configured size limit."""
+
+
+class TargetOutsideWorkspaceError(ValueError):
+    """The target file lies outside the workspace root; Argus will not re-root the snapshot."""
+
+
+def _is_excluded(rel_parts: Sequence[str], root_level_excludes: Set[str]) -> bool:
+    """Whether a snapshot-relative path is left out of the workspace copy."""
+    if not rel_parts:
+        return False
+    if any(part in ALWAYS_EXCLUDED_NAMES for part in rel_parts):
+        return True
+    if rel_parts[0] in root_level_excludes:
+        return True
+    return rel_parts[-1].endswith((".pyc", ".pyo"))
+
+
+def _walk_snapshot_files(root: Path, base: Path, excludes: Set[str]) -> List[Path]:
+    """All files and symlinks below ``root`` (relative to ``base``), honouring excludes."""
+    found: List[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        here = Path(dirpath)
+        rel_dir = here.relative_to(base)
+        keep: List[str] = []
+        for d in dirnames:
+            rel = rel_dir / d
+            if _is_excluded(rel.parts, excludes):
+                continue
+            if (here / d).is_symlink():
+                found.append(rel)  # linked directory: copied as a link, never followed
+            else:
+                keep.append(d)
+        dirnames[:] = keep
+        for f in filenames:
+            rel = rel_dir / f
+            if not _is_excluded(rel.parts, excludes):
+                found.append(rel)
+    return found
+
+
+def _git_snapshot_files(root: Path, excludes: Set[str], timeout: int) -> Optional[List[Path]]:
+    """Tracked plus untracked-but-not-ignored files per git, or None if unavailable."""
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=str(root),
+            capture_output=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    files: List[Path] = []
+    seen: Set[Path] = set()
+    for raw in proc.stdout.split(b"\0"):
+        if not raw:
+            continue
+        rel = Path(os.fsdecode(raw))
+        if rel in seen or _is_excluded(rel.parts, excludes):
+            continue
+        seen.add(rel)
+        src = root / rel
+        if src.is_symlink() or src.is_file():
+            files.append(rel)
+        elif src.is_dir():
+            # submodule / nested repository: take its working files directly
+            files.extend(p for p in _walk_snapshot_files(src, root, excludes) if p not in seen)
+        # tracked-but-deleted paths simply do not exist and are skipped
+    return files
+
+
+def _copy_snapshot_entry(root: Path, dest_root: Path, rel: Path) -> None:
+    src = root / rel
+    dst = dest_root / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.is_symlink():
+        link = os.readlink(src)
+        resolved = (src.parent / link).resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            return  # never materialise or expose something outside the workspace root
+        try:
+            os.symlink(link, dst, target_is_directory=src.is_dir())
+        except (OSError, NotImplementedError):
+            if resolved.is_file():
+                shutil.copy2(resolved, dst)
+        return
+    shutil.copy2(src, dst)
+
+
+class WorkspaceManager:
+    """Manages an ephemeral directory copy for non-destructive test execution.
+
+    The snapshot is a copy of the project: every file git tracks, plus
+    untracked files that are not git-ignored (so fixtures such as ``data/``,
+    ``tests/data/`` or ``*.zip`` are present). Outside a git repository, or with
+    ``snapshot_respect_gitignore=False``, everything is copied. Always left out:
+    ``.git``, ``.argus`` (the run directory), ``__pycache__``/``*.pyc`` and the
+    root-level heavy caches in ``DEFAULT_SNAPSHOT_EXCLUDES`` (configurable via
+    ``snapshot_exclude``). Files are copied byte-for-byte; the target is read and
+    written with its own encoding, BOM and line endings.
     """
 
     def __init__(
@@ -276,32 +328,36 @@ class WorkspaceManager:
         target_file: Optional[Path | str] = None,
         test_file: Optional[Path | str] = None,
         use_worktree: bool = False,
+        snapshot_exclude: Optional[Iterable[str]] = None,
+        snapshot_respect_gitignore: bool = True,
+        snapshot_max_bytes: Optional[int] = DEFAULT_SNAPSHOT_MAX_BYTES,
     ) -> None:
-        self.use_worktree = use_worktree
-        self._is_git_worktree = False
+        if use_worktree:
+            raise ValueError(
+                "Git worktree isolation was removed: Argus recovery runs in a temporary "
+                "directory copy of the project. Do not pass use_worktree."
+            )
+        self.snapshot_excludes: Set[str] = set(DEFAULT_SNAPSHOT_EXCLUDES) | set(snapshot_exclude or ())
+        self.snapshot_respect_gitignore = snapshot_respect_gitignore
+        self.snapshot_max_bytes = snapshot_max_bytes
+        self.git_timeout: int = 30
         if repo_root:
             self.repo_root = Path(repo_root).resolve()
             if target_file:
                 tf_candidate = Path(target_file)
-                if not tf_candidate.is_absolute():
-                    tf = (self.repo_root / tf_candidate).resolve()
-                else:
-                    tf = tf_candidate.resolve()
+                tf = (
+                    tf_candidate.resolve()
+                    if tf_candidate.is_absolute()
+                    else (self.repo_root / tf_candidate).resolve()
+                )
                 try:
                     tf.relative_to(self.repo_root)
                 except ValueError:
-                    if test_file:
-                        tt_cand = Path(test_file)
-                        tt = (self.repo_root / tt_cand).resolve() if not tt_cand.is_absolute() else tt_cand.resolve()
-                        try:
-                            if tf.drive == tt.drive:
-                                self.repo_root = Path(os.path.commonpath([str(tf), str(tt)]))
-                            else:
-                                self.repo_root = tf.parent
-                        except Exception:
-                            self.repo_root = tf.parent
-                    else:
-                        self.repo_root = tf.parent
+                    raise TargetOutsideWorkspaceError(
+                        f"Target file {tf} is outside the workspace root {self.repo_root}. "
+                        "Argus will not snapshot a different directory; run it from the "
+                        "project that contains the target."
+                    ) from None
         elif target_file and test_file:
             tf = Path(target_file).resolve()
             tt = Path(test_file).resolve()
@@ -327,21 +383,22 @@ class WorkspaceManager:
         self.target_file_rel = Path(target_file) if target_file else None
         if self.target_file_rel and self.target_file_rel.is_absolute():
             try:
-                self.target_file_rel = self.target_file_rel.relative_to(self.repo_root)
+                self.target_file_rel = self.target_file_rel.resolve().relative_to(self.repo_root)
             except ValueError:
                 self.target_file_rel = Path(self.target_file_rel.name)
 
         self.test_file_rel = Path(test_file) if test_file else None
         if self.test_file_rel and self.test_file_rel.is_absolute():
             try:
-                self.test_file_rel = self.test_file_rel.relative_to(self.repo_root)
+                self.test_file_rel = self.test_file_rel.resolve().relative_to(self.repo_root)
             except ValueError:
                 self.test_file_rel = Path(self.test_file_rel.name)
 
         self.temp_dir: Optional[Path] = None
         self._original_content: Optional[str] = None
+        self._encoding: str = "utf-8"
+        self._bom: bytes = b""
         self.session_id: str = uuid.uuid4().hex[:12]
-        self.worktree_timeout: int = 30
 
     @property
     def workspace_root(self) -> Path:
@@ -355,174 +412,107 @@ class WorkspaceManager:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.cleanup()
 
+    def _snapshot_file_list(self) -> List[Path]:
+        if self.snapshot_respect_gitignore:
+            listed = _git_snapshot_files(self.repo_root, self.snapshot_excludes, self.git_timeout)
+            if listed is not None:
+                return listed
+        return _walk_snapshot_files(self.repo_root, self.repo_root, self.snapshot_excludes)
+
     def setup(self) -> Path:
-        """Create an ephemeral workspace or Git worktree with complete project snapshot."""
+        """Create the ephemeral workspace copy and record the target's baseline."""
         # Auto-prune any orphaned temporary workspaces from crashed/aborted previous sessions
         cleanup_stale_temp_workspaces()
 
-        if self.use_worktree:
-            git_dir = self.repo_root / ".git"
-            if git_dir.exists():
-                cleanup_stale_worktrees(self.repo_root)
-                self.temp_dir = Path(tempfile.mkdtemp(prefix="argus_wt_"))
-                try:
-                    self.temp_dir.rmdir()
-                except Exception:
-                    pass
-
-                proc = subprocess.run(
-                    ["git", "worktree", "add", "--detach", str(self.temp_dir), "HEAD"],
-                    cwd=str(self.repo_root),
-                    capture_output=True,
-                    text=True,
-                    timeout=self.worktree_timeout,
-                )
-                if proc.returncode == 0:
-                    self._is_git_worktree = True
-                    # Record session ownership metadata
-                    try:
-                        session_meta = {
-                            "session_id": self.session_id,
-                            "pid": os.getpid(),
-                            "process_create_time": get_process_create_time(os.getpid()),
-                            "created_at": time.time(),
-                            "repo_root": str(self.repo_root),
-                        }
-                        (self.temp_dir / ".argus_session.json").write_text(json.dumps(session_meta), encoding="utf-8")
-                    except Exception:
-                        pass
-                    # Overlay uncommitted working tree modifications and untracked files
-                    self._overlay_uncommitted_changes()
-                    if self.target_file_rel:
-                        src_path = self.temp_dir / self.target_file_rel
-                        if src_path.exists():
-                            self._original_content = src_path.read_text(encoding="utf-8", errors="replace")
-                    return self.temp_dir
-
-        # Fallback / Default: Full isolated snapshot directory copy
         self.temp_dir = Path(tempfile.mkdtemp(prefix="argus_ws_"))
-
-        def _ignore_heavy(directory: str, contents: list[str]) -> list[str]:
-            ignored = []
-            for item in contents:
-                if item in IGNORED_SNAPSHOT_DIRS:
-                    ignored.append(item)
-                elif item.endswith((".pyc", ".pyo", ".pyd", ".docx", ".pdf", ".zip", ".tar", ".gz")):
-                    ignored.append(item)
-            return ignored
-
-        # Perform deep copy of project root to preserve sibling modules, imports, configs
-        shutil.copytree(
-            self.repo_root,
-            self.temp_dir,
-            ignore=_ignore_heavy,
-            dirs_exist_ok=True,
-        )
-
-        # Record session ownership metadata
         try:
-            session_meta = {
-                "session_id": self.session_id,
-                "pid": os.getpid(),
-                "process_create_time": get_process_create_time(os.getpid()),
-                "created_at": time.time(),
-                "repo_root": str(self.repo_root),
-            }
-            (self.temp_dir / ".argus_session.json").write_text(json.dumps(session_meta), encoding="utf-8")
-        except Exception:
-            pass
+            files = self._snapshot_file_list()
+            if self.snapshot_max_bytes is not None:
+                total = 0
+                for rel in files:
+                    try:
+                        total += (self.repo_root / rel).lstat().st_size
+                    except OSError:
+                        continue
+                    if total > self.snapshot_max_bytes:
+                        raise SnapshotTooLargeError(
+                            f"Project snapshot of {self.repo_root} exceeds {self.snapshot_max_bytes} bytes. "
+                            "Point Argus at the project directory (not a parent such as your home "
+                            "directory), add heavy directories to snapshot_exclude, or raise "
+                            "snapshot_max_bytes."
+                        )
+            for rel in files:
+                _copy_snapshot_entry(self.repo_root, self.temp_dir, rel)
 
-        # If a target file is specified, record its baseline content
-        if self.target_file_rel:
-            dest_target = self.temp_dir / self.target_file_rel
-            if not dest_target.exists():
-                # Check original repo root
-                orig_target = self.repo_root / self.target_file_rel
-                if not orig_target.exists():
-                    raise FileNotFoundError(f"Target file not found: {orig_target}")
-                dest_target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(orig_target, dest_target)
-            self._original_content = dest_target.read_text(encoding="utf-8", errors="replace")
+            # The target (and test file) are always present, even if git-ignored.
+            for rel in (self.target_file_rel, self.test_file_rel):
+                if rel is None:
+                    continue
+                dest = self.temp_dir / rel
+                if not dest.exists():
+                    orig = self.repo_root / rel
+                    if not orig.is_file():
+                        if rel is self.target_file_rel:
+                            raise TargetNotFoundError(f"Target file not found: {orig}")
+                        continue
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(orig, dest)
+
+            try:
+                session_meta = {
+                    "session_id": self.session_id,
+                    "pid": os.getpid(),
+                    "process_create_time": get_process_create_time(os.getpid()),
+                    "created_at": time.time(),
+                    "repo_root": str(self.repo_root),
+                }
+                (self.temp_dir / ".argus_session.json").write_text(json.dumps(session_meta), encoding="utf-8")
+            except OSError:
+                pass
+
+            if self.target_file_rel:
+                decoded = decode_source(
+                    (self.temp_dir / self.target_file_rel).read_bytes(), name=str(self.target_file_rel)
+                )
+                self._original_content = decoded.text
+                self._encoding = decoded.encoding
+                self._bom = decoded.bom
+        except BaseException:
+            self.cleanup()
+            raise
 
         return self.temp_dir
 
-    def _overlay_uncommitted_changes(self) -> None:
-        """Sync uncommitted changes (dirty files and untracked files) into the worktree."""
-        if not self.temp_dir or not self.temp_dir.exists():
-            return
+    def _target_path(self) -> Path:
+        if not self.temp_dir or not self.target_file_rel:
+            raise RuntimeError("Workspace not initialized or no target file configured.")
+        return self.temp_dir / self.target_file_rel
 
-        try:
-            res = subprocess.run(
-                ["git", "status", "--porcelain", "-uall"],
-                cwd=str(self.repo_root),
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if res.returncode != 0:
-                return
-
-            for line in res.stdout.splitlines():
-                if len(line) < 4:
-                    continue
-                status_code = line[:2]
-                rel_path_str = line[3:].strip().strip('"')
-                # Handle renames e.g. "R  old -> new"
-                if " -> " in rel_path_str:
-                    rel_path_str = rel_path_str.split(" -> ")[-1].strip().strip('"')
-
-                rel_path = Path(rel_path_str)
-                # Skip heavy/ignored directories
-                parts = rel_path.parts
-                if any(part in IGNORED_SNAPSHOT_DIRS for part in parts):
-                    continue
-
-                src_file = self.repo_root / rel_path
-                dest_file = self.temp_dir / rel_path
-
-                if "D" in status_code:
-                    # File was deleted in working tree
-                    if dest_file.exists():
-                        dest_file.unlink()
-                elif src_file.is_file():
-                    dest_file.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src_file, dest_file)
-        except Exception:
-            pass
+    def _write_text(self, content: str) -> None:
+        data = encode_source(content, self._encoding, self._bom, name=str(self.target_file_rel))
+        self._target_path().write_bytes(data)
 
     def read_target_file(self) -> str:
-        """Read the current contents of the target file in the isolated workspace."""
-        if not self.temp_dir or not self.target_file_rel:
-            raise RuntimeError("Workspace not initialized or no target file configured.")
-        target_path = self.temp_dir / self.target_file_rel
-        return target_path.read_text(encoding="utf-8", errors="replace")
+        """Current text of the target in the workspace (BOM stripped, line endings as on disk)."""
+        decoded = decode_source(self._target_path().read_bytes(), name=str(self.target_file_rel))
+        return decoded.text
 
     def write_target_file(self, content: str) -> None:
-        """Write updated code content to the target file in the isolated workspace."""
-        if not self.temp_dir or not self.target_file_rel:
-            raise RuntimeError("Workspace not initialized or no target file configured.")
-        target_path = self.temp_dir / self.target_file_rel
-        target_path.write_text(content, encoding="utf-8")
+        """Write ``content`` to the workspace target using the file's own encoding/BOM, no newline translation."""
+        self._write_text(content)
 
     def apply_patch(self, patch: PatchBlock, engine: ResilientPatchEngine) -> PatchResult:
         """Apply a patch block to the target file inside the isolated workspace."""
-        if not self.temp_dir or not self.target_file_rel:
-            raise RuntimeError("Workspace not initialized or no target file configured.")
-
-        target_path = self.temp_dir / self.target_file_rel
-        current_content = target_path.read_text(encoding="utf-8", errors="replace")
-
+        current_content = self.read_target_file()
         res = engine.apply_patch(current_content, patch, filename=str(self.target_file_rel))
         if res.success and res.patched_code is not None:
-            target_path.write_text(res.patched_code, encoding="utf-8")
-
+            self._write_text(res.patched_code)
         return res
 
     def reset_target_file(self) -> None:
         """Reset the target file in the isolated workspace back to original baseline content."""
         if self._original_content is not None and self.temp_dir and self.target_file_rel:
-            target_path = self.temp_dir / self.target_file_rel
-            target_path.write_text(self._original_content, encoding="utf-8")
+            self._write_text(self._original_content)
 
     def generate_unified_diff(self) -> str:
         """Generate a unified diff between the original file and current isolated state."""
@@ -542,26 +532,7 @@ class WorkspaceManager:
         return "".join(diff)
 
     def cleanup(self) -> None:
-        """Remove the ephemeral workspace directory or Git worktree."""
-        if getattr(self, "_is_git_worktree", False) and self.temp_dir:
-            try:
-                subprocess.run(
-                    ["git", "worktree", "remove", "--force", str(self.temp_dir)],
-                    cwd=str(self.repo_root),
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                subprocess.run(
-                    ["git", "worktree", "prune"],
-                    cwd=str(self.repo_root),
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-            except Exception:
-                pass
-            self._is_git_worktree = False
+        """Remove the ephemeral workspace directory."""
         if self.temp_dir and self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, onerror=_handle_remove_readonly)
-            self.temp_dir = None
+        self.temp_dir = None

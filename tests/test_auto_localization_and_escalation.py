@@ -9,7 +9,7 @@ import pytest
 
 from argus.config import ArgusConfig
 from argus.providers.adapter import CompletionResponse, ProviderAdapter, ConnectionTestResult
-from argus.runtime.controller import RecoveryController, AttemptRecord
+from argus.runtime.controller import RecoveryController
 
 
 class MockAdapterWithEscalationTracking(ProviderAdapter):
@@ -136,12 +136,12 @@ def test_escalation_ladder_tiers_across_attempts(test_repo_structure):
     # Attempt 2: Incorrect logic -> Fails
     # Attempt 3: Verified working fix -> Passes
     working_patch = (
-        f"### File: mypkg/calculator.py\n"
-        f"<<<<<<< SEARCH\n"
-        f"    return a + b\n"
-        f"=======\n"
-        f"    return a * b\n"
-        f">>>>>>> REPLACE"
+        "### File: mypkg/calculator.py\n"
+        "<<<<<<< SEARCH\n"
+        "    return a + b\n"
+        "=======\n"
+        "    return a * b\n"
+        ">>>>>>> REPLACE"
     )
     responses = [
         "Synthesizing bad syntax <<<<<<< SEARCH",
@@ -187,19 +187,20 @@ def test_escalation_ladder_tiers_across_attempts(test_repo_structure):
     assert history[2]["effort"] == "high"
 
 
-def test_argus_recover_mcp_without_target_file(test_repo_structure):
+def test_argus_recover_mcp_without_target_file(test_repo_structure, monkeypatch):
     """Verify that argus_recover MCP tool succeeds when target_file is omitted."""
     from argus.mcp.server import create_mcp_server
     repo_dir, math_file, test_file = test_repo_structure
+    monkeypatch.setenv("ARGUS_MCP_WORKSPACE_ROOT", str(repo_dir))
 
     server = create_mcp_server()
 
     working_patch = (
-        f"<<<<<<< SEARCH\n"
-        f"    return a + b\n"
-        f"=======\n"
-        f"    return a * b\n"
-        f">>>>>>> REPLACE"
+        "<<<<<<< SEARCH\n"
+        "    return a + b\n"
+        "=======\n"
+        "    return a * b\n"
+        ">>>>>>> REPLACE"
     )
 
     mock_adapter = MockAdapterWithEscalationTracking([working_patch])

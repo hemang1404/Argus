@@ -77,7 +77,7 @@ def test_real_host_deliberately_failing_toy_repo_recovery(tmp_path):
     # 1. Run recovery through Antigravity host runtime
     cfg = ArgusConfig(
         provider="antigravity",
-        model="gemini-2.5-pro",
+        model="gemini-3.8-flash-low",
         max_attempts=2,
     )
     controller = RecoveryController(config=cfg)

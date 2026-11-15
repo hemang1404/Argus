@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -20,6 +21,7 @@ from argus.config import ArgusConfig
 from argus.providers.models import ProviderConfig
 from argus.providers.storage import ProviderStorage
 from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
+from argus.runtime.runner import HOST_EXECUTION_WARNING
 from argus.runtime.controller import RecoveryController, RecoveryOutcome, validate_target_file
 
 # Conditionally load .env only if explicitly enabled
@@ -36,8 +38,44 @@ if not logger.handlers:
     logger.addHandler(stderr_handler)
 
 
+# The MCP caller is an LLM agent, not the user. Its tool arguments are untrusted:
+# `workspace` is confined to the server's root and `budget` is capped by user policy.
+DEFAULT_MAX_BUDGET_USD = 0.25
+
+
+def resolve_mcp_workspace(workspace: Optional[str], root: Path) -> Path:
+    """Resolve a caller-supplied workspace, refusing anything outside ``root``."""
+    ws = Path(workspace).resolve() if workspace else root
+    try:
+        ws.relative_to(root)
+    except ValueError:
+        raise ValueError(
+            f"Workspace '{workspace}' is outside the MCP server root '{root}'. "
+            "Start the server from the project directory or set ARGUS_MCP_WORKSPACE_ROOT."
+        ) from None
+    return ws
+
+
+def clamp_mcp_budget(budget: float) -> float:
+    """Validate an agent-supplied budget and cap it at the user's policy ceiling."""
+    try:
+        value = float(budget)
+    except (TypeError, ValueError):
+        raise ValueError("budget must be a number") from None
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError("budget must be a finite number greater than 0")
+    try:
+        ceiling = float(os.environ.get("ARGUS_MCP_MAX_BUDGET_USD", DEFAULT_MAX_BUDGET_USD))
+    except ValueError:
+        ceiling = DEFAULT_MAX_BUDGET_USD
+    if not math.isfinite(ceiling) or ceiling <= 0:
+        ceiling = DEFAULT_MAX_BUDGET_USD
+    return min(value, ceiling)
+
+
 def create_mcp_server() -> FastMCP:
     """Instantiate and configure the Argus FastMCP server with tools."""
+    server_root = Path(os.environ.get("ARGUS_MCP_WORKSPACE_ROOT") or Path.cwd()).resolve()
     server = FastMCP(
         name="argus",
         instructions="Argus: Execution-feedback test recovery and resilient patch runtime.",
@@ -53,7 +91,7 @@ def create_mcp_server() -> FastMCP:
             pytest_found = shutil.which("pytest") is not None
 
             # Count candidates in current workspace
-            candidates = CandidateArtifactStore.list_candidates()
+            candidates = CandidateArtifactStore.list_candidates(server_root)
             verified_count = sum(1 for c in candidates if c.verified)
             approved_count = sum(1 for c in candidates if c.approved)
 
@@ -85,6 +123,7 @@ def create_mcp_server() -> FastMCP:
                         "verified_candidates": verified_count,
                         "approved_candidates": approved_count,
                     },
+                    "security_notice": HOST_EXECUTION_WARNING,
                     "message": "Argus is installed, but no LLM provider is configured. Run 'argus provider set' to configure a provider.",
                 }
                 return json.dumps(status_payload, indent=2)
@@ -110,6 +149,7 @@ def create_mcp_server() -> FastMCP:
                     "verified_candidates": verified_count,
                     "approved_candidates": approved_count,
                 },
+                "security_notice": HOST_EXECUTION_WARNING,
                 "message": f"Argus ready. Active provider: {active_cfg.name} ({active_cfg.model}).",
             }
             return json.dumps(status_payload, indent=2)
@@ -145,7 +185,7 @@ def create_mcp_server() -> FastMCP:
         """
         logger.info(f"argus_recover triggered: test='{test_command}', target='{target_file or '(auto-localize)'}', provider={provider}, model={model}")
         try:
-            ws_root = Path(workspace).resolve() if workspace else Path.cwd().resolve()
+            ws_root = resolve_mcp_workspace(workspace, server_root)
             target_path = None
             if target_file:
                 target_path = Path(target_file)
@@ -230,7 +270,7 @@ def create_mcp_server() -> FastMCP:
 
             config = ArgusConfig(
                 max_attempts=bounded_attempts,
-                budget_limit_usd=budget,
+                budget_limit_usd=clamp_mcp_budget(budget),
                 provider_config=active_cfg,
             )
             controller = RecoveryController(config=config)
@@ -252,6 +292,7 @@ def create_mcp_server() -> FastMCP:
                 "cost_usd": outcome.total_cost_usd,
                 "duration_ms": outcome.total_duration_ms,
                 "target_file": outcome.target_file or str(target_file or ""),
+                "security_notice": HOST_EXECUTION_WARNING,
                 "changed_files": outcome.changed_files,
                 "tests_executed": outcome.tests_executed,
                 "diff": outcome.unified_diff,
@@ -273,7 +314,7 @@ def create_mcp_server() -> FastMCP:
     def argus_get_candidate(run_id: str, workspace: Optional[str] = None) -> str:
         """Inspect a specific candidate patch generated by Argus."""
         try:
-            ws_root = Path(workspace).resolve() if workspace else Path.cwd().resolve()
+            ws_root = resolve_mcp_workspace(workspace, server_root)
             metadata, _ = CandidateArtifactStore.load_candidate(run_id, workspace_root=ws_root)
             diff_text = CandidateArtifactStore.get_candidate_diff(run_id, workspace_root=ws_root)
 
@@ -307,7 +348,7 @@ def create_mcp_server() -> FastMCP:
         """
         logger.info(f"argus_apply_candidate invoked for run_id='{run_id}'")
         try:
-            ws_root = Path(workspace).resolve() if workspace else Path.cwd().resolve()
+            ws_root = resolve_mcp_workspace(workspace, server_root)
             apply_res = AuthoritativePatchApplier.apply(
                 run_id=run_id,
                 workspace_root=ws_root,

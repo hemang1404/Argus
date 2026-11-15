@@ -279,7 +279,6 @@ def test_global_experiment_budget_ceiling_enforcement(tmp_path: Path):
         provider="custom",
         model="openai/gpt-oss-20b",
         budget_limit_usd=0.030,
-        global_experiment_budget_usd=global_cap,
     )
     controller = RecoveryController(config=cfg)
 

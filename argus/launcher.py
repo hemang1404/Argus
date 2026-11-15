@@ -3,7 +3,7 @@
 Implements ADR-005:
 - Dual-mode terminal launcher: in-place foreground mode vs dedicated Windows Terminal window.
 - Supports native OpenTUI (Bun + Zig + SolidJS) frontend with graceful fallback to Python Textual.
-- Locates Windows Terminal (wt.exe) with graceful Conhost (cmd.exe /c start) fallback.
+- Locates Windows Terminal (wt.exe) with graceful Conhost fallback (direct spawn in a new console, never via a shell).
 - Desktop shortcut installer (.cmd and silent .vbs) for zero-console-flash launching.
 """
 
@@ -112,14 +112,19 @@ def launch_terminal_app(
         flags = subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0
         return subprocess.Popen(cmd, creationflags=flags)
 
-    # Fallback to Conhost start on Windows
+    # Fallback on Windows without Windows Terminal: spawn the process directly in a
+    # new console window. No shell and no cmd.exe command string is involved, so a
+    # workspace path containing quotes or '&' cannot alter the command.
     if sys.platform == "win32":
+        new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
         if opentui_env:
             bun_exe, tui_dir = opentui_env
-            cmd_str = f'cmd.exe /c start "Argus" /D "{tui_dir}" "{bun_exe}" run src/index.tsx'
+            argv = [bun_exe, "run", "src/index.tsx"]
+            cwd = str(tui_dir)
         else:
-            cmd_str = f'cmd.exe /c start "Argus" /D "{workspace_path}" "{python_exe}" -m argus.tui.app'
-        return subprocess.Popen(cmd_str, shell=True)
+            argv = [python_exe, "-m", "argus.tui.app"]
+            cwd = workspace_path
+        return subprocess.Popen(argv, cwd=cwd, creationflags=new_console, shell=False)
 
     # Non-Windows dedicated fallback: run directly in foreground
     from argus.tui.app import ArgusTUIApp

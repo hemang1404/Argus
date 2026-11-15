@@ -7,15 +7,13 @@ realized USD spend, and realized alpha cost savings vs frontier models.
 from __future__ import annotations
 
 import json
-import os
 import threading
-import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from argus.config import MODEL_REGISTRY, ModelCost
+from argus.config import ModelCost
 
 # Baseline reference frontier model pricing ($3.00 / $15.00 per M tokens)
 FRONTIER_BASELINE = ModelCost(input_cost_per_m=3.00, output_cost_per_m=15.00)

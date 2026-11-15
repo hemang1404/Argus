@@ -7,9 +7,8 @@ to talk directly to Argus Gateway through /v1/messages with zero code changes in
 from __future__ import annotations
 
 import json
-import time
 import uuid
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List
 
 
 def _extract_text(content: Any) -> str:

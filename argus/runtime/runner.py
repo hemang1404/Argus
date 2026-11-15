@@ -1,10 +1,27 @@
-"""Subprocess Test Runner with process tree cleanup, timeout protection, argument validation, and execution isolation."""
+"""Subprocess Test Runner with process tree cleanup, timeout protection and argument validation.
+
+SECURITY MODEL (read before relying on this module):
+
+* Tests, including model-generated patched code, run DIRECTLY ON THE HOST with the
+  invoking user's privileges, network access, home directory and OS keyring. There is
+  no sandbox. The "isolated workspace" is a temporary copy of the project; it protects
+  the original source files from the run, not the machine from the code.
+* ``PERMITTED_EXECUTABLES`` and the shell-operator checks are a *usability guard against
+  accidental shell syntax*, not a security boundary: ``python -c``, ``npx <pkg>``,
+  ``go run``, ``cargo run`` and ``uv run`` all execute arbitrary code.
+* Environment scrubbing removes secret-looking variables only. Files (``~/.ssh``,
+  credential stores, ``.env``) remain readable by the test process.
+* Container isolation (``ContainerEvaluator``) is opt-in and OFF by default. Only a
+  repository and model output you trust should be run with host execution.
+
+``HOST_EXECUTION_WARNING`` is the user-facing text for CLI/TUI surfaces to show before
+host execution.
+"""
 
 from __future__ import annotations
 
 import collections
 import os
-import re
 import shlex
 import shutil
 import signal
@@ -17,6 +34,13 @@ from pathlib import Path
 from typing import Deque, List, Optional, Set
 
 from argus.utils.redaction import scrub_secrets
+
+
+HOST_EXECUTION_WARNING = (
+    "Argus runs your test command, including model-generated code, directly on this machine "
+    "with your user permissions, network and files. It is not sandboxed. Only run it on "
+    "repositories you trust; enable container isolation for untrusted code."
+)
 
 
 class CommandSecurityError(ValueError):
@@ -98,6 +122,8 @@ class TestExecutionResult:
 
 
 # Explicit whitelist of permitted test runners and compiler tools
+# NOT a security boundary: several of these (python, npx, go, cargo, uv, node) can run
+# arbitrary code by design. This list only rejects commands that are not test runners.
 PERMITTED_EXECUTABLES: Set[str] = {
     "pytest",
     "pytest.exe",
@@ -294,7 +320,11 @@ def validate_and_tokenize_command(command: str, cwd: Optional[Path] = None) -> L
 
 
 class SubprocessTestRunner:
-    """Safely runs test suites inside isolated directories without shell injection vulnerabilities."""
+    """Runs test commands on the host without a shell (no shell-injection via the command string).
+
+    This is NOT a sandbox: the process has the user's full privileges. See the module
+    docstring and ``HOST_EXECUTION_WARNING``.
+    """
 
     def __init__(
         self,
