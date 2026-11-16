@@ -170,7 +170,8 @@ class Harness:
         # N5 tiny budget (at most one model call)
         d = self.make_project(base, "n5_budget")
         r = self.argus("run", "--test", f"{PY} -m pytest -q tests", "--file", "src/mod.py", "--provider", a.provider, "--budget", "0.00001", "-w", str(d))
-        rid = self.run_id_of(d); m = self.meta(d, rid) if rid else {}
+        rid = self.run_id_of(d)
+        m = self.meta(d, rid) if rid else {}
         self.charge(m.get("cost_usd"))
         probes.append(("N5 tiny budget stops the run", r["code"] != 0 and m.get("status") != "SUCCESS", r))
 
@@ -182,7 +183,8 @@ class Harness:
         # N2/N3/N4 need one genuine successful candidate
         d = self.make_project(base, "n_apply")
         r = self.argus("run", "--test", f"{PY} -m pytest -q tests", "--file", "src/mod.py", "--provider", a.provider, "--attempts", "3", "--budget", str(a.budget), "-w", str(d))
-        rid = self.run_id_of(d); m = self.meta(d, rid) if rid else {}
+        rid = self.run_id_of(d)
+        m = self.meta(d, rid) if rid else {}
         self.charge(m.get("cost_usd"))
         if m.get("verified"):
             ap = self.argus("apply", "--run-id", rid, "-w", str(d))
@@ -192,7 +194,10 @@ class Harness:
             ap = self.argus("apply", "--run-id", rid, "-w", str(d))
             probes.append(("N3 stale target refused", ap["code"] != 0 and "STALE_TARGET_CONFLICT" in ap["out"] + ap["err"], ap))
             mp = d / ".argus" / "runs" / rid / "metadata.json"
-            data = json.loads(mp.read_text(encoding="utf-8")); data["verified"] = True; data["approved"] = True; data["attempts"] = 99
+            data = json.loads(mp.read_text(encoding="utf-8"))
+            data["verified"] = True
+            data["approved"] = True
+            data["attempts"] = 99
             mp.write_text(json.dumps(data), encoding="utf-8")
             ap = self.argus("apply", "--run-id", rid, "--force", "-w", str(d))
             probes.append(("N4 tampered metadata refused", ap["code"] != 0 and "SIGNATURE" in (ap["out"] + ap["err"]).upper(), ap))
@@ -203,7 +208,8 @@ class Harness:
         slow = dict(base, id="n8_timeout", test="import time\nfrom src.mod import is_adult\n\n\ndef test_slow():\n    time.sleep(60)\n    assert is_adult(18) is True\n")
         d = self.make_project(slow, "n8_timeout")
         r = self.argus("run", "--test", f"{PY} -m pytest -q tests", "--file", "src/mod.py", "--provider", a.provider, "--attempts", "1", "--budget", str(a.budget), "-w", str(d), timeout=240)
-        rid = self.run_id_of(d); m = self.meta(d, rid) if rid else {}
+        rid = self.run_id_of(d)
+        m = self.meta(d, rid) if rid else {}
         self.charge(m.get("cost_usd"))
         probes.append(("N8 hanging test ends by timeout", r["code"] != 0 and r["secs"] < 200, r))
 
@@ -219,7 +225,8 @@ class Harness:
         for i in range(2):
             d = self.make_project(t, f"rep{i}")
             self.argus("run", "--test", f"{PY} -m pytest -q -p no:cacheprovider tests", "--file", "src/mod.py", "--provider", a.provider, "--attempts", "3", "--budget", str(a.budget), "-w", str(d), *(["--model", a.model] if a.model else []))
-            rid = self.run_id_of(d); m = self.meta(d, rid) if rid else {}
+            rid = self.run_id_of(d)
+            m = self.meta(d, rid) if rid else {}
             self.charge(m.get("cost_usd"))
             hashes.append((m.get("status"), m.get("candidate_hash")))
         row = dict(phase="repeat", runs=hashes, identical=(hashes[0] == hashes[1] and hashes[0][1] is not None))
