@@ -21,7 +21,7 @@
 | T-06 | Stale overwrite (TOCTOU) | Baseline SHA-256 at apply; atomic replace; per-run apply lock | none known |
 | T-07 | Secret leakage | `scrub_secrets` on logs/artifacts, `scrub_prompt` on model input, subprocess env scrubbed, keys excluded from `repr` | Secrets inside source files are only scrubbed if token-shaped |
 | T-08 | Host privilege (malicious test or repository) | **No technical defense.** Documented; warning shown before `argus run` | Full: code runs as you |
-| T-09 | Prohibited provider (Groq) | Rejected in config, CLI and gateway | none known |
+| T-09 | Unintended provider selection | Only a provider you configured or named is called; no key alone selects a provider; no hidden fallback | none known |
 | T-10 | Forged approval / swapped patch (by file edits) | HMAC-signed metadata (key in user config dir; empty/short key files rejected and regenerated; `ARGUS_CONFIG_DIR` hidden from the test environment), candidate and baseline hash checks, strict run-ID validation | **Code running as your OS user can read the key and forge a valid approved run, including the test command and an MCP-supplied `test_command` (T-08).** Signing is not a boundary against host-level code |
 | T-11 | Prompt-injection through the MCP caller | Workspace confined to server root; budget capped; no approval tool | The agent can still burn the capped budget |
 | T-12 | Hidden provider/model substitution | Only the configured provider; a named model is never replaced; unknown prices refused | none known |
@@ -46,7 +46,7 @@ Logs and stored artifacts pass `scrub_secrets` (broad patterns, including contex
 Test commands run on the host with your permissions. The temporary copy protects your working tree from half-applied edits and nothing else. For untrusted code use a container or VM yourself. The library's `ContainerEvaluator` (`--network=none`, memory/CPU/PID limits, tar-over-stdin transfer) is opt-in, not exposed as a CLI flag, shares the host kernel and has not been independently audited.
 
 ### Provider policy (T-09, T-12, T-13)
-Groq is rejected everywhere. Only the configured provider is called. A pinned model is the only model sent. Cheap-first escalation applies only when no model is named. A model with no price is refused unless local. `argus.yaml` / `[tool.argus]` in the workspace root may lower `max_attempts`, `budget_limit_usd` and `test_timeout_seconds`, disable escalation and set `reasoning_effort: low` if unset (higher values are ignored); its `model`, `provider`, `small_model` and `large_model` keys are ignored with a note.
+Only the configured provider is called (Groq is a normal key-based preset). A pinned model is the only model sent. Cheap-first escalation applies only when no model is named. A model with no price is refused unless local. `argus.yaml` / `[tool.argus]` in the workspace root may lower `max_attempts`, `budget_limit_usd` and `test_timeout_seconds`, disable escalation and set `reasoning_effort: low` if unset (higher values are ignored); its `model`, `provider`, `small_model` and `large_model` keys are ignored with a note.
 
 ### MCP (T-11)
 `workspace` must resolve inside the server root; `budget` is finite, positive and capped (default `$0.25`, `ARGUS_MCP_MAX_BUDGET_USD`). `argus_status` masks keys. There is no approval tool.
@@ -56,7 +56,7 @@ Groq is rejected everywhere. Only the configured provider is called. A pinned mo
 - `ARGUS_GATEWAY_API_KEY` is required; compare is `hmac.compare_digest`. No `PYTEST_CURRENT_TEST` or `ARGUS_TEST_MODE` bypass exists in production code.
 - Binds to `127.0.0.1` by default; `--allow-remote` is explicit and warns.
 - Loopback CORS regex `^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$`; `Host` allow-list (`127.0.0.1`, `localhost`, `::1`).
-- Upstream URL validation blocks private/link-local/metadata addresses (including IPv4-mapped IPv6) and Groq.
+- Upstream URL validation blocks private/link-local/metadata addresses (including IPv4-mapped IPv6).
 - Rate limiting by token hash plus client identifier; the run-ID header is validated, never taken from an API key header; budget reservations expire (15-minute TTL). Money is integer micro-dollars. Unknown models are priced fail-closed.
 - Limitation: client-identifier rotation can fragment rate-limit buckets.
 
@@ -64,4 +64,4 @@ Groq is rejected everywhere. Only the configured provider is called. A pinned mo
 
 - Not a sandbox; not a malware scanner.
 - The syntax gate (`ast.parse` + `compile`) does not establish correctness. A valid patch can weaken a check or special-case a test.
-- A passing test is test-relative evidence. Independent grading of one model family found 6.6-12.0% of target-test passes broke other tests ([RESEARCH_STATUS.md](RESEARCH_STATUS.md)).
+- A passing test is test-relative evidence. Independent grading of one model family found 8.3-12.0% of target-test passes broke other tests ([RESEARCH_STATUS.md](RESEARCH_STATUS.md)).

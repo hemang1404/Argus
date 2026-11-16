@@ -86,7 +86,7 @@ flowchart TD
 - `OpenAICompatibleAdapter` serves OpenAI, DeepSeek, Gemini (OpenAI-compatible endpoint), OpenRouter, Ollama, LM Studio and custom endpoints. `AntigravityHostAdapter` drives the local `agy` CLI. There is no separate Ollama adapter and no native Anthropic adapter.
 - Credentials: OS keyring (service name overridable with `ARGUS_KEYRING_SERVICE`) with a 0600 fallback file; the `ARGUS_API_KEY` environment fallback applies to the `custom` provider only. Secrets are excluded from `repr`.
 - Text sent to the model passes `scrub_prompt` (known keys, token-shaped secrets, PEM blocks); logs and artifacts use `scrub_secrets`.
-- Groq is refused.
+- Groq is a normal key-based preset (`groq`, OpenAI-compatible); it is used only when the user configures or names it.
 
 ### Interfaces
 - **CLI** (`argus/cli.py`): see the README; every command exits non-zero on error.

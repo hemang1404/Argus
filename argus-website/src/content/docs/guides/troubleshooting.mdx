@@ -68,11 +68,6 @@ argus provider set --preset ollama
 argus provider set --preset openai
 ```
 
-### `Groq is strictly prohibited as an inference provider in Argus.`
-
-This is a deliberate refusal, not a missing feature. Choose another preset.
-Configurations containing Groq are rejected.
-
 ### Connection refused to Ollama or LM Studio
 
 Start the local server and confirm the endpoint:
@@ -115,11 +110,14 @@ argus run --test "pytest tests/test_calculator.py" --file src/calculator.py
 
 ### `TEST_SETUP_ERROR`
 
-The test command could not be executed properly. Common causes: a missing
-dependency in the isolated copy, a working-directory assumption, or a command
-that requires a shell feature.
+The test runner reported a usage or collection problem before running any test
+(for example pytest exit code 4 or 5, "file or directory not found", or "no tests
+ran"). Common causes: a wrong test path, a missing dependency in the isolated
+copy, or a working-directory assumption.
 
-Argus rejects `&&`, `||`, `;`, `|`, redirection, and backgrounding. Put compound
+Separately, Argus refuses to run a command that contains `&&`, `||`, `;`, `|`,
+redirection, or backgrounding, or whose executable is not a recognised test
+runner (see [Installation](/getting-started/installation/)). Put compound
 commands in a script and invoke the script.
 
 ### `CONFIG_ERROR` naming an unpriced model
@@ -233,6 +231,8 @@ stale ones; you can also delete them by hand.
 The copy contains tracked files plus untracked files that are not ignored. A file
 that is git-ignored but needed by the tests (generated data, a local config) is not
 copied. Commit it, un-ignore it, or set `snapshot_respect_gitignore=False`.
+Credential-like files (`.env`, `*.pem`, `*.key`, and similar) are also left out
+unless `snapshot_include_secrets=True`.
 
 ### Container mode refuses to start
 

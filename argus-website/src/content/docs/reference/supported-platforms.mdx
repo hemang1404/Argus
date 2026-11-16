@@ -77,9 +77,8 @@ executable and arguments that the operating system can launch directly.
 
 Any OpenAI-compatible HTTP endpoint that the adapter can reach is supported in
 principle. The shipped presets cover Antigravity host inference, Ollama, LM
-Studio, OpenAI, DeepSeek, Gemini, OpenRouter, and custom endpoints. There is no
-native Anthropic preset (use `openrouter` or a `custom` endpoint). Groq is
-prohibited. No provider has been formally "certified"; the provider ladders are
+Studio, OpenAI, DeepSeek, Gemini, Groq, OpenRouter, and custom endpoints. There is no
+native Anthropic preset (use `openrouter` or a `custom` endpoint). No provider has been formally "certified"; the provider ladders are
 defaults, not tested guarantees.
 
 Network access is required only for remote providers. The recovery engine,
@@ -95,7 +94,6 @@ For untrusted code, use your own container or VM boundary.
 ## Unsupported configurations
 
 - Unauthenticated non-loopback gateway binding.
-- Groq as an inference provider.
 - Applying an unapproved candidate through the CLI without `--force`.
 - Applying a candidate after the target file changes.
 - Multi-file recovery.

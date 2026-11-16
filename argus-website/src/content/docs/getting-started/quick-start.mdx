@@ -106,36 +106,26 @@ The write is atomic: content goes to a temporary sibling file and is committed
 with `os.replace`. If any check fails, the file is untouched and the command
 exits non-zero.
 
-## The same flow in the TUI
+## Other interfaces
 
-```bash title="Shell"
-argus tui
-```
+The same flow is available in the [terminal UI](/interfaces/tui/).
 
-Enter the test command, press `Enter`, and watch the recovery timeline. When a
-candidate is ready, the diff review screen opens; arm approval with `a`,
-confirm with `y`, or discard with `d`. See the [TUI guide](/interfaces/tui/) for the full
-key map.
-
-## The same flow over MCP
-
-An MCP-compatible agent can call `argus_recover` to produce the candidate and
-`argus_get_candidate` to read it. It cannot approve the candidate. A human must
-run `argus approve <run_id>` in a terminal before `argus_apply_candidate` will
-succeed. This is deliberate; see [MCP server](/interfaces/mcp-server/).
+Agents can drive it over [MCP](/interfaces/mcp-server/); approval stays with a human.
 
 ## If recovery fails
 
 The command exits non-zero and reports a status such as `FAILED_MAX_ATTEMPTS`,
-`LOCALIZATION_FAILED`, `TEST_SETUP_ERROR`, or `BUDGET_EXCEEDED`. No candidate is
-created for an unverified patch. Use [Troubleshooting](/guides/troubleshooting/)
+`LOCALIZATION_FAILED`, `TEST_SETUP_ERROR`, or `BUDGET_EXCEEDED`. The run is recorded
+as unverified (`FAIL` in `argus candidates`) and cannot be applied. Use [Troubleshooting](/guides/troubleshooting/)
 or inspect the artifacts under `.argus/runs/<run_id>/` for the scrubbed prompt,
 raw response, and parse output.
 
 <Aside type="tip" title="Cheap first pass">
 Start with the default budget and a small model. If reconciliation or tests fail
 because the edit is wrong rather than because the format drifted, a more capable
-model is a better next step than more attempts. Naming `--model` pins that one
-model for every attempt; leaving it off lets providers with a documented ladder
-use a cheap model first and escalate on the last attempt.
+model is a better next step than more attempts. `--model` pins that one
+model for every attempt. Leaving it off sends the model stored with your provider
+(the preset default unless you set another); the cheap-first ladder applies only
+to library use without a stored model (see
+[Provider configuration](/guides/provider-configuration/)).
 </Aside>

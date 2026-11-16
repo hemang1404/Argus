@@ -56,8 +56,10 @@ The metadata records two SHA-256 digests:
 - **`baseline_hash`** — the digest of the target file before modification.
 - **`candidate_hash`** — the digest of the verified patched content.
 
-Both are computed over the file's bytes as Argus read and will write them, so line
-endings and byte-order marks are part of the hash. Application compares the live
+`baseline_hash` covers the raw bytes of the file on disk, so line endings and a
+byte-order mark are part of it; `candidate_hash` covers the UTF-8 encoding of the
+patched text (line endings preserved; the target's encoding and BOM are
+re-applied when the file is written). Application compares the live
 file against `baseline_hash` and the stored candidate against `candidate_hash`
 before writing. A mismatch is a refusal, not a warning.
 
@@ -94,7 +96,7 @@ These are separate from verification:
 | `verified` | The reproduction test passed for the candidate content |
 | `approved` | A reviewer accepted this candidate |
 | `approved_at` | When approval was recorded |
-| `approved_by` | `interactive:cli`, `automation:--yes`, or an explicit value |
+| `approved_by` | `interactive:cli`, `automation:--yes`, `automation:--yes-reviewed`, or an explicit value |
 | `approval_source` | The surface that recorded approval |
 | `applied` | The candidate has been written to the working tree |
 | `applied_at` | When application succeeded |
@@ -117,21 +119,8 @@ Argus to process.
 
 ## Reading a candidate without the CLI
 
-The artifacts are plain JSON and text, so they can be inspected with standard
-tools:
-
-```bash title="Shell"
-cat .argus/runs/<run_id>/metadata.json
-sed -n '1,120p' .argus/runs/<run_id>/patch.diff
-```
-
-The CLI and MCP surfaces are thin readers over the same store:
-
-```bash title="Shell"
-argus inspect <run_id>
-argus diff <run_id>
-```
-
+The artifacts are plain JSON and text, so `cat .argus/runs/<run_id>/metadata.json`
+works. `argus inspect <run_id>` and `argus diff <run_id>` read the same store, and
 `argus_get_candidate` returns the metadata and diff as JSON for an agent.
 
 ## Retention

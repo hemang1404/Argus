@@ -21,13 +21,13 @@ another provider.
 | `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | Required |
 | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` | Required |
 | `gemini` | Google AI Studio OpenAI-compatible endpoint | `gemini-2.5-flash` | Required |
+| `groq` | `https://api.groq.com/openai/v1` | `openai/gpt-oss-120b` | Required (`GROQ_API_KEY`) |
 | `openrouter` | `https://openrouter.ai/api/v1` | `anthropic/claude-3.5-sonnet` | Required |
 | `custom` | `http://localhost:8000/v1` | `custom-model` | Optional |
 
-<Aside type="danger" title="Groq is prohibited">
-Groq is rejected across the runtime, router, CLI, and configuration loaders. The
-CLI exits with an explicit refusal, and `ArgusConfig` raises at construction if
-the provider is `groq`. Do not configure `api.groq.com` or a `gsk_*` key.
+<Aside type="note" title="Groq">
+`groq` is an ordinary preset with your own key. The `GROQ_` variables are scrubbed
+from the test subprocess environment like every other provider key.
 </Aside>
 
 ## Add a provider
@@ -47,6 +47,7 @@ argus provider test
 
 ```bash title="Custom OpenAI-compatible endpoint"
 argus provider set \
+  --preset custom \
   --name vllm-local \
   --base-url http://127.0.0.1:8001/v1 \
   --model qwen2.5-coder-32b
@@ -78,7 +79,11 @@ The model you name is the model Argus sends, for every attempt:
   substitution and no escalation. If the adapter cannot accept a model argument the
   run stops with `CONFIG_ERROR` instead of silently dropping it.
 - **No model named, and the provider has a documented ladder, and escalation is
-  on:** attempts 1-2 use the cheaper model and attempt 3 the stronger one.
+  on:** attempts 1-2 use the cheaper model and attempt 3 the stronger one. This
+  applies when `ArgusConfig` is built from a provider name alone (library use).
+  `argus run` and the MCP server always pass the stored provider's model (the
+  preset default unless you set another), so on those surfaces the model is
+  pinned and this ladder is not used.
 
   | Provider | Attempts 1-2 | Attempt 3 |
   | --- | --- | --- |
@@ -114,13 +119,14 @@ finite and positive.
 When resolving a key, Argus checks, in order:
 
 1. the operating system keyring entry for the provider;
-2. the provider-specific environment variable;
-3. a workspace `.env` file, but only when explicitly enabled;
-4. the generic `ARGUS_API_KEY` fallback.
+2. the fallback `secrets.json` file (see below);
+3. the provider-specific environment variable. Values from a workspace `.env`
+   file count here, but only when `.env` loading is explicitly enabled.
 
 Provider-specific variables currently recognized include `OPENAI_API_KEY`,
-`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, and `GOOGLE_API_KEY`. The generic
-`ARGUS_API_KEY` applies to the `custom` provider only. The keyring service name can be
+`OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`, and `GEMINI_API_KEY`
+(`GOOGLE_API_KEY` for a provider named `google`). `ARGUS_API_KEY` applies to
+the `custom` provider only; it is not a generic fallback. The keyring service name can be
 changed with `ARGUS_KEYRING_SERVICE` (useful for isolated test environments). When
 no keyring backend is available, keys go to a `secrets.json` file created with mode
 0600 in the Argus configuration directory.
@@ -144,12 +150,7 @@ cannot protect a secret you commit to the repository.
 
 ## Selecting a provider per run
 
-```bash title="Shell"
-argus run --test "pytest tests/test_calculator.py" --provider ollama
-argus run --test "pytest tests/test_calculator.py" --provider auto
-argus run --test "pytest tests/test_calculator.py" --provider antigravity
-```
-
+Pass `--provider NAME` to `argus run` (see the [CLI reference](/reference/cli-commands/)).
 `auto` is an explicit discovery request: Argus prefers the stored active
 provider, then a detected Antigravity host CLI, and reports which one it chose.
 It does not infer a provider from the presence of an API key. Without an explicit

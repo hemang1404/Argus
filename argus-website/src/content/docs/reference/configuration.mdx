@@ -76,7 +76,7 @@ them through the Python API; use `--enable-tier4` on the CLI for Tier 4.
 | `similarity_threshold` | `0.82` | Tier 3 similarity floor |
 | `enable_tier3` | `true` | Token-equal matching |
 | `enable_tier4` | `false` | Experimental anchor matching |
-| `escalation_enabled` | `true` | Cheap-first ladder when no model is named |
+| `escalation_enabled` | `true` | Cheap-first ladder when no model is named (Python API only; the CLI always pins a model) |
 | `small_model` / `large_model` | unset | Explicit two-rung ladder |
 | `model_prices` | `{}` | USD per 1M tokens for models not in the built-in table |
 | `snapshot_exclude` | `[]` | Extra root-level names to leave out of the workspace copy |
@@ -155,4 +155,4 @@ OS keyring → provider environment variable → opt-in .env → ARGUS_API_KEY (
 unknown providers, and every model on the ladder that has no known price; any of
 these ends the run with `CONFIG_ERROR` before a call is made. `argus doctor`
 exposes the practical version of this check, including a live connectivity request
-(billable). Groq configuration raises at construction time.
+(billable).

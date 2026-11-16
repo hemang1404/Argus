@@ -93,9 +93,8 @@ presentation and in the operations they expose:
 | Configure provider | yes | palette | no | via config |
 
 The absence of approval over MCP is an architectural boundary, not an unfinished
-handler. Approval records are HMAC-signed, so an agent that can only write files in
-the workspace cannot forge one. Code that runs as your user, including the test
-command, can read the key; see the security model.
+handler. See [Validation and approval](/core-concepts/validation-and-approval/) and
+the [security model](/project/security-model/).
 
 ## Data ownership
 
@@ -108,21 +107,6 @@ command, can read the key; see the security model.
 
 No component writes provider secrets into a candidate artifact. Forensic files
 are scrubbed before persistence.
-
-## Invariants enforced in code
-
-1. Attempts are bounded (default 3) and the budget must be finite and positive.
-2. Test commands execute with `shell=False` after tokenization. This is host
-   execution with your permissions, not a sandbox.
-3. Output collection is bounded in memory.
-4. Process trees are terminated on timeout.
-5. Every accepted patch passes a full-file syntactic gate (`ast.parse` + `compile`).
-6. A candidate is written only after a passing verification.
-7. Application re-checks the signature, approval, hashes, syntax, and path
-   containment.
-8. A requested container path fails closed rather than falling back to host.
-9. Only the configured provider is called; a named model is never replaced; an
-   unpriced model is refused.
 
 ## Deferred architecture
 

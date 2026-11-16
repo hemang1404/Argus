@@ -28,8 +28,9 @@ argus run \
 ```
 
 Auto-localization parses traceback frames. It is convenient but not infallible,
-especially when a failure originates in a dependency or a conftest. In separate
-measurements its recall was about 27%, and the published research results were all
+especially when a failure originates in a dependency or a conftest. Its accuracy
+was not measured on SWE-bench (a related issue-text-only localiser ranked the
+correct file first for 21% of tasks), and the published research results were all
 obtained with the target file supplied. Passing `--file` removes ambiguity and is
 the recommended form.
 
@@ -47,8 +48,8 @@ argus run \
 ```
 
 The default test timeout is 30 seconds. If your reproduction legitimately needs
-longer, adjust `test_timeout_seconds` in `ArgusConfig` through the Python API or
-policy file; do not wrap the command in a shell pipeline, which is rejected.
+longer, raise `test_timeout_seconds` in `ArgusConfig` through the Python API (a
+project policy file can only lower it); do not wrap the command in a shell pipeline, which is rejected.
 
 ## Bounds
 
@@ -107,27 +108,10 @@ process exits non-zero if the run does not end in `SUCCESS` or
 
 ## Failure diagnosis
 
-The artifact directory contains the scrubbed prompt, raw response, parsed patch,
-and context. Start there:
-
-```bash title="Shell"
-ls .argus/runs/<run_id>/
-sed -n '1,160p' .argus/runs/<run_id>/raw_response.txt
-```
-
-Common causes:
-
-- the model returns prose instead of a parsable block;
-- the search block describes a version of the file that no longer exists;
-- the edit is syntactically valid but does not fix the assertion;
-- the test requires a dependency missing from the isolated copy;
-- the provider is returning truncated output because the token ceiling is low (a
-  reply cut off by the length limit is reported to the model as truncation);
-- the failure needs a different file than the one named.
-
-The response is not to disable the syntactic gate or loosen matching.
-Improve the context: pass `--file`, narrow the test, switch to a model better at
-code, or fix the underlying test harness.
+The artifact directory `.argus/runs/<run_id>/` contains the scrubbed prompt, raw
+response, parsed patch, and context; see [Troubleshooting](/guides/troubleshooting/)
+for common causes. Do not disable the syntactic gate or loosen matching: improve
+the context instead (pass `--file`, narrow the test, use a model better at code).
 
 ## Parallel runs
 
@@ -141,8 +125,6 @@ rather than overwriting.
 
 ## What not to do
 
-- Do not run recovery on an untrusted repository expecting a sandbox.
-- Do not point `--test` at a command that mutates the repository outside the
-  workspace.
-- Do not raise attempts to compensate for a fundamentally wrong edit.
-- Do not apply a candidate after modifying the target file.
+Do not expect a sandbox on an untrusted repository, point `--test` at a command
+that mutates the repository outside the workspace, or apply a candidate after
+modifying the target file. See the [security model](/project/security-model/).

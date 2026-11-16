@@ -43,8 +43,9 @@ What happens next:
 
 1. **Workspace creation.** Argus copies the project into a temporary directory:
    tracked files plus untracked files that are not ignored, with your current
-   edits. `.git`, `.argus/`, caches, and root-level virtual environments and
-   `node_modules` are excluded.
+   edits. `.git`, `.argus/`, caches, root-level virtual environments and
+   `node_modules`, and credential-like files (`.env`, `*.pem`, `*.key`, and
+   similar) are excluded.
 2. **Reproduction.** It tokenizes the test command and executes it directly with
    `shell=False`. The test fails; the exit code becomes the recovery trigger.
 3. **Localization.** With `--file` supplied, the target is already known.
@@ -65,49 +66,21 @@ What happens next:
 The CLI prints the candidate ID and a diff. The source file on disk — the one in
 your project — is still the original.
 
-## Inspect before deciding
+## Inspect, approve, apply
 
-```bash title="Shell"
-argus candidates
-argus inspect run_20261106_142530_9f3a1c2d
-```
+`argus candidates` and `argus inspect <run_id>` show three independent states:
+verified (`PASS`), approved, and applied. A `PASS`, `PENDING`, `NO` candidate is
+verified but not yet approved; approval is never inferred from verification. See
+[Reviewing candidates](/guides/reviewing-candidates/).
 
-The listing shows three independent states:
+`argus approve <run_id>` shows the diff and asks for confirmation; see
+[Reviewing candidates](/guides/reviewing-candidates/) for `--yes` and `--force`.
 
-| Column | Meaning |
-| --- | --- |
-| Status | The candidate passed its reproduction test |
-| Approval | A human has approved this candidate |
-| Applied | The patch has been written to the working tree |
-
-A candidate can be `PASS`, `PENDING`, `NO` and still be perfectly verified.
-Approval is not inferred from verification.
-
-## Approve
-
-```bash title="Shell"
-argus approve run_20261106_142530_9f3a1c2d
-```
-
-Argus prints the proposed diff and asks for confirmation. If you are reviewing
-non-interactively, `--yes` records the approval as automation rather than human
-review; `--force` allows approving an unverified candidate, which should be rare.
-
-## Apply
-
-```bash title="Shell"
-argus apply --run-id run_20261106_142530_9f3a1c2d
-```
-
-Immediately before writing, Argus recomputes the SHA-256 of the target file and
+`argus apply --run-id <run_id>` recomputes the SHA-256 of the target file and
 compares it with the baseline captured at recovery time. If you edited the file
-after the run, it refuses with `STALE_TARGET_CONFLICT`. That refusal is the
-feature: a verified candidate is only valid against the file it was verified
-against.
-
-The write itself is atomic and preserves the existing file permissions where
-possible. A successful apply prints `[APPLIED]` and the target path. Applying the same
-run again reports that it was already applied.
+after the run, it refuses with `STALE_TARGET_CONFLICT`: a verified candidate is
+only valid against the file it was verified against. See
+[Applying candidates](/guides/applying-candidates/).
 
 ## What you have now
 
@@ -128,8 +101,7 @@ repository remains yours to manage.
 
 ## When there is no candidate
 
-If all attempts fail, no candidate is written for an unverified patch. The CLI
-exits non-zero with a status such as `FAILED_MAX_ATTEMPTS` or
-`LOCALIZATION_FAILED`. Read [Recovery lifecycle](/core-concepts/recovery-lifecycle/)
-for what each status means, then try a larger budget, a different provider, or a
+If all attempts fail, no verified candidate exists and the run cannot be applied.
+Read [Recovery lifecycle](/core-concepts/recovery-lifecycle/) for what each
+status means, then try a larger budget, a different provider, or a
 more explicit `--file` and `--test` command.

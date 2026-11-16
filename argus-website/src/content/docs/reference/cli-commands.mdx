@@ -37,7 +37,7 @@ Alias: `argus recover`.
 | `--file`, `-f`, `--target` | auto | Target source file |
 | `--test-file` | — | Test file to copy into the workspace |
 | `--provider`, `-p` | active | Provider name, `auto`, or `antigravity`; with none configured and none named the command stops |
-| `--model`, `-m` | ladder / provider default | Pins this model for every attempt (no escalation) |
+| `--model`, `-m` | provider's configured model | Overrides the provider's model; one model is used for every attempt (no escalation) |
 | `--effort`, `-e` | adaptive | `low`, `medium`, or `high` |
 | `--no-adaptive` | off | Disable adaptive effort routing |
 | `--attempts`, `-a` | `3` | Attempts, 1 to 10 (out of range is a usage error) |

@@ -63,14 +63,14 @@ print(outcome.unified_diff)
 | --- | --- | --- |
 | `status` | `str` | `SUCCESS`, `ALREADY_PASSING`, `FAILED_MAX_ATTEMPTS`, and so on |
 | `verified` | `bool` | The reproduction passed for the candidate |
-| `run_id` | `str \| None` | Candidate identifier, when one was created |
+| `run_id` | `str` | Candidate identifier, when one was created (empty otherwise) |
 | `target_file` | `str \| None` | Localized or explicit target |
-| `unified_diff` | `str \| None` | Reviewable diff |
+| `unified_diff` | `str` | Reviewable diff |
 | `total_attempts` | `int` | Attempts consumed |
 | `total_cost_usd` | `float` | Measured inference spend |
 | `total_duration_ms` | `float` | Wall-clock duration |
 | `diagnostics` | `str` | Failure output for unsuccessful runs |
-| `message` | `str \| None` | Human-readable summary |
+| `message` | `str` | Human-readable summary |
 | `changed_files` | `list[str]` | Files modified inside the workspace |
 | `effort_used` | `str \| None` | Adaptive routing decision |
 | `routing_reasons` | `list[str]` | Why that effort and which model ladder (`model_ladder=...`) were chosen |
@@ -108,13 +108,15 @@ config = ArgusConfig(
 Model rules: a `model` you pass wins over the stored provider's default and is the
 only model sent (no escalation). With no model, a provider that has a documented
 ladder (`openai`, `deepseek`, `gemini`, `antigravity`) and `escalation_enabled`
-uses the cheap model for attempts 1-2 and the stronger one for attempt 3;
+uses the cheap model for attempts 1-2 and the stronger one for attempt 3 (the
+CLI and MCP server always send the stored provider's model, so this applies to
+library use only);
 `small_model`/`large_model` set an explicit two-rung ladder; any other provider
 uses its default model. `"argus/auto"` means "no model".
 
 When `provider_config` is supplied, its name is used. When neither is supplied, the
 stored active provider is used, then `ARGUS_PROVIDER`. A credential alone never
-selects a provider. Groq is rejected at construction time. A model with no price in
+selects a provider. A model with no price in
 the built-in table or `model_prices` is refused (`CONFIG_ERROR`) unless the
 provider is local or host-native.
 

@@ -71,7 +71,7 @@ Runs a non-destructive recovery and returns the candidate metadata and diff.
 | `test_file` | no | — | Copy this test file into the workspace |
 | `workspace` | no | server root | Project root; must be inside the server root (the directory the server was started in, or `ARGUS_MCP_WORKSPACE_ROOT`) |
 | `max_attempts` | no | `3` | Clamped to a maximum of 3 |
-| `budget` | no | `0.05` | Spend ceiling in USD; must be finite and positive, and is capped at `0.25` (`ARGUS_MCP_MAX_BUDGET_USD` sets the ceiling) |
+| `budget` | no | `0.03` | Spend ceiling in USD; must be finite and positive, and is capped at `0.25` (`ARGUS_MCP_MAX_BUDGET_USD` sets the ceiling) |
 | `model` | no | provider default | Model override |
 | `provider` | no | active provider | Provider name, `auto`, or `antigravity` |
 

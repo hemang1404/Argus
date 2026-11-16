@@ -4,6 +4,16 @@ All notable changes to Argus are documented in this file. The format is based on
 
 ---
 
+## Next release (not yet published)
+
+### Changed
+- **Groq is now a normal provider.** The earlier blanket prohibition was removed: a `groq` preset (OpenAI-compatible, default model `openai/gpt-oss-120b`, your own `GROQ_API_KEY`) works in the CLI, TUI, MCP server, Python API and gateway. Like every provider it is used only when you configure or name it, unknown models are still refused until priced, and `GROQ_` variables are still scrubbed from the test subprocess environment.
+
+### Tests
+- Added `tests/test_cascade_reachability.py`, which pins the current behaviour that the CLI and MCP server always send the stored provider's model (so the cheap-first cascade applies only to library use of `ArgusConfig`).
+
+---
+
 ## [0.2.0b2] - 2026-11-16
 
 Changes from a full engineering audit (November 2026). Version `0.2.0b2` was tagged `v0.2.0b2` and published to PyPI on 2026-11-16; the older `0.2.0b1` package predates all of this.

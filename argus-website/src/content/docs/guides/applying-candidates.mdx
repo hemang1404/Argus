@@ -30,7 +30,7 @@ scripts.
 A successful apply prints:
 
 ```text
-✓ [APPLIED] Applied candidate run_20261106_142530_9f3a1c2d to src/calculator.py
+✓ [APPLIED] Successfully applied verified candidate patch from run 'run_20261106_142530_9f3a1c2d' to 'calculator.py' (mode 0o644 preserved).
 ```
 
 ## The approval gate
@@ -38,7 +38,7 @@ A successful apply prints:
 If the candidate is verified but not approved:
 
 ```text
-✗ [REJECTED: CANDIDATE_NOT_APPROVED] Candidate has not received explicit human approval.
+✗ [REJECTED: CANDIDATE_NOT_APPROVED] Candidate 'run_20261106_142530_9f3a1c2d' has not received human approval. Review the diff and run 'argus approve run_20261106_142530_9f3a1c2d' before applying.
   Run 'argus approve <run_id>' or pass '--force' to apply directly.
 ```
 
@@ -55,21 +55,21 @@ For reviewed non-interactive automation inside `argus run`, use
 2. The candidate content and patched file are hashed.
 3. The live target is read and compared with `baseline_hash`.
 4. A temporary sibling file is created with the candidate content.
-5. The live target is re-checked to detect concurrent modification.
-6. The temporary file replaces the target with `os.replace`.
-7. Original permissions are preserved where possible.
+5. The original file mode is applied to it.
+6. The live target is re-checked to detect concurrent modification.
+7. The temporary file replaces the target with `os.replace`.
 8. The candidate is marked applied with a timestamp.
 
-If any step fails, the original target is left in place. A failure after step 6
-is reported as `APPLY_IO_ERROR` or `PERMISSION_PRESERVATION_FAILED` depending on
-the cause; inspect the file before retrying.
+If any step before 7 fails, or the replacement itself fails, the original target
+is left in place. A mode that cannot be preserved is reported as
+`PERMISSION_PRESERVATION_FAILED`, a write or replace failure as `APPLY_IO_ERROR`.
 
 ## Stale targets
 
 This is the most common refusal:
 
 ```text
-✗ [REJECTED: STALE_TARGET_CONFLICT] Target file has changed on disk since baseline was captured.
+✗ [REJECTED: STALE_TARGET_CONFLICT] Stale Target Conflict: Target file 'calculator.py' was modified concurrently on disk. Baseline hash (3f2a9c1d...) != Current hash (b07e44a2...). Application refused to prevent silent data loss.
 ```
 
 It means the file you are about to overwrite is not the file that was verified.
@@ -90,39 +90,19 @@ Review the file, run the broader test suite, and commit through your normal
 workflow. If the change is wrong, revert it with Git. Argus does not retain a
 separate backup after application.
 
-## Applying over MCP
+## MCP and TUI
 
-`argus_apply_candidate` performs the same checks. An agent cannot approve a
-candidate; the human approval must already exist. This is the intended division
-of responsibility.
-
-## Applying in the TUI
-
-The diff review screen records approval and applies only after two deliberate
-steps (`a` to arm, `y` to confirm); `Enter` and a stray key press on arrival do not
-apply anything. There is no
-separate "apply without approval" action in the interface.
+- MCP: `argus_apply_candidate` performs the same checks; an agent cannot approve.
+- TUI: apply takes two deliberate steps (`a` to arm, `y` to confirm); there is no "apply without approval" action.
 
 ## Failure codes
 
 | Code | Meaning |
 | --- | --- |
-| `INVALID_RUN_ID` | The run ID is malformed (for example contains `..`) |
-| `CANDIDATE_SIGNATURE_INVALID` | Metadata is unsigned or was edited; re-run recovery |
-| `CANDIDATE_NOT_VERIFIED` | The candidate never passed its test |
 | `CANDIDATE_NOT_APPROVED` | Approval is missing |
-| `CANDIDATE_CONTENT_MISSING` | The stored patched content is absent |
+| `CANDIDATE_NOT_VERIFIED` | The candidate never passed its test |
+| `CANDIDATE_SIGNATURE_INVALID` | Metadata is unsigned or was edited; re-run recovery |
 | `CONTENT_HASH_MISMATCH` | Candidate content changed since verification |
-| `SYNTAX_VALIDATION_FAILED` | Patched content no longer parses |
-| `PATH_TRAVERSAL_REJECTED` | Target escapes the workspace |
-| `TARGET_FILE_MISMATCH` | Candidate targets a different file |
-| `TARGET_NOT_FOUND` | The target file is gone |
-| `UNSAFE_TARGET_TYPE` | The target is not a regular file |
 | `STALE_TARGET_CONFLICT` | The live file no longer matches baseline |
-| `CONCURRENT_MODIFICATION_DETECTED` | The file changed during apply |
-| `PERMISSION_PRESERVATION_FAILED` | File mode could not be preserved |
-| `UNSUPPORTED_ENCODING` | The target is not valid UTF-8 / its declared encoding |
-| `APPLY_IN_PROGRESS` | Another process is applying this run |
-| `READ_ERROR` / `APPLY_IO_ERROR` | Filesystem failure |
 
-The full error reference is in [Error codes](/reference/error-codes/).
+All other codes are listed in [Error codes](/reference/error-codes/).

@@ -9,24 +9,10 @@ and should be read literally.
 
 ## Trust boundaries
 
-```text title="Boundaries"
-untrusted: model output, repositories, test suites
-        │
-        ▼
-1. sanitization and AST validation
-        │
-        ▼
-2. ephemeral workspace
-        │
-        ▼
-3. subprocess supervision
-        │  tests pass
-        ▼
-4. SHA-256 candidate artifacts
-        │  explicit approval
-        ▼
-developer repository
-```
+Model output, repositories and test suites are untrusted input. A patch passes the
+syntactic gate, an ephemeral workspace and supervised test execution before a
+hash-recorded candidate is written, and it reaches your repository only after
+explicit approval.
 
 ## What is and is not guaranteed
 
@@ -130,7 +116,7 @@ checks.
   rewritten. These files persist, including for failed runs.
 - Secrets are excluded from `repr` of provider and config objects.
 - The MCP server exposes provider state but never secret values.
-- Groq is prohibited and rejected at configuration and runtime boundaries.
+- Provider keys (including `GROQ_API_KEY`) are stored in the keyring, redacted from logs and scrubbed from the test subprocess environment.
 
 None of this protects a secret committed to the repository. Secret hygiene remains
 your responsibility.
@@ -153,9 +139,10 @@ default offline recovery loop and should be treated as experimental.
 5. Client-identifier rotation can fragment gateway rate-limit buckets within a
    valid token allocation.
 6. Test passage proves only that the supplied assertions passed. In independent
-   grading 6.6-12.0% of target-test passes broke other tests.
+   grading 8.3-12.0% of target-test passes broke other tests.
 7. Git-ignored files the tests need are not copied into the workspace, and
-   untracked files that are not ignored (such as a stray `.env`) are.
+   credential-named files (`.env`, `*.pem`, `*.key` and similar) are left out by
+   default; secrets stored under other names are copied.
 8. `argus doctor` and `provider test` make live provider requests.
 
 ## Reporting a vulnerability

@@ -15,7 +15,7 @@ import { version, currentOnPypi, pypiVersion, gitUrl } from '../../../data/insta
 | Package manager | any PEP 517 compatible installer (`pip`, `uv`, `pipx`) |
 | Git | recommended; used to decide which files are copied into the workspace |
 | Operating system | Windows, Linux, macOS, or WSL2 |
-| Test runner | whatever your project already uses (for example `pytest`) |
+| Test runner | `pytest`, `python`, `uv`, `node`, `npm`/`npx`/`pnpm`, `go`, `cargo`, `dotnet`, `mvn`, or `gradle` (other executables are refused) |
 
 The core install includes the CLI, recovery controller, patch engine, workspace
 manager, provider adapters, and the MCP server. The terminal UI and the
@@ -37,20 +37,9 @@ is published, the plain `pip install argus-recovery` form applies.
 
 <InstallTabs />
 
-The tabs above install the current repository state (Git required). Equivalent
-plain form:
-
-```bash title="Shell"
-pip install "git+https://github.com/hemang1404/Argus.git"
-```
-
 The commands above install the core runtime. The terminal cockpit is an optional
 extra; the editable commands below include it so that `argus tui` and
-`argus app` work. To add it to a regular install:
-
-```bash title="Shell"
-pip install "argus-recovery[tui]"
-```
+`argus app` work. To add it to a regular install, install `argus-recovery[tui]`.
 
 To manage the installation yourself:
 
@@ -69,15 +58,7 @@ pip install -e ".[tui]"
 ```
 
 Editable mode (`-e`) is recommended when you are also reading or modifying the
-runtime. For a pinned, reproducible installation, check out a specific commit
-before installing:
-
-```bash title="Shell"
-git clone https://github.com/hemang1404/Argus.git
-cd Argus
-git checkout <commit-sha>
-pip install ".[tui]"
-```
+runtime.
 
 ## Optional extras
 
@@ -86,7 +67,7 @@ pip install ".[tui]"
 | `tui` | `textual`, `Pillow` | You want `argus tui` or `argus app` |
 | `gateway` | `fastapi`, `uvicorn` | You are evaluating the experimental inference proxy |
 | `tokens` | `tiktoken` | You want exact token counting for budget reservation (otherwise a conservative byte-based estimate is used; `tiktoken` downloads its vocabulary on first use, so set `ARGUS_OFFLINE=1` to stay offline) |
-| `dev` | `pytest`, `pytest-asyncio`, `pytest-cov`, `psutil`, `build` | You are contributing to Argus |
+| `dev` | `pytest`, `pytest-asyncio`, `pytest-cov`, `psutil`, `build`, `twine`, `ruff` | You are contributing to Argus |
 | `all` | The `tui` bundle | Convenience install for the supported surfaces |
 
 ```bash title="Shell"
@@ -146,33 +127,16 @@ recovery, review, and application flow.
 
 ## Configuration location
 
-Provider records are stored in the platform configuration directory, and API
-keys are stored in the operating system keyring when available. The runtime
-falls back to a restricted-permission file if no keyring backend is available.
-Override the directory with `ARGUS_CONFIG_DIR`.
-
-Per-workspace recovery artifacts live in `.argus/` inside the repository. Argus
-writes `.argus/.gitignore` so they stay out of `git status`; do not commit them.
-The signing key for candidate approvals lives in the configuration directory, not
-in the repository.
+Provider records, keys, and the signing key are stored outside the repository; see
+[provider configuration](/guides/provider-configuration/). Override the directory
+with `ARGUS_CONFIG_DIR`. Per-workspace artifacts live in `.argus/`, which Argus
+git-ignores; do not commit them.
 
 ## Uninstall
 
 ```bash title="Shell"
 pip uninstall argus-recovery
 ```
-
-If you installed the project in editable mode, remove the checkout as well.
-Stored provider credentials can be removed first:
-
-```bash title="Shell"
-argus provider list
-argus provider delete <name>
-```
-
-Recovery artifacts are ordinary files under each project's `.argus/` directory.
-Remove them per project when they are no longer needed; Argus does not delete
-run history automatically.
 
 ## Troubleshooting
 

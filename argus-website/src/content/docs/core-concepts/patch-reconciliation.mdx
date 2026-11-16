@@ -70,18 +70,15 @@ default `0.82`). A near miss that changes a token is refused:
 | `return a` | `return b` | Refused |
 | `retries = 3` | `retries = 5` | Refused |
 
-The earlier version matched by character similarity with a best-versus-runner-up
-margin. That could apply a one-line edit to a different method that merely looked
-similar, and it did so on real model output, so it was replaced. Disable Tier 3
-entirely with `enable_tier3=False` in `ArgusConfig` or the engine.
+Disable Tier 3 entirely with `enable_tier3=False` in `ArgusConfig` or the engine.
 
 ### Tier 4 — Anchor-based matching
 
 Tier 4 uses unchanged code before and after the drifted interior as anchors. It
 is implemented but **disabled by default**. No benefit has been measured for it
-(zero extra solves in a 26-task pilot, zero discordant pairs on 261 offline
-candidate pools, never run on the 100-task design set), and its failure modes need
-independent review. Enable it explicitly:
+(maintainer-reported: no extra solves in a small pilot and in offline replays;
+never run on the 99-task development set; see [Research](/project/research/)),
+and its failure modes need independent review. Enable it explicitly:
 
 ```bash title="Shell"
 argus run --test "pytest tests/test_calculator.py" --enable-tier4
@@ -128,30 +125,15 @@ valid deletion. A truncated or malformed block is reported back to the model and
 nothing from that response is applied, rather than applying a damaged fragment. An
 edit whose replacement text is already present is reported as already applied.
 
-## Why fuzzy matching is not "best effort"
-
-A permissive patcher can always produce a result; that is the failure mode Argus
-is built to avoid. The tier ladder is deliberately biased toward refusal:
-
-- exact before normalized;
-- normalized before token-equal;
-- token-equal only when no token differs and the match is unique;
-- anchors only with an explicit opt-in;
-- never more than one file;
-- never without a syntax check.
-
-If a candidate is refused, the correct response is to improve the context or the
-model output — not to lower the thresholds until something applies.
-
 ## Where the thresholds live
 
-`ResilientPatchEngine` is constructed with `similarity_threshold` (default
-`0.82`, the Tier 3 similarity floor), `ambiguity_margin` (default `0.10`, retained
-for configuration compatibility; Tier 3 refuses ambiguity regardless of any
-margin), `enable_tier3` (default `true`) and `enable_tier4` (default `false`).
-`ArgusConfig` exposes these as fields. The CLI exposes Tier 4 through
-`--enable-tier4`; the tier settings are not read from `argus.yaml`, so do not
-expect a YAML value to change them.
+The tier settings are fields on `ArgusConfig` and arguments to
+`ResilientPatchEngine`: `similarity_threshold` (default `0.82`, the Tier 3
+similarity floor), `enable_tier3` (default `true`) and `enable_tier4` (default
+`false`). The CLI exposes Tier 4 through `--enable-tier4`; the tier settings are
+not read from `argus.yaml`, so a YAML value will not change them. If a candidate
+is refused, improve the context or the model output rather than lowering
+thresholds.
 
 Programmatic callers can construct the engine directly:
 

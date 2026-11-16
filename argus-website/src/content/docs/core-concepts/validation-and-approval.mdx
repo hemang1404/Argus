@@ -15,18 +15,10 @@ semantically correct; that is a judgement for the reviewer.
 
 ## Syntax validation
 
-Every successful reconciliation writes the replacement into the full target file
-and runs `ast.parse` and `compile()` over the result (for `.py`, `.pyi`, `.pyw`).
-The result is labelled `syntactic`. The check catches:
-
-- unmatched brackets or quotes introduced by the patch;
-- malformed indentation that produces invalid Python;
-- replacements that delete a required block and leave an incomplete statement;
-- edits that are individually plausible but invalid in file context.
-
-The gate applies to every tier and checks the final state after all blocks of a
-response. It is implemented for Python source only, and it is not a correctness
-check.
+Every successful reconciliation is parsed and compiled over the full patched
+file before it is tried; the result is labelled `syntactic`, applies to every
+tier, and is Python-only. It is not a correctness check. See
+[Patch reconciliation](/core-concepts/patch-reconciliation/#syntax-validation-a-syntactic-gate-only).
 
 ## Test verification
 
@@ -69,22 +61,23 @@ before a write:
 
 | Check | Failure code |
 | --- | --- |
+| Only one apply runs for this run ID | `APPLY_IN_PROGRESS` |
 | Run ID is well formed | `INVALID_RUN_ID` |
 | Candidate artifact loads | `CANDIDATE_NOT_FOUND` |
 | Metadata signature is valid | `CANDIDATE_SIGNATURE_INVALID` |
 | Candidate is verified | `CANDIDATE_NOT_VERIFIED` |
 | Candidate is approved (unless forced) | `CANDIDATE_NOT_APPROVED` |
 | Candidate content exists | `CANDIDATE_CONTENT_MISSING` |
-| Candidate content matches `candidate_hash` | `CONTENT_HASH_MISMATCH` |
-| Patched content parses as Python | `SYNTAX_VALIDATION_FAILED` |
 | Target path stays inside the workspace | `PATH_TRAVERSAL_REJECTED` |
 | Target matches recorded target path | `TARGET_FILE_MISMATCH` |
+| Target file exists | `TARGET_NOT_FOUND` |
 | Target is a regular file | `UNSAFE_TARGET_TYPE` |
-| Live file matches `baseline_hash` | `STALE_TARGET_CONFLICT` (also what an already-applied run reports, with an "already applied" message) |
+| Candidate content matches `candidate_hash` | `CONTENT_HASH_MISMATCH` |
+| Patched content parses as Python | `SYNTAX_VALIDATION_FAILED` |
 | Target decodes (UTF-8, BOM, PEP 263) | `UNSUPPORTED_ENCODING` |
-| Only one apply runs for this run ID | `APPLY_IN_PROGRESS` |
-| No concurrent modification between checks | `CONCURRENT_MODIFICATION_DETECTED` |
+| Live file matches `baseline_hash` | `STALE_TARGET_CONFLICT` (also what an already-applied run reports, with an "already applied" message) |
 | File permissions can be preserved | `PERMISSION_PRESERVATION_FAILED` |
+| No concurrent modification between checks | `CONCURRENT_MODIFICATION_DETECTED` |
 
 The apply path is deliberately repetitive: hashes are re-read immediately before
 the write, and the target is re-checked after preparing the replacement. This is

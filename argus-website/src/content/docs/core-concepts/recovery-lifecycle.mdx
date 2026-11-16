@@ -40,8 +40,10 @@ confidence, the run ends as `LOCALIZATION_FAILED`.
 
 Localization is deterministic. It does not ask the model which file to edit. It is
 also the weakest link: the research results behind Argus were obtained with the
-target file supplied, and the localizer's recall in separate measurements was about
-27%, so pass `--file` whenever you know the file.
+target file supplied. In a separate measurement from the issue text alone, the
+Argus rule-based localiser ranked the correct file first for 21% of tasks (a plain
+keyword-search baseline: 27%). The traceback-based path used by the released
+version was not evaluated, so pass `--file` whenever you know the file.
 
 ## 5. Patch generation
 

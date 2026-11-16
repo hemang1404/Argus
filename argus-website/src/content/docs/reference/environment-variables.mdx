@@ -15,6 +15,7 @@ rendering. They do not replace explicit provider selection.
 | `ARGUS_KEYRING_SERVICE` | Keyring service name (isolates test or alternate environments) |
 | `OPENAI_API_KEY` | Key for the `openai` provider |
 | `DEEPSEEK_API_KEY` | Key for the `deepseek` provider |
+| `GROQ_API_KEY` | Key for the `groq` provider |
 | `GEMINI_API_KEY` | Key for the `gemini` provider |
 | `GOOGLE_API_KEY` | Alternative Gemini key |
 | `ARGUS_DISABLE_ADAPTIVE_ROUTING` | Disable reasoning-effort classification |
@@ -61,11 +62,10 @@ The gateway refuses to start without it, including on loopback. Binding to a
 non-loopback address additionally requires `--allow-remote`. The gateway also
 requires the `gateway` extra.
 
-## Prohibited and internal
+## Internal
 
 | Variable | Status |
 | --- | --- |
-| `GROQ_API_KEY` | Groq is prohibited; do not configure it |
 | `ARGUS_TEST_MODE` | Not read by Argus. Older versions used it as a test switch; it no longer changes authentication or host checks |
 | `ARGUS_FRONTEND` | Launcher selector (`opentui` opts into an alternative front end that is not shipped); leave unset |
 | `ARGUS_SESSION_TOKEN` | Internal desktop/session token; managed by the launcher |

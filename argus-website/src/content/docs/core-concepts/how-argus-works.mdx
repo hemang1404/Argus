@@ -10,18 +10,9 @@ the failure modes legible.
 
 ## Subsystems
 
-| Component | Responsibility | Module |
-| --- | --- | --- |
-| Recovery controller | Owns the bounded loop, attempt history, and outcome | `argus/runtime/controller.py` |
-| Workspace manager | Creates and cleans temporary project copies | `argus/runtime/workspace.py` |
-| Test runner | Executes the reproduction command under strict limits | `argus/runtime/runner.py` |
-| Patch parser | Extracts search/replace blocks or unified diff hunks | `argus/patch/parser.py` |
-| Patch engine | Reconciles a block through tiers 1–5, then applies the syntactic gate | `argus/patch/fuzzy_engine.py` |
-| AST checker | Syntactic gate: `ast.parse` plus `compile` on the complete patched file | `argus/patch/ast_checker.py` |
-| Provider adapters | Generate the patch through an authorized model endpoint | `argus/providers/` |
-| Candidate store | Persists signed artifacts and approval state | `argus/runtime/candidate.py` |
-| Authoritative applier | Re-verifies integrity and writes atomically | `argus/runtime/candidate.py` |
-| Localizer | Maps traceback frames to a target file | `argus/localization/` |
+The controller, workspace manager, test runner, patch parser and engine, provider
+adapters, candidate store, applier and localizer are listed with their modules on
+the [Architecture](/project/architecture/) page.
 
 The same controller is used by the CLI, the TUI, the MCP server, and direct
 Python calls. Those surfaces are adapters, not alternative implementations.
@@ -105,36 +96,23 @@ rules.
 
 ## Verification is not approval
 
-Argus reports four different things: the edit was *applied*, the result is
-*syntactically* valid, the supplied *tests pass*, and the change is *semantically*
-right. Argus establishes the first three at most; the fourth is your judgement. A
-passing test proves only that the candidate satisfies the test command you
-supplied. It does not prove the change is correct in a broader sense, and it does
-not authorize writing to your repository. Argus keeps those decisions separate:
-
-- **Verification** is automatic and test-gated.
-- **Approval** is an explicit human action recorded in signed metadata.
-- **Application** re-checks hashes, syntax, path containment, and approval
-  immediately before an atomic write.
-
-The MCP surface exposes recovery and inspection to agents, but approval remains a
-human CLI or TUI action. See [Validation and approval](/core-concepts/validation-and-approval/).
+A passing test shows only that the candidate satisfies the test command you
+supplied. Verification is automatic, approval is an explicit human action, and
+application re-checks everything before an atomic write. See
+[Validation and approval](/core-concepts/validation-and-approval/).
 
 ## Invariants
 
-These properties hold across the recovery loop:
+- **Working-tree invariance.** Attempts run in a temporary copy, outside the live
+  tree. See [Workspace isolation](/core-concepts/workspace-isolation/).
+- **Fail closed.** If a provider, a model price, requested isolation or
+  authentication is unavailable, execution stops instead of falling back.
+- **Bounded work.** Turns, time, output, and spend all have ceilings.
+- **Provenance and no silent apply.** A candidate records what produced it, and
+  `argus run` never applies one on its own.
 
-1. **Working-tree invariance.** Iterative attempts run in a temporary copy, outside
-   the live tree. The copy is not a security sandbox: your test command runs on
-   your machine with your permissions.
-2. **Fail closed.** If a provider, a model price, requested isolation or
-   authentication is unavailable, execution stops instead of falling back to a
-   different provider or a weaker path.
-3. **Bounded work.** Turns, time, output, and spend all have ceilings.
-4. **Provenance.** A candidate records what file, test, model, attempts, and
-   hashes produced it.
-5. **No silent apply.** There is no code path that applies an unapproved
-   candidate during `argus run`.
+The [security model](/project/security-model/) covers the guarantees and their
+limits.
 
 <Aside type="caution" title="Scope today">
 Reconciliation and AST verification are implemented for Python source files and

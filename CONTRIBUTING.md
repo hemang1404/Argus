@@ -69,7 +69,7 @@ python -m compileall -q argus tests
 4. **Security & Secrets:**
    - Never commit API keys, tokens, or private credentials.
    - Scrub sensitive environment variables and tokens before executing child subprocesses.
-   - Groq provider configurations and keys are strictly prohibited across all components.
+   - Provider keys (including `GROQ_API_KEY`) are never committed, logged or passed to test subprocesses.
 
 ---
 

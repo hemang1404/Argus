@@ -36,8 +36,11 @@ root-level names to leave out go in `snapshot_exclude`, and
 `snapshot_respect_gitignore=False` copies ignored files too. Symlinks are copied as
 links only when they stay inside the project.
 
-Untracked files that are not ignored are copied, including a `.env` you have not
-ignored. Keep secrets out of the project tree or in `.gitignore`.
+Files whose names look like credentials (`.env`, `.env.*`, `*.pem`, `*.key`,
+`id_rsa`, `.netrc`, `.npmrc`, `secrets.json` and similar) are left out of the copy
+by default, except template names ending `.example`, `.sample`, `.template` or
+`.dist`. Set `snapshot_include_secrets=True` if your tests need them. Secrets
+stored under other names are copied like any other file.
 
 If you point Argus at a target file outside an explicit workspace root, it refuses
 (`TargetOutsideWorkspaceError`) before copying anything.
@@ -49,8 +52,8 @@ failure paths. Two details make cleanup safe when multiple runs execute
 concurrently:
 
 - **Process identity.** Cached workspace ownership records the PID together with
-  the process start time, read from `kernel32.GetProcessTimes` on Windows and
-  `/proc/<pid>/stat` on POSIX. A recycled PID cannot keep a dead workspace alive.
+  the process start time, read from `kernel32.GetProcessTimes` on Windows,
+  `/proc/<pid>/stat` on Linux and `ps` elsewhere. A recycled PID cannot keep a dead workspace alive.
 - **Atomic claiming.** Garbage collection claims a workspace by atomically
   renaming its directory before deleting it, preventing two collectors from
   removing the same directory concurrently.
@@ -62,13 +65,9 @@ prunes stale ones. Your original files are not touched in that case.
 ## What isolation does not cover
 
 <Aside type="caution" title="Not an OS sandbox">
-Workspace copying isolates *files*. It does not isolate processes. Test commands
-run on the host with your current user privileges. A malicious test suite can
-read your home directory, reach the network, or delete files you can delete.
-For untrusted repositories, use an operating-system or container boundary you
-control. A container evaluator exists in the library (not as a CLI flag); it
-fails closed when requested and no working engine is available, but this
-documentation does not claim that path has been verified against a live daemon.
+Workspace copying isolates *files*, not processes: test commands run on the host
+with your current user privileges. For untrusted repositories use a boundary you
+control; see [Host execution is not a sandbox](/project/security-model/#host-execution-is-not-a-sandbox).
 </Aside>
 
 The isolation boundary is about repository integrity:

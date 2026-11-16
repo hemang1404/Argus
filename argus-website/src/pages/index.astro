@@ -1,7 +1,7 @@
 ---
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 import InstallTabs from '../components/InstallTabs.astro';
-import { navGroups, version } from '../data/nav.mjs';
+import { version } from '../data/nav.mjs';
 import { currentOnPypi, pypiUrl, pypiVersion } from '../data/install.mjs';
 
 const description =
@@ -99,7 +99,7 @@ const description =
         Applying a block is only the first step. Argus then runs your test
         command on the temporary copy and creates a candidate only if it passes.
         Argus is not an agent and ships no model: you bring your own authorized
-        provider, and every candidate waits for your approval.
+        provider, and by default every candidate waits for your approval.
       </p>
     </section>
 
@@ -108,43 +108,10 @@ const description =
         <span class="section-index">03</span>
         <h2>The recovery loop</h2>
         <p>
-          Bounded at three turns by default. Each turn narrows the failure before
-          spending another inference request.
+          Bounded at three turns by default: isolate, reproduce, localize,
+          reconcile, verify, approve.
         </p>
       </header>
-
-      <ol class="lifecycle">
-        <li>
-          <span class="step-index">01</span>
-          <h3>Isolate</h3>
-          <p>Copy the project into a temporary workspace.</p>
-        </li>
-        <li>
-          <span class="step-index">02</span>
-          <h3>Reproduce</h3>
-          <p>Run the test command with a timeout and output ceiling.</p>
-        </li>
-        <li>
-          <span class="step-index">03</span>
-          <h3>Localize</h3>
-          <p>Read traceback frames to identify the target file.</p>
-        </li>
-        <li>
-          <span class="step-index">04</span>
-          <h3>Reconcile</h3>
-          <p>Match the proposed search block through the tier ladder.</p>
-        </li>
-        <li>
-          <span class="step-index">05</span>
-          <h3>Verify</h3>
-          <p>Apply inside the workspace and rerun the reproduction.</p>
-        </li>
-        <li>
-          <span class="step-index">06</span>
-          <h3>Approve</h3>
-          <p>Inspect the diff, approve, then apply atomically.</p>
-        </li>
-      </ol>
     </section>
 
     <section class="home-section">
@@ -220,29 +187,6 @@ const description =
         <div class="install-widget">
           <InstallTabs />
         </div>
-      </div>
-    </section>
-
-    <section class="home-section">
-      <header class="section-head">
-        <span class="section-index">06</span>
-        <h2>Documentation</h2>
-        <p>From first recovery to the security model and the current release history.</p>
-      </header>
-
-      <div class="docs-map">
-        {
-          navGroups.map((group) => (
-            <div class="docs-group">
-              <h3>{group.label}</h3>
-              <ul>
-                {group.items.map((item) => (
-                  <li><a href={item.href}>{item.label}</a></li>
-                ))}
-              </ul>
-            </div>
-          ))
-        }
       </div>
     </section>
 
@@ -394,43 +338,6 @@ const description =
     color: var(--a-text-secondary);
   }
 
-  .lifecycle {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0;
-    margin: 0 0 0 3.5rem;
-    padding: 0;
-    list-style: none;
-    border-top: 1px solid var(--a-border-subtle);
-    border-left: 1px solid var(--a-border-subtle);
-  }
-
-  .lifecycle li {
-    padding: 1.1rem 1.1rem 1.25rem;
-    border-right: 1px solid var(--a-border-subtle);
-    border-bottom: 1px solid var(--a-border-subtle);
-  }
-
-  .step-index {
-    font-family: var(--a-mono);
-    font-size: 0.625rem;
-    color: var(--a-blue-deep);
-  }
-
-  .lifecycle h3 {
-    margin: 0.5rem 0 0.25rem;
-    font-size: 0.9rem;
-    font-weight: 550;
-    color: var(--a-text);
-  }
-
-  .lifecycle p {
-    margin: 0;
-    font-size: 0.8125rem;
-    line-height: 1.6;
-    color: var(--a-text-secondary);
-  }
-
   .tier-table {
     width: 100%;
     margin-inline-start: 3.5rem;
@@ -574,49 +481,6 @@ const description =
     margin-top: 0;
   }
 
-  .docs-map {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 2rem 2.5rem;
-    margin-inline-start: 3.5rem;
-  }
-
-  .docs-group h3 {
-    margin: 0 0 0.6rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--a-border-subtle);
-    font-family: var(--a-mono);
-    font-size: 0.625rem;
-    font-weight: 500;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    color: var(--a-text-muted);
-  }
-
-  .docs-group ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .docs-group li {
-    margin: 0;
-  }
-
-  .docs-group a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 32px;
-    font-size: 0.85rem;
-    color: var(--a-text-secondary);
-    text-decoration: none;
-    transition: color 120ms ease;
-  }
-
-  .docs-group a:hover {
-    color: var(--a-blue);
-  }
-
   .home-boundary {
     margin-inline-start: 3.5rem;
     padding: 1rem 1.15rem;
@@ -649,10 +513,8 @@ const description =
 
   @media (max-width: 64rem) {
     .capabilities,
-    .lifecycle,
     .tier-table,
     .install,
-    .docs-map,
     .home-boundary {
       margin-inline-start: 0;
     }
@@ -664,17 +526,9 @@ const description =
       gap: 1.25rem;
     }
 
-    .lifecycle {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .install {
       grid-template-columns: minmax(0, 1fr);
       gap: 1.5rem;
-    }
-
-    .docs-map {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
@@ -686,14 +540,6 @@ const description =
     .section-head {
       grid-template-columns: 1.75rem minmax(0, 1fr);
       column-gap: 0.75rem;
-    }
-
-    .lifecycle {
-      grid-template-columns: 1fr;
-    }
-
-    .docs-map {
-      grid-template-columns: 1fr;
     }
 
     .tier-table td span:not(.badge) {

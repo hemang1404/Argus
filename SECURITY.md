@@ -93,7 +93,7 @@ The MCP caller is an LLM agent, so its arguments are untrusted:
 
 - Requires `ARGUS_GATEWAY_API_KEY`; comparison is constant-time. The server refuses to start without a key. There are no environment-variable test bypasses in production code.
 - Binds to loopback by default; non-loopback needs `--allow-remote` and prints a warning.
-- Loopback CORS regex, `Host` header validation, upstream URL validation (blocks private ranges and cloud metadata addresses, and Groq).
+- Loopback CORS regex, `Host` header validation, upstream URL validation (blocks private ranges and cloud metadata addresses).
 - Rate limiting keys on a token hash and a client identifier; the run ID header is validated and never taken from an API key header. Budget reservations expire after a TTL.
 - Unknown models are priced fail-closed.
 - Known limitation: rotating the client identifier within a valid token can fragment rate-limit buckets.
@@ -114,8 +114,8 @@ The MCP caller is an LLM agent, so its arguments are untrusted:
 1. Python-only syntax gate; and it is syntactic, not semantic: a valid patch can still delete a security check or special-case a test.
 2. Single-file scope; multi-file patches are refused.
 3. Host execution with user privileges (section 2).
-4. Test passage is test-relative. In independent grading, about 6.6-12.0% of target-test passes broke other tests, and about 18% of resolved patches were judged wrong or fragile by one reviewer (see [docs/RESEARCH_STATUS.md](docs/RESEARCH_STATUS.md)). Read the diff.
-5. The copy workspace can include secret files that are in your working tree (for example an untracked `.env`). Use ignore rules or keep secrets outside the project.
+4. Test passage is test-relative. In independent grading, about 8.3-12.0% of target-test passes broke other tests, and about 18% of reviewed resolved patches were judged wrong or fragile by AI reviewers (see [docs/RESEARCH_STATUS.md](docs/RESEARCH_STATUS.md)). Read the diff.
+5. The copy workspace excludes credential-named files by default (`.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa` and similar) unless `snapshot_include_secrets` is set, but secrets stored under other names in your working tree are copied. Use ignore rules or keep secrets outside the project.
 6. Gateway rate-limit client-ID rotation (section 5).
 7. `argus doctor` and `argus provider test` make live provider requests.
 

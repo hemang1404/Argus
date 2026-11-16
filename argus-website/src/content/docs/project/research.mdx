@@ -11,12 +11,14 @@ properties the system actually guarantees.
 
 > **Status.** The evidence for the claims below is **not in this repository**, and
 > every figure is maintainer-reported. The per-claim table, with what is verified,
-> partial, unsupported or incorrect, is in
-> `docs/RESEARCH_STATUS.md` in the repository (this file is added by the
-> `0.2.0b2` remediation and appears on GitHub only after that work is merged).
-> Earlier versions of this page and of the README quoted figures that the audit
-> found incorrect (for example "26 to 50", "77% cheaper", "200-400x", "92%"); they
-> have been removed.
+> partial, unsupported or incorrect, is in `docs/RESEARCH_STATUS.md` in the
+> repository. Earlier versions of this page and of the README quoted figures that
+> the audit found incorrect (for example "26 to 50", "77% cheaper", "200-400x",
+> "92%"); they have been removed.
+>
+> All results on this page were produced by an earlier research version of the
+> patch engine (`0.2.0b1`) inside a separate research harness. They are **not**
+> measurements of the released `0.2.0b2` package.
 
 The research questions are narrow:
 
@@ -41,12 +43,14 @@ material lives in the maintainer's local research workspace and has not been
 published; a versioned archive with checksums is the planned fix.
 
 The independent, preregistered evaluation (called Pilot-100 / Report 18) used:
-official SWE-bench Verified Docker grading with full FAIL_TO_PASS and PASS_TO_PASS
-tests, a hashed task manifest created before any model call, a gold-patch control
-(a task whose reference patch fails is excluded), one price book for all costs,
-paired exact tests and task-bootstrap intervals, and preregistered predictions with
-misses reported. The target file was given to the model, so the numbers are not
-leaderboard scores.
+official SWE-bench Verified Docker grading (a task counts as resolved only if the
+target tests pass and no existing test breaks), a task list frozen before any model
+call, a control run with the reference patch (a task whose reference patch fails is
+excluded), one price list for all costs, paired exact tests and task-level bootstrap
+intervals, and preregistered predictions with misses reported. The target file was
+given to the model and the loop stops using the benchmark's own hidden target tests,
+so the numbers are not leaderboard scores and do not bound what a user-visible test
+command would achieve.
 
 Core quality gates used by contributors:
 
@@ -67,21 +71,24 @@ Argus's patch-apply layer is a tolerant SEARCH/REPLACE matcher.
 
 | Observation | Figure | Scope and caveats |
 | --- | --- | --- |
-| gpt-oss-20b, resolved tasks with Argus's applier vs a plain line-exact unique matcher | 31 to 38 of 99 (7 gained, 0 lost; exact McNemar p = 0.016; +5.7 points, 95% CI 2.7-9.1) | Official SWE-bench Verified grading, temperature 1.0, target file given. Quoted from the evaluation report, not recomputed here |
-| gpt-oss-120b | +2 tasks (44 to 46), p = 0.5 | Not significant |
-| Qwen3.8 | about 0 | |
-| Where the gain comes from | Mostly exact and indentation-tolerant matching, which other edit tools also provide | An Aider-style applier tied Argus Tiers 1-3 offline |
+| gpt-oss-20b, resolved tasks with Argus's applier vs a plain line-exact unique matcher | Temperature 0 (one run): 31 to 38 of 99 (7 gained, 0 lost; exact McNemar p = 0.016). Temperature 1.0 (mean of 3 draws): 30.3% to 36.0%, +5.7 points (95% CI 2.7 to 9.1) | Official SWE-bench Verified grading, target file given. Two separate experiments; quoted from the evaluation report, not recomputed here |
+| gpt-oss-120b | Temperature 0: 44 to 46 (p = 0.5, not significant). Temperature 1.0: +3.4 points (CI 0.7 to 6.7) | Gain is small for the stronger editor |
+| Qwen3.8 | +0.3 points | About zero |
+| Where the gain comes from | Mostly exact and indentation-tolerant matching, which other edit tools also provide | For the 20B model, an exact match gave 31, whitespace normalisation of the kind Aider uses gave 37, Argus Tier 3 gave 38; for the 120B model 44, 46, 46 |
 | Old character-similarity Tier 3 | 1 extra solve and 1 wrong-location application | Why Tier 3 is now token-equal. The new Tier 3 has not been re-evaluated on model output |
 | Tier 4 anchors | No benefit measured (0 of 26, 0 discordant on 261 pools) | Never run on the 99-task set; stays opt-in |
-| Test feedback vs blind re-draws | +6.6 points (CI 1.5-11.6) for gpt-oss-20b; +4.5 (CI 0.0-9.1) for gpt-oss-120b; about 0 for Gemma, Qwen3.8, Gemini | 200-task blind set; the shipped controller uses feedback |
-| 20B-then-120B cascade | 59.6 vs 54.5 solved at about 1.10x spend | Offline replay only. The shipped provider ladders are unevaluated |
-| Cost per solve | $0.0045 (20B + feedback) vs $0.0058 (120B + re-draws) | Parity at best; one undated list-price book; compute excluded |
-| Passing but wrong | About 18% of resolved patches judged wrong or fragile; 6.6-12.0% of target-test passes broke other tests | One unblinded reader. "Resolved" means the graded tests pass |
+| Test feedback vs blind re-draws | +6.6 points (95% CI 1.5 to 11.6; exact p = 0.019) for gpt-oss-20b; +4.5 (0.0 to 9.1) for gpt-oss-120b. After correcting a bug in how the harness cleaned the feedback text: +5.6 (0.5 to 10.6; p = 0.052) and +3.0 (-1.0 to 7.6). About 0 for Gemma, Qwen3.8 and Gemini | 198 analysed tasks in a set frozen before any model call; one generation per task. The loop stops on the benchmark's hidden target tests, which a user would usually not have. The shipped controller sends a similar feedback format. The bug rerun is a post hoc check |
+| 20B-then-120B cascade | 118 vs 108 of 198 solved (+5.1 points, CI 1.0 to 9.1) at about 1.10x spend | Offline replay only, up to four attempts against three, and the 120B model with feedback alone solved 117, so the gain mostly reflects feedback. The shipped provider ladders are unevaluated |
+| Cost per solve | $0.0045 (20B + feedback; $0.0046 after the bug fix) vs $0.0058 (120B + re-draws) | Parity at best; one undated list-price book; compute excluded |
+| Passing but wrong | About 18% of 265 reviewed resolved patches judged wrong or fragile; 8.3% (120B) to 12.0% (20B) of target-test passes broke other tests | Reviews were done by AI models reading the diffs (no human reviewer), so treat 18% as a rough estimate. "Resolved" means the graded tests pass |
 | Synthetic adversarial corpus | 500 cases, 0 incorrect applications | Seven templated mutation families; one wrong-location application was seen on real model output |
-| Argus localization | About 27% recall in separate measurements | All headline results had the target file supplied |
+| File localization from the issue text alone | Correct file ranked first for 27% of tasks with a keyword-search baseline (BM25) and 21% with the Argus rule-based localiser | All headline results had the target file supplied. The released traceback-based localiser was not evaluated on SWE-bench |
 
 No learned router, execution-state routing or embedding retrieval is shipped or
-supported; the evidence did not justify one.
+supported; the evidence did not justify one. The package does include a
+rule-based classifier that picks a reasoning-effort level (on by default, off with
+`--no-adaptive`). It never picks the model, and its effect on solve rates was not
+evaluated in any of the experiments above.
 
 The offline test suite is the other kind of evidence: it shows that tested code
 paths behave as asserted in the environments that ran it. The CHANGELOG records the
@@ -110,7 +117,7 @@ nor does it predict success on an arbitrary repository.
 | Applied patches parse as Python | Design guarantee for the supported scope (syntactic only) |
 | Candidates require explicit approval | Design guarantee in the apply path |
 | Tier 4 anchor matching improves recovery | Not shown; experimental, disabled by default |
-| Tier 3 token-equal matching adds solves | Not yet measured; the earlier similarity version added one solve and one wrong application |
+| Tier 3 token-equal matching adds solves | Not measured on resolved tasks; the earlier similarity version added one solve and one wrong application. Offline, the released engine fails to apply a few patches the old one applied (6 of them graded resolved across all models), and its effect on resolved rates was never graded |
 | Argus improves a model's fix rate | Not claimed; gains are conditional and small for strong models |
 | Container isolation is secure | Not claimed; optional, not independently audited here |
 | Multi-language recovery works | Not implemented; roadmap |
