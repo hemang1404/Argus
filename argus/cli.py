@@ -275,7 +275,7 @@ def provider_list():
 
 @provider_group.command("set")
 @click.option("--name", "-n", default=None, help="Provider name or preset identifier.")
-@click.option("--preset", "-p", default=None, help="Preset key (see 'argus provider list': openai, openrouter, deepseek, gemini, ollama, lmstudio, antigravity, custom).")
+@click.option("--preset", "-p", default=None, help="Preset key (see 'argus provider list': openai, openrouter, deepseek, gemini, groq, ollama, lmstudio, antigravity, custom).")
 @click.option("--base-url", "-u", default=None, help="API Base URL (e.g. https://api.openai.com/v1).")
 @click.option("--model", "-m", default=None, help="Model identifier (e.g. gpt-4o-mini).")
 @click.option("--api-key", "-k", default=None, help="API key. Visible in shell history and the process list: prefer --api-key-env or --api-key-stdin.")
@@ -297,11 +297,6 @@ def provider_set(
     """Add or update an LLM provider configuration."""
     storage = ProviderStorage()
     preset_key = (preset or name or "custom").lower()
-
-    if preset_key == "groq" or (name and name.lower() == "groq"):
-        console.print("[red]✗ Groq is strictly prohibited as an inference provider in Argus.[/red]")
-        console.print("[dim]Please choose an authorized provider (e.g. ollama, openai, deepseek, antigravity).[/dim]")
-        sys.exit(1)
 
     if sum(1 for v in (api_key is not None, api_key_env is not None, api_key_stdin) if v) > 1:
         raise click.UsageError("Use only one of --api-key, --api-key-env, --api-key-stdin.")

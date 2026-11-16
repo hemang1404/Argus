@@ -58,7 +58,7 @@ class ModelCost:
 
 # Active Model Registry with token economics
 MODEL_REGISTRY: Dict[str, ModelCost] = {
-    # Groq OpenAI open-weight models (Official Groq API rates as of Oct 28, 2026)
+    # Groq-hosted open-weight models (USD per 1M tokens; user brings their own GROQ_API_KEY)
     "openai/gpt-oss-20b": ModelCost(input_cost_per_m=0.075, output_cost_per_m=0.300, cached_input_cost_per_m=0.0375),
     "gpt-oss-20b": ModelCost(input_cost_per_m=0.075, output_cost_per_m=0.300, cached_input_cost_per_m=0.0375),
     "openai/gpt-oss-120b": ModelCost(input_cost_per_m=0.150, output_cost_per_m=0.600, cached_input_cost_per_m=0.0750),
@@ -227,10 +227,6 @@ class ArgusConfig:
     logo_layout: str = "wordmark"  # 'wordmark' (pure centered), 'inline' (A-in-eye on left), 'stacked'
 
     def __post_init__(self) -> None:
-        p_name = (self.provider or (self.provider_config.name if self.provider_config else "")).strip().lower()
-        if p_name == "groq":
-            raise ValueError("Groq is strictly prohibited as an inference provider in Argus.")
-
         if self.model is not None:
             self.model = self.model.strip() or None
         if self.model is not None and self.model.lower() in _PSEUDO_MODELS:

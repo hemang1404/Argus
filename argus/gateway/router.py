@@ -46,12 +46,6 @@ class GatewayRouter:
         messages: Optional[List[Any]] = None,
     ) -> RoutedTarget:
         model_str = (requested_model or "argus/auto").strip()
-        model_lower = model_str.lower()
-        if model_lower == "groq" or model_lower.startswith("groq/") or "groq.com" in model_lower:
-            raise NoEligibleProviderError(
-                requested_model=model_str,
-                message="Groq is strictly prohibited across all of Argus.",
-            )
 
         # 1. Dynamic Adaptive Routing for argus/auto
         tier_name: Optional[str] = None
@@ -145,11 +139,6 @@ class GatewayRouter:
         if "/" in model_str and not model_str.startswith("argus/"):
             req_provider, _, req_model_name = model_str.partition("/")
             req_provider_clean = req_provider.strip().lower()
-            if req_provider_clean == "groq":
-                raise NoEligibleProviderError(
-                    requested_model=model_str,
-                    message="Groq is strictly prohibited across all of Argus.",
-                )
             if req_provider_clean in self._providers:
                 matched_prov = self._providers[req_provider_clean]
                 return RoutedTarget(

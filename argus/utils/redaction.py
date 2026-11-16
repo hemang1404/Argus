@@ -36,7 +36,7 @@ TOKEN_PATTERNS = [
     (r"\b(hf_[A-Za-z0-9]{30,})\b", "[REDACTED_SECRET]"),
     # Slack tokens
     (r"\b(xox[baprs]-[A-Za-z0-9_\-]{10,})\b", "[REDACTED_SECRET]"),
-    # Groq API keys (decommissioned/prohibited)
+    # Groq API keys (user-supplied; must never reach logs or persisted output)
     (r"\b(gsk_[A-Za-z0-9_\-]{16,})\b", "[REDACTED_SECRET]"),
     # Bearer credentials in HTTP-header form: a JWT-shaped (dotted) token or a long opaque one.
     # Short words after "Bearer" (prose, ``Bearer {token}`` templates) are left alone.

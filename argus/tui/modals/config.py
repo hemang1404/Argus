@@ -261,15 +261,7 @@ class ConfigModal(ModalScreen[Optional[Any]]):
             if self.query("#config-api-key"):
                 key_val = self.query_one("#config-api-key", Input).value.strip()
                 if key_val:
-                    # 1. Reject Groq keys with an informative explanation
-                    if key_val.startswith("gsk_") or key_val.startswith("gsk-"):
-                        error_widget.update(
-                            "[bold red]Groq keys ('gsk_...') are strictly prohibited in Argus.[/bold red] "
-                            "Groq is decommissioned in Argus. Supported: Host Native Antigravity (zero keys), OpenAI (sk-...), DeepSeek (sk-...), Google AI Studio (AIzaSy...), or OpenRouter (sk-or-...)."
-                        )
-                        return
-
-                    # 2. Determine target provider from key signature or model name
+                    # 1. Determine target provider from key signature or model name
                     storage = ProviderStorage()
                     models = discover_all_models(storage=storage)
                     model_by_id = {m.model_id: m for m in models}

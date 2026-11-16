@@ -231,12 +231,7 @@ def create_mcp_server() -> FastMCP:
             # silently selects Antigravity or any other provider.
             if provider:
                 p_norm = provider.strip().lower()
-                if p_norm == "groq":
-                    return json.dumps({
-                        "status": "CONFIG_ERROR",
-                        "error": "Groq is strictly prohibited as an inference provider in Argus. Please configure an authorized provider (e.g. ollama, openai, deepseek, antigravity).",
-                    }, indent=2)
-                elif p_norm == "auto":
+                if p_norm == "auto":
                     active_cfg = storage.get_active_provider()
                     if active_cfg is None:
                         from argus.providers.antigravity import find_antigravity_cli
@@ -260,12 +255,10 @@ def create_mcp_server() -> FastMCP:
                     }, indent=2)
             else:
                 active_cfg = storage.get_active_provider()
-                if active_cfg is not None and active_cfg.name.lower() == "groq":
-                    active_cfg = None
                 if active_cfg is not None and model:
                     active_cfg.model = model
 
-            # Fail fast if no authorized provider is available (never silent Groq fallback).
+            # Fail fast if no authorized provider is available (never an implicit fallback).
             if active_cfg is None:
                 return json.dumps({
                     "status": "CONFIG_ERROR",

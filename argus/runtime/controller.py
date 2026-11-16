@@ -464,11 +464,6 @@ class RecoveryController:
             return self.adapter
 
         p_name = (self.config.provider or "").lower().strip()
-        if p_name == "groq":
-            raise ProviderConfigurationError(
-                "Groq is strictly prohibited as an inference provider in Argus. "
-                "Please configure an authorized provider via 'argus provider set' (e.g. ollama, openai, deepseek, antigravity)."
-            )
         provider_timeout = float(getattr(self.config, "provider_timeout_seconds", 45.0))
 
         p_cfg = getattr(self.config, "provider_config", None)
@@ -622,7 +617,7 @@ class RecoveryController:
 
     def _get_client(self) -> Any:
         """Backwards compatibility for legacy tests."""
-        raise RuntimeError("Direct Groq client has been removed. Groq is strictly prohibited in Argus.")
+        raise RuntimeError("Direct provider clients have been removed; use the provider adapter.")
 
     def auto_localize_target_file(
         self,

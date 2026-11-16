@@ -85,7 +85,7 @@ def test_gateway_config_does_not_inject_groq_when_unconfigured(monkeypatch, tmp_
 # =============================================================================
 
 def test_gateway_chat_completions_fails_with_503_when_no_provider_configured():
-    """When gateway has no providers, return 503 provider_resolution_error instead of fake 401 or Groq fallback."""
+    """When gateway has no providers, return 503 provider_resolution_error instead of fake 401 or implicit fallback."""
     cfg = GatewayConfig(providers=[], tiers={})
     init_gateway(cfg)
     client = TestClient(app)
@@ -243,13 +243,13 @@ def test_secret_scrubbing_redacts_credentials_from_errors():
     assert "[REDACTED_SECRET]" in cleaned
 
 
-def test_explicitly_configured_groq_provider_is_rejected():
-    """Attempting to configure a Groq provider must be strictly rejected with ValueError."""
-    with pytest.raises(ValueError, match="Groq is strictly prohibited"):
-        ProviderConfig(name="groq", kind="openai_compatible", base_url="https://api.groq.com/openai/v1", api_key="gsk_valid_key")
+def test_explicitly_configured_groq_provider_is_accepted():
+    """A user-configured Groq gateway provider is a normal provider."""
+    p = ProviderConfig(name="groq", kind="openai_compatible", base_url="https://api.groq.com/openai/v1", api_key="gsk_valid_key")
+    assert p.get_api_key() == "gsk_valid_key"
 
-    with pytest.raises(ValueError, match="Groq is strictly prohibited"):
-        ProviderConfig(name="custom", kind="openai_compatible", base_url="https://api.groq.com/openai/v1", api_key="gsk_valid_key")
+    p2 = ProviderConfig(name="custom", kind="openai_compatible", base_url="https://api.groq.com/openai/v1", api_key="gsk_valid_key")
+    assert p2.base_url.endswith("/openai/v1")
 
 
 # =============================================================================

@@ -163,44 +163,17 @@ def test_mcp_recover_boundary_rejects_test_target(tmp_path: Path, monkeypatch):
 
 
 # =============================================================================
-# 2. No-Groq Rule Enforcement
+# 2. Groq is a normal, explicitly configured provider (never implicit)
 # =============================================================================
 
-def test_groq_not_in_presets():
-    """Groq must not appear in PROVIDER_PRESETS."""
-    assert "groq" not in PROVIDER_PRESETS
-
-
-def test_cli_provider_set_refuses_groq():
-    """argus provider set must explicitly reject groq."""
-    runner = CliRunner()
-    res = runner.invoke(main, ["provider", "set", "--preset", "groq"])
-    assert res.exit_code != 0
-    assert "Groq is strictly prohibited" in res.output
-
-
-def test_mcp_recover_refuses_groq(tmp_path: Path, monkeypatch):
-    """MCP argus_recover must immediately refuse groq provider requests."""
-    monkeypatch.setenv("ARGUS_MCP_WORKSPACE_ROOT", str(tmp_path))
-    server = create_mcp_server()
-    recover_tool = server._tool_manager._tools["argus_recover"].fn
-
-    src = tmp_path / "calc.py"
-    src.write_text("def add(a, b): return a + b\n", encoding="utf-8")
-
-    resp_json = recover_tool(
-        test_command="pytest",
-        target_file=str(src),
-        provider="groq",
-        workspace=str(tmp_path),
-    )
-    data = json.loads(resp_json)
-    assert data["status"] == "CONFIG_ERROR"
-    assert "Groq is strictly prohibited" in data["error"]
+def test_groq_is_in_presets():
+    """Groq is a regular key-based preset."""
+    assert "groq" in PROVIDER_PRESETS
+    assert PROVIDER_PRESETS["groq"].requires_key is True
 
 
 def test_unconfigured_never_silently_selects_groq(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """With no provider configured, Argus must fail closed and never select Groq."""
+    """A stray GROQ_API_KEY must never cause Groq to be selected."""
     monkeypatch.setenv("ARGUS_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("GROQ_API_KEY", "gsk-stray-env-key")
     monkeypatch.delenv("ARGUS_PROVIDER", raising=False)

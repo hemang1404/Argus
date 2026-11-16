@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 import yaml
 from argus.providers.storage import maybe_load_dotenv
 
@@ -19,16 +19,6 @@ class ProviderConfig(BaseModel):
     base_url: str
     key_env: str = ""
     api_key: Optional[str] = None
-
-    @model_validator(mode="after")
-    def reject_groq(self) -> ProviderConfig:
-        if self.name.lower() == "groq" or "groq.com" in self.base_url.lower():
-            raise ValueError(
-                "Groq is strictly prohibited across all of Argus. "
-                "The developer's Groq key is private and cannot be used for inference, "
-                "recovery, fallback, or benchmarks."
-            )
-        return self
 
     def get_api_key(self) -> str:
         """Resolve API key from direct value or environment variable."""

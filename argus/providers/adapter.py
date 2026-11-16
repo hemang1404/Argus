@@ -140,6 +140,18 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         keys = [self.config.api_key] if self.config.api_key else []
         return scrub_secrets(text, keys)
 
+    def _supports_reasoning_effort(self, model_name: str) -> bool:
+        """Whether ``reasoning_effort`` may be sent for this model.
+
+        Groq rejects the parameter for non-reasoning models (llama, qwen), so there it is
+        sent only for gpt-oss models. Every other provider keeps its existing behaviour.
+        """
+        base = (self.config.base_url or "").lower()
+        is_groq = self.config.name.strip().lower() == "groq" or "://api.groq.com" in base
+        if not is_groq:
+            return True
+        return "gpt-oss" in model_name.lower()
+
     def chat_completion(
         self,
         messages: List[Dict[str, str]],
@@ -181,7 +193,7 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         elif token_limit is not None:
             payload["max_tokens"] = token_limit
 
-        if eff is not None:
+        if eff is not None and self._supports_reasoning_effort(str(active_model)):
             payload["reasoning_effort"] = eff
 
         start_time = time.perf_counter()

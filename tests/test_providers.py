@@ -35,7 +35,7 @@ def isolated_keyring(monkeypatch: pytest.MonkeyPatch):
 
 def test_provider_presets():
     """Verify built-in presets exist and have sensible defaults."""
-    assert "groq" not in PROVIDER_PRESETS
+    assert "groq" in PROVIDER_PRESETS
     assert "gemini" in PROVIDER_PRESETS
     assert "antigravity" in PROVIDER_PRESETS
     assert "openai" in PROVIDER_PRESETS

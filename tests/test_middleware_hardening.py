@@ -245,12 +245,10 @@ def test_concurrent_budget_reservations_thread_safety():
         "ftp://api.openai.com/v1",                 # Invalid scheme
         "http://admin:secret@api.openai.com/v1",   # Userinfo in upstream URL
         "http://api.openai.com:70000/v1",          # Out-of-bounds port
-        "https://api.groq.com/openai/v1",          # Prohibited Groq endpoint
-        "https://groq.com/v1",                     # Prohibited Groq domain
     ],
 )
 def test_ssrf_blocks_unsafe_destinations(unsafe_url):
-    """validate_upstream_url must reject metadata, alternate IP encodings, invalid schemes, userinfo, and prohibited Groq."""
+    """validate_upstream_url must reject metadata, alternate IP encodings, invalid schemes, and userinfo."""
     assert not validate_upstream_url(unsafe_url), f"Expected URL to be blocked: {unsafe_url}"
 
 
@@ -260,6 +258,7 @@ def test_ssrf_blocks_unsafe_destinations(unsafe_url):
         "https://api.openai.com/v1",
         "https://api.anthropic.com/v1",
         "https://api.deepseek.com/v1",
+        "https://api.groq.com/openai/v1",          # Groq: a normal user-configured HTTPS provider
         "http://127.0.0.1:11434/v1",               # Local Ollama
         "http://localhost:8000/v1",                # Local vLLM
         "host://antigravity-cli",                  # Supported host scheme
@@ -500,11 +499,11 @@ def test_client_key_with_unmatched_signature_rejected_without_header():
     assert "cross-provider" in data["error"]["message"].lower()
 
 
-def test_groq_key_signature_strictly_prohibited():
-    """Client supplies Groq key signature (gsk_...); strictly rejected with prohibited_provider error."""
+def test_groq_key_signature_is_bound_to_groq_provider():
+    """A gsk_ key is a normal Groq credential: it is never forwarded to a different provider."""
     client = TestClient(app)
     headers = {
-        "Authorization": "Bearer gsk_groq_prohibited_secret_12345",
+        "Authorization": "Bearer gsk_groq_user_secret_12345",
     }
     resp = client.post(
         "/v1/chat/completions",
@@ -513,8 +512,8 @@ def test_groq_key_signature_strictly_prohibited():
     )
     assert resp.status_code == 400
     data = resp.json()
-    assert data["error"]["code"] == "prohibited_provider"
-    assert "Groq" in data["error"]["message"]
+    assert data["error"]["code"] == "credential_provider_mismatch"
+    assert "cross-provider" in data["error"]["message"].lower()
 
 
 def test_client_key_missing_provider_binding_rejected():

@@ -139,8 +139,14 @@ async def test_config_modal_accepts_google_ai_studio_key(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_config_modal_rejects_groq_key(tmp_path, monkeypatch):
-    """Verify ConfigModal strictly rejects Groq keys and does not save."""
+async def test_config_modal_accepts_groq_key_as_normal_provider(tmp_path, monkeypatch):
+    """Verify ConfigModal treats a gsk_ key as a normal Groq provider key."""
+    import keyring
+    from argus.providers.storage import ProviderStorage
+
+    vault = {}
+    monkeypatch.setattr(keyring, "get_password", lambda svc, user: vault.get((svc, user)))
+    monkeypatch.setattr(keyring, "set_password", lambda svc, user, pw: vault.__setitem__((svc, user), pw))
     monkeypatch.setenv("ARGUS_CONFIG_DIR", str(tmp_path))
     cfg = ArgusConfig()
     modal = ConfigModal(config_type="model", current_config=cfg)
@@ -160,10 +166,11 @@ async def test_config_modal_rejects_groq_key(tmp_path, monkeypatch):
         modal._apply_config()
         await pilot.pause()
 
-        err_text = str(modal.query_one("#config-error", Static).content)
-        assert "Groq keys ('gsk_...') are strictly prohibited" in err_text
-
-    assert dismissed_result is None
+    assert dismissed_result is not None
+    assert dismissed_result["provider"] == "groq"
+    stored = ProviderStorage().get_provider("groq")
+    assert stored is not None
+    assert stored.api_key == "gsk_testGroqKey1234567890"
 
 
 @pytest.mark.asyncio

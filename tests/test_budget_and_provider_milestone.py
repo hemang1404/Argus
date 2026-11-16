@@ -27,9 +27,12 @@ from argus.runtime.controller import RecoveryController
 # 1. Provider Configuration and Official Groq Pricing
 # =============================================================================
 
-def test_provider_presets_prohibit_groq_and_configure_openai():
-    """Groq preset is strictly prohibited; openai preset points to official endpoint."""
-    assert "groq" not in PROVIDER_PRESETS
+def test_provider_presets_include_groq_and_configure_openai():
+    """Groq is a normal key-based preset; openai preset points to official endpoint."""
+    groq = PROVIDER_PRESETS["groq"]
+    assert groq.default_base_url == "https://api.groq.com/openai/v1"
+    assert groq.default_model == "openai/gpt-oss-120b"
+    assert groq.requires_key is True
     preset = PROVIDER_PRESETS["openai"]
     assert preset.key == "openai"
     assert preset.default_base_url == "https://api.openai.com/v1"

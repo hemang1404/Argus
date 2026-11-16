@@ -64,7 +64,7 @@ def test_deepseek_key_alone_does_not_select_a_provider(monkeypatch: pytest.Monke
 
 
 def test_unknown_preset_is_rejected() -> None:
-    assert "groq" not in PROVIDER_PRESETS
+    assert "groq" in PROVIDER_PRESETS
     with pytest.raises(ProviderConfigurationError):
         ProviderConfig.from_preset("not-a-real-preset")
 
@@ -106,16 +106,14 @@ def test_missing_credentials_for_explicit_provider_does_not_dispatch(monkeypatch
     assert "No API key" in str(exc.value)
 
 
-def test_groq_is_rejected_through_every_storage_path(clean_provider_env: Path) -> None:
-    with pytest.raises(ValueError):
-        ArgusConfig(provider="groq")
+def test_groq_is_a_normal_explicitly_configured_provider(clean_provider_env: Path) -> None:
+    assert ArgusConfig(provider="groq").provider == "groq"
     storage = ProviderStorage(config_dir=clean_provider_env / "config")
-    with pytest.raises(ValueError):
-        storage.save_provider(ProviderConfig(name="groq", base_url="https://api.groq.com", model="m"))
-    with pytest.raises(ValueError):
-        storage.set_api_key("groq", "gsk-test")
-    assert storage.get_provider("groq") is None
-    assert storage.set_active_provider("groq") is False
+    storage.save_provider(
+        ProviderConfig(name="groq", base_url="https://api.groq.com/openai/v1", model="m", api_key="gsk-test")
+    )
+    assert storage.get_provider("groq") is not None
+    assert storage.set_active_provider("groq") is True
 
 
 def test_no_provider_and_no_host_is_config_error(monkeypatch: pytest.MonkeyPatch) -> None:

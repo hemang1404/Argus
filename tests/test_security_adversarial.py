@@ -149,7 +149,7 @@ def test_test_runner_scrubs_secrets_from_child_environment(monkeypatch):
     """Verify that sensitive environment variables (API keys, secrets, tokens) are scrubbed."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-openai-key-12345")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret-key-67890")
-    monkeypatch.setenv("GROQ_API_KEY", "gsk-prohibited-groq-key")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-user-groq-key")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "super-secret-aws-token")
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_supersecretgithubtoken")
     monkeypatch.setenv("SAFE_CUSTOM_FLAG", "argus_active")

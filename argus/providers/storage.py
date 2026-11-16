@@ -92,6 +92,7 @@ class ProviderStorage:
            - openai:     OPENAI_API_KEY
            - openrouter: OPENROUTER_API_KEY
            - deepseek:   DEEPSEEK_API_KEY
+           - groq:       GROQ_API_KEY
            - custom:     ARGUS_API_KEY (only for the 'custom' provider; never another provider)
         """
         maybe_load_dotenv()
@@ -120,6 +121,7 @@ class ProviderStorage:
             "anthropic": "ANTHROPIC_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
             "deepseek": "DEEPSEEK_API_KEY",
+            "groq": "GROQ_API_KEY",
             "gemini": "GEMINI_API_KEY",
             "google": "GOOGLE_API_KEY",
             "custom": "ARGUS_API_KEY",
@@ -134,8 +136,6 @@ class ProviderStorage:
 
     def set_api_key(self, provider_name: str, api_key: str) -> bool:
         """Store API key using OS Keyring or fallback secrets file."""
-        if provider_name.strip().lower() == "groq":
-            raise ValueError("Groq is strictly prohibited as an inference provider in Argus.")
         saved_in_keyring = False
         try:
             import keyring
@@ -213,8 +213,6 @@ class ProviderStorage:
         results: List[ProviderConfig] = []
 
         for name, p_data in providers_data.items():
-            if name.lower() == "groq":
-                continue
             if isinstance(p_data, dict):
                 try:
                     cfg = ProviderConfig.from_dict(p_data)
@@ -281,8 +279,6 @@ class ProviderStorage:
 
     def save_provider(self, config: ProviderConfig) -> None:
         """Save or update a provider configuration. Stores API key securely."""
-        if config.name.strip().lower() == "groq":
-            raise ValueError("Groq is strictly prohibited as an inference provider in Argus.")
         data = self._read_data()
         if "providers" not in data or not isinstance(data["providers"], dict):
             data["providers"] = {}

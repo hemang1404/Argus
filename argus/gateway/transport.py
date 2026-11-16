@@ -42,9 +42,6 @@ class SafeAnyIOBackend(AnyIOBackend):
     ) -> httpcore.AsyncNetworkStream:
         """Connect TCP socket and verify peer IP before returning the stream."""
         host_lower = host.lower().strip()
-        if host_lower == "api.groq.com" or host_lower.endswith(".groq.com") or "groq.com" in host_lower:
-            raise httpcore.ConnectError("Groq endpoints are strictly prohibited across all of Argus.")
-
         network_stream = await super().connect_tcp(
             host=host,
             port=port,

@@ -158,23 +158,10 @@ def resolve_client_upstream_credential(
     target_prov = target_provider.lower()
     header_provider = (request.headers.get("x-upstream-provider") or "").strip().lower() or None
 
-    if target_prov == "groq" or header_provider == "groq":
-        return None, {
-            "message": "Groq is strictly prohibited across all of Argus.",
-            "type": "prohibited_provider",
-            "code": "prohibited_provider",
-        }
-
     if not client_key:
         return None, None
 
     inferred_provider = infer_key_provider(client_key)
-    if inferred_provider == "groq":
-        return None, {
-            "message": "Groq is strictly prohibited across all of Argus.",
-            "type": "prohibited_provider",
-            "code": "prohibited_provider",
-        }
 
     # Detect conflicting provider indications between explicit header and key signature
     if header_provider and inferred_provider and header_provider != inferred_provider and header_provider not in inferred_provider:
@@ -251,10 +238,6 @@ def validate_upstream_url(base_url: str, resolve_dns: bool = True) -> bool:
 
     hostname = (parsed.hostname or "").strip().lower()
     if not hostname:
-        return False
-
-    # Block Groq endpoints
-    if hostname == "api.groq.com" or hostname.endswith(".groq.com") or "groq.com" in hostname:
         return False
 
     # Block well-known cloud metadata domain names
@@ -641,21 +624,6 @@ async def chat_completions(request: Request) -> Response:
     user_agent = request.headers.get("user-agent", "")
     client_header = request.headers.get("x-argus-client", "")
     client = detect_client(client_header, user_agent)
-
-    # 0. Immediate security refusal for prohibited Groq headers or credentials
-    upstream_hdr = (request.headers.get("x-upstream-provider") or "").strip().lower()
-    auth_hdr = (request.headers.get("authorization") or "").strip()
-    if upstream_hdr == "groq" or auth_hdr.startswith("Bearer gsk_") or auth_hdr.startswith("Bearer gsk-"):
-        return JSONResponse(
-            status_code=400,
-            content={
-                "error": {
-                    "message": "Groq is strictly prohibited across all of Argus.",
-                    "type": "prohibited_provider",
-                    "code": "prohibited_provider",
-                }
-            },
-        )
 
     # 1. Client Authentication to Argus Gateway (mandatory)
     auth_err = verify_gateway_auth(request)
@@ -1589,22 +1557,6 @@ async def anthropic_messages(request: Request) -> Response:
     client = detect_client(client_header, user_agent)
     if client in ("external-client", "api-client"):
         client = "claude-code"
-
-    # 0. Immediate security refusal for prohibited Groq headers or credentials
-    upstream_hdr = (request.headers.get("x-upstream-provider") or "").strip().lower()
-    auth_hdr = (request.headers.get("authorization") or "").strip()
-    if upstream_hdr == "groq" or auth_hdr.startswith("Bearer gsk_") or auth_hdr.startswith("Bearer gsk-"):
-        return JSONResponse(
-            status_code=400,
-            content={
-                "type": "error",
-                "error": {
-                    "type": "prohibited_provider",
-                    "message": "Groq is strictly prohibited across all of Argus.",
-                    "code": "prohibited_provider",
-                },
-            },
-        )
 
     # 1. Gateway Client Authentication (mandatory)
     auth_err = verify_gateway_auth(request)

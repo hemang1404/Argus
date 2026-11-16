@@ -61,6 +61,14 @@ PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
         requires_key=True,
         description="DeepSeek-V3 and DeepSeek-R1 reasoning models.",
     ),
+    "groq": ProviderPreset(
+        key="groq",
+        display_name="Groq (Official API)",
+        default_base_url="https://api.groq.com/openai/v1",
+        default_model="openai/gpt-oss-120b",
+        requires_key=True,
+        description="Groq-hosted open-weight models (gpt-oss, Llama) via the OpenAI-compatible endpoint. Bring your own GROQ_API_KEY.",
+    ),
     "openrouter": ProviderPreset(
         key="openrouter",
         display_name="OpenRouter (Unified Router)",
@@ -158,11 +166,6 @@ class ProviderConfig:
     def from_preset(cls, preset_key: str, api_key: Optional[str] = None, model: Optional[str] = None) -> ProviderConfig:
         """Create a default configuration from a known preset."""
         key_lower = preset_key.lower().strip()
-        if key_lower == "groq":
-            raise ValueError(
-                "Groq is strictly prohibited across Argus. "
-                "Please configure an authorized provider (e.g. ollama, openai, deepseek, antigravity)."
-            )
         preset = PROVIDER_PRESETS.get(key_lower)
         if not preset:
             # Unknown presets must never silently become a different provider.
