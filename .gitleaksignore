@@ -1,0 +1,6 @@
+# Fake keys used as test fixtures (not real credentials); flagged by the generic-api-key rule in the Groq provider commit.
+f59e6f6f475fd24f3885d81ce8a5e2d4c24e0455:tests/test_groq_provider.py:generic-api-key:98
+f59e6f6f475fd24f3885d81ce8a5e2d4c24e0455:tests/test_groq_provider.py:generic-api-key:280
+f59e6f6f475fd24f3885d81ce8a5e2d4c24e0455:tests/test_groq_provider.py:generic-api-key:316
+f59e6f6f475fd24f3885d81ce8a5e2d4c24e0455:tests/test_groq_provider.py:generic-api-key:322
+f59e6f6f475fd24f3885d81ce8a5e2d4c24e0455:tests/test_tui_app.py:generic-api-key:173

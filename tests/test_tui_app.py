@@ -170,7 +170,7 @@ async def test_config_modal_accepts_groq_key_as_normal_provider(tmp_path, monkey
     assert dismissed_result["provider"] == "groq"
     stored = ProviderStorage().get_provider("groq")
     assert stored is not None
-    assert stored.api_key == "gsk_testGroqKey1234567890"
+    assert stored.api_key == "gsk_testGroqKey1234567890"  # gitleaks:allow
 
 
 @pytest.mark.asyncio

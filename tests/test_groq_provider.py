@@ -95,7 +95,7 @@ def test_groq_is_not_a_cascade_provider():
 
 
 def test_from_preset_groq():
-    cfg = ProviderConfig.from_preset("groq", api_key="gsk_test_key_123456")
+    cfg = ProviderConfig.from_preset("groq", api_key="gsk_test_key_123456")  # gitleaks:allow
     assert cfg.name == "groq"
     assert cfg.base_url == "https://api.groq.com/openai/v1"
     assert cfg.model == "openai/gpt-oss-120b"
@@ -277,7 +277,7 @@ def _capture_payload(model: str, provider: str = "groq", base_url: str = "https:
         })
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    cfg = ProviderConfig(name=provider, base_url=base_url, model=model, api_key="gsk_test_key_123456")
+    cfg = ProviderConfig(name=provider, base_url=base_url, model=model, api_key="gsk_test_key_123456")  # gitleaks:allow
     OpenAICompatibleAdapter(cfg, client=client).chat_completion(
         messages=[{"role": "user", "content": "hi"}], effort="medium", model=model
     )
@@ -313,13 +313,13 @@ def test_groq_endpoint_is_a_normal_allowed_https_endpoint():
 
 def test_gateway_router_routes_explicit_groq_provider():
     cfg = GatewayConfig(
-        providers=[GWProviderConfig(name="groq", base_url="https://api.groq.com/openai/v1", api_key="gsk_gw_key_123456")],
+        providers=[GWProviderConfig(name="groq", base_url="https://api.groq.com/openai/v1", api_key="gsk_gw_key_123456")],  # gitleaks:allow
         tiers={},
     )
     target = GatewayRouter(cfg).resolve("groq/llama-3.3-70b-versatile")
     assert target.provider_name == "groq"
     assert target.upstream_model == "llama-3.3-70b-versatile"
-    assert target.api_key == "gsk_gw_key_123456"
+    assert target.api_key == "gsk_gw_key_123456"  # gitleaks:allow
 
 
 def test_gateway_router_does_not_route_to_unconfigured_groq():
