@@ -1,0 +1,1 @@
+{"phase": "functional", "id": "t11_already_passing", "category": "control", "expect": "already", "visible_failing_before": false, "exit": 0, "secs": 3.9, "run_id": "run_20261116_142417_8e5d1249", "status": "ALREADY_PASSING", "verified": false, "tier": null, "attempts": 0, "cost_usd": 0.0, "original_untouched_after_run": true}
