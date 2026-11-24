@@ -1974,6 +1974,12 @@ class RecoveryController:
                     attempt_idx += 1
 
             # Max attempts exhausted
+            summary_msg = f"Failed to resolve bug after {self.config.max_attempts} attempts."
+            if last_error:
+                first_line = last_error.strip().splitlines()[0]
+                if len(first_line) > 240:
+                    first_line = first_line[:237] + "..."
+                summary_msg = f"{summary_msg} Last error: {first_line}"
             return _finalize(
                 RecoveryOutcome(
                     status="FAILED_MAX_ATTEMPTS",
@@ -1981,7 +1987,7 @@ class RecoveryController:
                     total_cost_usd=round(self.budget_tracker.total_committed, 6),
                     total_duration_ms=round((time.perf_counter() - start_time) * 1000, 2),
                     history=history,
-                    message=f"Failed to resolve bug after {self.config.max_attempts} attempts.",
+                    message=summary_msg,
                 )
             )
 
