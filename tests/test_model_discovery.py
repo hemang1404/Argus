@@ -103,3 +103,114 @@ def test_config_modal_initializes_with_discovered_models():
     cfg = ArgusConfig()
     modal = ConfigModal(config_type="model", current_config=cfg)
     assert modal.config_type == "model"
+
+
+def _mixed_host_and_groq_models():
+    return [
+        DiscoveredModel(
+            id="gemini-3.8-flash-medium",
+            name="Gemini 3.8 Flash",
+            provider="antigravity",
+            tier="fast",
+            is_available=True,
+            status_label="Ready",
+            status_tag="ready_host",
+            description="Fast",
+        ),
+        DiscoveredModel(
+            id="claude-sonnet-4-6",
+            name="Claude Sonnet 4.6",
+            provider="antigravity",
+            tier="strong",
+            is_available=True,
+            status_label="Ready",
+            status_tag="ready_host",
+            description="Strong",
+        ),
+        DiscoveredModel(
+            id="claude-opus-4-6-thinking",
+            name="Claude Opus 4.6",
+            provider="antigravity",
+            tier="frontier",
+            is_available=True,
+            status_label="Ready",
+            status_tag="ready_host",
+            description="Frontier",
+        ),
+        DiscoveredModel(
+            id="llama-3.3-70b-versatile",
+            name="Llama 3.3 70B",
+            provider="groq",
+            tier="strong",
+            is_available=True,
+            status_label="Ready",
+            status_tag="ready_key",
+            description="Groq Strong",
+        ),
+        DiscoveredModel(
+            id="qwen-2.5-coder-32b",
+            name="Qwen 2.5 Coder 32B",
+            provider="groq",
+            tier="strong",
+            is_available=True,
+            status_label="Ready",
+            status_tag="ready_key",
+            description="Groq Code",
+        ),
+        DiscoveredModel(
+            id="llama-3.1-8b-instant",
+            name="Llama 3.1 8B",
+            provider="groq",
+            tier="fast",
+            is_available=True,
+            status_label="Ready",
+            status_tag="ready_key",
+            description="Groq Fast",
+        ),
+    ]
+
+
+def test_resolve_dynamic_tiers_scopes_to_selected_model_and_provider():
+    models = _mixed_host_and_groq_models()
+    tiers = resolve_dynamic_tiers(
+        models,
+        active_provider="groq",
+        selected_model="qwen-2.5-coder-32b",
+    )
+    assert tiers["t1"]["model"] == "qwen-2.5-coder-32b"
+    assert tiers["t2"]["model"] == "qwen-2.5-coder-32b"
+    assert tiers["t3"]["model"] == "qwen-2.5-coder-32b"
+
+
+def test_resolve_dynamic_tiers_fast_model_escalates_within_same_provider():
+    models = _mixed_host_and_groq_models()
+    tiers = resolve_dynamic_tiers(
+        models,
+        active_provider="groq",
+        selected_model="llama-3.1-8b-instant",
+    )
+    assert tiers["t1"]["model"] == "llama-3.1-8b-instant"
+    assert tiers["t2"]["model"] == "llama-3.3-70b-versatile"
+    assert tiers["t3"]["model"] == "llama-3.3-70b-versatile"
+
+
+def test_resolve_dynamic_tiers_custom_model_not_hijacked_by_host():
+    models = _mixed_host_and_groq_models()
+    tiers = resolve_dynamic_tiers(
+        models,
+        active_provider="groq",
+        selected_model="openai/gpt-oss-20b",
+    )
+    assert tiers["t1"]["model"] == "openai/gpt-oss-20b"
+    assert tiers["t2"]["model"] == "openai/gpt-oss-20b"
+    assert tiers["t3"]["model"] == "openai/gpt-oss-20b"
+
+
+def test_policy_modal_respects_selected_provider_and_model():
+    cfg = ArgusConfig(provider="groq", model="qwen-2.5-coder-32b")
+    with patch("argus.providers.discovery._cached_discovery", _mixed_host_and_groq_models()):
+        modal = PolicyModal(current_config=cfg)
+        assert modal.t1_model == "qwen-2.5-coder-32b"
+        assert modal.t2_model == "qwen-2.5-coder-32b"
+        assert modal.t3_model == "qwen-2.5-coder-32b"
+

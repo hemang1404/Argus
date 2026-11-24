@@ -45,15 +45,24 @@ class ConfigModal(ModalScreen[Optional[Any]]):
         super().__init__()
         self.config_type = config_type
         self.current_config = current_config
+        self._dismissed = False
+
+    def _dismiss_once(self, result: Optional[Any]) -> None:
+        if self._dismissed:
+            return
+        self._dismissed = True
+        self.dismiss(result)
 
     def _status_chip(self) -> str:
         if self.config_type == "model":
-            if is_antigravity_cli_available():
-                return f"[{_GREEN}]● host ready[/]"
             storage = ProviderStorage()
             active_p = storage.get_active_provider()
-            if active_p and storage.get_api_key(active_p.name):
-                return f"[{_GREEN}]● ready[/]"
+            if active_p and active_p.name != "antigravity":
+                if storage.get_api_key(active_p.name):
+                    return f"[{_GREEN}]● {active_p.name} ready[/]"
+                return f"[{_ORANGE}]● needs key[/]"
+            if is_antigravity_cli_available():
+                return f"[{_GREEN}]● host ready[/]"
             return f"[{_ORANGE}]● needs key[/]"
         elif self.config_type == "tier":
             return f"[{_BLUE}]● auto active[/]"
@@ -113,7 +122,10 @@ class ConfigModal(ModalScreen[Optional[Any]]):
                 yield Static("Select routing tier strategy:", id="config-prompt")
                 from argus.providers.discovery import resolve_dynamic_tiers
 
-                dyn = resolve_dynamic_tiers()
+                dyn = resolve_dynamic_tiers(
+                    active_provider=self.current_config.provider,
+                    selected_model=self.current_config.model,
+                )
                 t1 = dyn["t1"]["model"]
                 t2 = dyn["t2"]["model"]
                 t3 = dyn["t3"]["model"]
@@ -230,12 +242,12 @@ class ConfigModal(ModalScreen[Optional[Any]]):
         if self.query("#config-input"):
             self.query_one("#config-input", Input).value = val
         else:
-            self.dismiss({"type": self.config_type, "value": val})
+            self._dismiss_once({"type": self.config_type, "value": val})
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
         if event.button.id == "btn-cancel":
-            self.dismiss(None)
+            self._dismiss_once(None)
         elif event.button.id == "btn-apply":
             self._apply_config()
 
@@ -245,7 +257,7 @@ class ConfigModal(ModalScreen[Optional[Any]]):
 
     def action_cancel(self) -> None:
         """Cancel via Escape key."""
-        self.dismiss(None)
+        self._dismiss_once(None)
 
     def _apply_config(self) -> None:
         """Validate and apply the configuration value."""
@@ -311,27 +323,41 @@ class ConfigModal(ModalScreen[Optional[Any]]):
                     storage = ProviderStorage()
                     models = discover_all_models(storage=storage)
                     model_by_id = {m.model_id: m for m in models}
+                    active_p = storage.get_active_provider()
                     if val in model_by_id:
                         prov = model_by_id[val].provider
                         if prov:
                             target_provider = prov
                             storage.set_active_provider(prov)
-                    elif is_antigravity_cli_available() and ("gemini" in val.lower() or "claude" in val.lower() or "gpt-oss" in val.lower()):
+                    elif active_p and active_p.name != "antigravity":
+                        target_provider = active_p.name
+                    elif is_antigravity_cli_available() and (
+                        "gemini" in val.lower()
+                        or "claude" in val.lower()
+                        or ("gpt-oss" in val.lower() and "/" not in val)
+                    ):
                         target_provider = "antigravity"
                         storage.set_active_provider("antigravity")
+
+                    # Keep the stored provider's default model in sync with the chosen model
+                    if target_provider:
+                        existing = storage.get_provider(target_provider)
+                        if existing and existing.model != val:
+                            existing.model = val
+                            storage.save_provider(existing)
 
             dismiss_data = {"type": "model", "value": val}
             if target_provider:
                 dismiss_data["provider"] = target_provider
-            self.dismiss(dismiss_data)
+            self._dismiss_once(dismiss_data)
 
         elif self.config_type == "tier":
             opts = self.query_one("#config-options", OptionList)
             if opts.highlighted is not None:
                 selected_opt = opts.get_option_at_index(opts.highlighted)
-                self.dismiss({"type": "tier", "value": str(selected_opt.id)})
+                self._dismiss_once({"type": "tier", "value": str(selected_opt.id)})
             else:
-                self.dismiss({"type": "tier", "value": "argus/auto"})
+                self._dismiss_once({"type": "tier", "value": "argus/auto"})
 
         elif self.config_type == "budget":
             val_str = self.query_one("#config-input", Input).value.strip()
@@ -340,7 +366,7 @@ class ConfigModal(ModalScreen[Optional[Any]]):
                 if val <= 0.0 or val > 5.0:
                     error_widget.update("Budget must be between $0.01 and $5.00.")
                     return
-                self.dismiss({"type": "budget", "value": val})
+                self._dismiss_once({"type": "budget", "value": val})
             except ValueError:
                 error_widget.update("Please enter a valid numeric dollar amount.")
 
@@ -351,6 +377,6 @@ class ConfigModal(ModalScreen[Optional[Any]]):
                 if val < 1 or val > 10:
                     error_widget.update("Attempts must be between 1 and 10.")
                     return
-                self.dismiss({"type": "attempts", "value": val})
+                self._dismiss_once({"type": "attempts", "value": val})
             except ValueError:
                 error_widget.update("Please enter a valid integer (1-10).")

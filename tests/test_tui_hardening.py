@@ -392,3 +392,20 @@ async def test_execution_screen_surfaces_network_timeout_diagnosis():
     assert "getaddrinfo failed" in rendered
     assert "Diagnosis:" in rendered
     assert "timed out after 30s" in rendered
+
+
+@pytest.mark.asyncio
+async def test_palette_mouse_click_then_cancel_returns_to_startup_screen():
+    """Clicking a command in the palette and then clicking Cancel (Esc) must return to StartupScreen, not a blank Screen."""
+    app = ArgusTUIApp(workspace=".")
+    async with app.run_test(size=(120, 50)) as pilot:
+        await pilot.pause()
+        await pilot.press("slash")
+        await pilot.pause()
+        await pilot.click("#palette-options", offset=(5, 2))
+        await pilot.pause()
+        assert type(app.screen).__name__ == "PolicyModal"
+        await pilot.click("#btn-cancel")
+        await pilot.pause()
+        assert type(app.screen).__name__ == "StartupScreen"
+        assert [type(s).__name__ for s in app.screen_stack] == ["StartupScreen"]

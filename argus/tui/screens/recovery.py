@@ -132,7 +132,10 @@ class RecoveryWorkflowScreen(Screen[None]):
         if not display_model:
             try:
                 from argus.providers.discovery import resolve_dynamic_tiers
-                display_model = resolve_dynamic_tiers()["t1"]["model"]
+                display_model = resolve_dynamic_tiers(
+                    active_provider=self.config.provider,
+                    selected_model=self.config.model,
+                )["t1"]["model"]
             except Exception:
                 display_model = ""
 
