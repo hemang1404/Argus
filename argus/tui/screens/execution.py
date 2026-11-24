@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from rich.markup import escape as escape_markup
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
@@ -271,7 +272,9 @@ class ExecutionTimelineScreen(Screen[None]):
         )
         if not record.test_passed and record.error_summary:
             first_err_line = record.error_summary.strip().splitlines()[0]
-            msg += f"\n  [red]Feedback:[/red] [dim]{first_err_line[:90]}[/dim]"
+            if len(first_err_line) > 240:
+                first_err_line = first_err_line[:237] + "..."
+            msg += f"\n  [red]Feedback:[/red] [dim]{escape_markup(first_err_line)}[/dim]"
         self._append_event(msg)
 
     def _handle_completion(self, outcome: RecoveryOutcome) -> None:
@@ -329,9 +332,14 @@ class ExecutionTimelineScreen(Screen[None]):
         elif outcome.status == "BUDGET_EXCEEDED":
             msg = f"\n[bold red]BUDGET EXCEEDED[/bold red]: Reached configured cap of ${self.config.budget_limit_usd:.4f}."
         elif outcome.status in _EXPLAINED_FAILURES:
-            msg = f"\n[bold red]{outcome.status}:[/bold red] {outcome.message or 'Execution aborted.'}"
+            msg = f"\n[bold red]{outcome.status}:[/bold red] {escape_markup(outcome.message or 'Execution aborted.')}"
         else:
             msg = f"\n[bold red]RECOVERY FAILED[/bold red]: Max attempts ({outcome.total_attempts}) exhausted."
+            diagnosis = (outcome.message or "").strip()
+            if not diagnosis and outcome.history:
+                diagnosis = (outcome.history[-1].error_summary or "").strip().splitlines()[0]
+            if diagnosis:
+                msg += f"\n[red]Diagnosis:[/red] [dim]{escape_markup(diagnosis)}[/dim]"
 
         self._append_event(msg)
         if outcome.unified_diff:

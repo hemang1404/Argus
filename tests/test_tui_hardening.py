@@ -338,3 +338,57 @@ async def test_recovery_context_line_stays_on_one_row():
     assert cell_len(context.plain) <= CONTEXT_LINE_MAX_WIDTH
     assert "Attempts 3" in context.plain
     assert "Budget $0.03" in context.plain
+
+
+@pytest.mark.asyncio
+async def test_execution_screen_surfaces_network_timeout_diagnosis():
+    """Network/timeout errors longer than 90 chars and FAILED_MAX_ATTEMPTS diagnosis must be visible."""
+    from argus.runtime.controller import AttemptRecord, RecoveryOutcome
+    from argus.tui.screens.execution import ExecutionTimelineScreen
+
+    config = ArgusConfig(model="gpt-4o-mini", budget_limit_usd=0.05, max_attempts=2)
+    app = ArgusTUIApp(workspace=".")
+    screen = ExecutionTimelineScreen(
+        workspace=".",
+        config=config,
+        target_file="",
+        test_command="pytest",
+    )
+
+    long_err = (
+        "Inference timeout / uncertain spend (spend quarantined: $0.001000): "
+        "Request to openai timed out after 30s [Errno 11001] getaddrinfo failed"
+    )
+    record = AttemptRecord(
+        attempt=1,
+        duration_ms=1200.0,
+        prompt_tokens=0,
+        completion_tokens=0,
+        cost_usd=0.001,
+        tier_used=None,
+        model_tier=1,
+        patch_success=False,
+        test_passed=False,
+        error_summary=long_err,
+    )
+    outcome = RecoveryOutcome(
+        status="FAILED_MAX_ATTEMPTS",
+        total_attempts=2,
+        total_cost_usd=0.002,
+        total_duration_ms=2400.0,
+        history=[record],
+        message=f"Failed to resolve bug after 2 attempts. Last error: {long_err}",
+    )
+
+    with patch.object(ExecutionTimelineScreen, "_run_recovery_worker", lambda self: None):
+        async with app.run_test(size=(120, 40)) as pilot:
+            app.push_screen(screen)
+            await pilot.pause()
+            screen._on_attempt_end_ui(record)
+            screen._handle_completion(outcome)
+            await pilot.pause()
+            rendered = "\n".join(str(w.render()) for w in screen.query(".event-entry"))
+
+    assert "getaddrinfo failed" in rendered
+    assert "Diagnosis:" in rendered
+    assert "timed out after 30s" in rendered
