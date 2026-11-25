@@ -299,6 +299,16 @@ def test_other_providers_keep_reasoning_effort_behaviour():
     assert payload["reasoning_effort"] == "medium"
 
 
+@pytest.mark.parametrize("provider,base_url", [
+    ("custom", "http://127.0.0.1:11434/v1"),
+    ("ollama", "http://localhost:11434/v1"),
+    ("lmstudio", "http://127.0.0.1:1234/v1"),
+])
+def test_local_providers_omit_reasoning_effort_for_non_reasoning_models(provider: str, base_url: str):
+    payload = _capture_payload("qwen2.5-coder:7b", provider=provider, base_url=base_url)
+    assert "reasoning_effort" not in payload
+
+
 # =============================================================================
 # 4. Gateway
 # =============================================================================
