@@ -80,7 +80,7 @@ python -m compileall -q argus tests
 - Feature branches: `feat/<name>`, `fix/<name>`, `docs/<name>`, `test/<name>`.
 
 ### Commit Messages
-We follow the Conventional Commits specification:
+We follow the Conventional Commits specification (and welcome `git commit -s` / `Signed-off-by` DCO sign-offs):
 ```
 feat(patch): add whitespace normalization for Tier 2 matching
 fix(workspace): resolve PID reuse edge case with start-time verification
