@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 from unittest.mock import patch
 
 import pytest
+from click.testing import CliRunner
 from textual.widgets import Button, Input, Static
 
+from argus.cli import main
 from argus.config import ArgusConfig
 from argus.launcher import install_desktop_shortcut
 from argus.runtime.candidate import CandidateArtifactStore
@@ -660,3 +663,42 @@ async def test_doctor_modal_mount_and_dismiss():
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(app.screen, DoctorModal)
+
+
+_REAL_FIND_SPEC = importlib.util.find_spec
+
+
+def _find_spec_without_textual(name, *args, **kwargs):
+    """Stand-in for importlib.util.find_spec with textual reported missing."""
+    if name == "textual":
+        return None
+    return _REAL_FIND_SPEC(name, *args, **kwargs)
+
+
+def _find_spec_with_textual(name, *args, **kwargs):
+    """Stand-in for importlib.util.find_spec with textual reported installed."""
+    if name == "textual":
+        return object()
+    return _REAL_FIND_SPEC(name, *args, **kwargs)
+
+
+def test_bare_argus_shows_tui_install_hint_when_textual_missing(monkeypatch):
+    """Bare `argus` must point at the [tui] install when textual is absent."""
+    monkeypatch.setattr(importlib.util, "find_spec", _find_spec_without_textual)
+    result = CliRunner().invoke(main, [])
+    assert result.exit_code == 0, result.output
+    # Rich soft-wraps the hint at the console width, so compare whitespace-normalized.
+    output = " ".join(result.output.split())
+    assert "Interactive UI: install with 'pip install \"argus-recovery[tui]\"' to run 'argus tui'." in output
+    assert "run 'argus tui' to launch" not in output
+
+
+def test_bare_argus_shows_tui_launch_hint_when_textual_installed(monkeypatch):
+    """Bare `argus` keeps the launch hint when textual is available."""
+    monkeypatch.setattr(importlib.util, "find_spec", _find_spec_with_textual)
+    result = CliRunner().invoke(main, [])
+    assert result.exit_code == 0, result.output
+    # Rich soft-wraps the hint at the console width, so compare whitespace-normalized.
+    output = " ".join(result.output.split())
+    assert "Interactive UI: run 'argus tui' to launch the full-screen terminal app." in output
+    assert "install with" not in output

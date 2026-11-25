@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import math
 import os
 import shutil
@@ -69,7 +70,10 @@ def main(ctx: click.Context, workspace: Optional[str]):
     ctx.obj["workspace"] = workspace
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
-        console.print("\n[dim]Interactive UI: run 'argus tui' to launch the full-screen terminal app.[/dim]")
+        if importlib.util.find_spec("textual") is None:
+            console.print("\n[dim]Interactive UI: install with 'pip install \"argus-recovery\\[tui]\"' to run 'argus tui'.[/dim]")
+        else:
+            console.print("\n[dim]Interactive UI: run 'argus tui' to launch the full-screen terminal app.[/dim]")
 
 
 def _workspace_arg(workspace: Optional[str]) -> Optional[Path]:
