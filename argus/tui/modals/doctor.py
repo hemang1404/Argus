@@ -13,6 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
 from argus.config import ArgusConfig
+from argus.providers.storage import ProviderStorage
 
 
 # Design tokens matching styles.tcss and other modals
@@ -98,13 +99,21 @@ class DoctorModal(ModalScreen[None]):
         else:
             table.add_row("Antigravity CLI", f"[{_MUTED}]NOT FOUND[/]", "Direct API / local gateway only")
 
-        # 5. Active provider: only what is actually configured, never inferred from the host binary or env keys
+        # 5. Active provider: only what is actually configured, never inferred from the host binary.
+        # The key itself may live in the saved key store (system keyring or env) when the
+        # provider was set up through the settings screen or policy file, which leaves
+        # provider_config empty, so fall back to the key store before reporting no key.
         provider_cfg = getattr(self.config, "provider_config", None)
         active_provider = self.config.provider or (provider_cfg.name if provider_cfg else None)
         if not active_provider:
             table.add_row("Active Provider", f"[bold {_ORANGE}]SETUP NEEDED[/]", "Run 'argus provider set'")
         else:
             has_key = bool(getattr(provider_cfg, "api_key", None) or self.config.deepseek_api_key)
+            if not has_key:
+                try:
+                    has_key = bool(ProviderStorage().get_api_key(active_provider))
+                except Exception:
+                    has_key = False
             key_note = "key stored" if has_key else "no stored key (host/local provider or key missing)"
             table.add_row(
                 "Active Provider",
