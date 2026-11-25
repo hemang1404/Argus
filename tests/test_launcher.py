@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 from argus.api.server import create_app
 from argus.launcher import (
-    find_opentui_entrypoint,
     find_windows_terminal,
     install_desktop_shortcut,
 )
@@ -24,15 +23,6 @@ def test_find_windows_terminal():
             assert Path(wt).exists()
     else:
         assert wt is None
-
-
-def test_find_opentui_entrypoint():
-    """Verify OpenTUI entrypoint discovery runs safely and checks bun/entrypoint."""
-    res = find_opentui_entrypoint()
-    if res is not None:
-        bun_exe, tui_dir = res
-        assert Path(bun_exe).exists() or bun_exe.startswith("bun")
-        assert (tui_dir / "src" / "index.tsx").is_file()
 
 
 def test_install_desktop_shortcut_in_dir(tmp_path: Path):
@@ -86,7 +76,6 @@ def test_dedicated_conhost_fallback_never_uses_a_shell(monkeypatch, tmp_path: Pa
     hostile.mkdir()
     monkeypatch.setattr(launcher.sys, "platform", "win32")
     monkeypatch.setattr(launcher, "find_windows_terminal", lambda: None)
-    monkeypatch.setattr(launcher, "find_opentui_entrypoint", lambda: None)
     monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
 
     launcher.launch_terminal_app(dedicated=True, workspace=str(hostile))

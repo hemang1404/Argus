@@ -2,7 +2,6 @@
 
 Implements ADR-005:
 - Dual-mode terminal launcher: in-place foreground mode vs dedicated Windows Terminal window.
-- Supports native OpenTUI (Bun + Zig + SolidJS) frontend with graceful fallback to Python Textual.
 - Locates Windows Terminal (wt.exe) with graceful Conhost fallback (direct spawn in a new console, never via a shell).
 - Desktop shortcut installer (.cmd and silent .vbs) for zero-console-flash launching.
 """
@@ -37,22 +36,6 @@ def find_windows_terminal() -> Optional[str]:
     return None
 
 
-def find_opentui_entrypoint() -> Optional[tuple[str, Path]]:
-    """Check if Bun and OpenTUI frontend are available."""
-    bun_exe = shutil.which("bun") or shutil.which("bun.exe")
-    if not bun_exe:
-        return None
-
-    repo_root = Path(__file__).resolve().parent.parent
-    tui_dir = repo_root / "packages" / "tui"
-    tui_index = tui_dir / "src" / "index.tsx"
-
-    if tui_index.is_file():
-        return bun_exe, tui_dir
-
-    return None
-
-
 def launch_terminal_app(
     dedicated: bool = False,
     workspace: str = ".",
@@ -66,23 +49,9 @@ def launch_terminal_app(
     """
     workspace_path = str(Path(workspace).resolve())
     python_exe = sys.executable
-    # OpenTUI (Bun frontend) is experimental; default to authoritative Python Textual TUI
-    # unless explicitly requested via ARGUS_FRONTEND=opentui
-    opentui_env = find_opentui_entrypoint() if os.environ.get("ARGUS_FRONTEND", "").lower() == "opentui" else None
 
     if not dedicated:
         # Run directly in foreground of current shell
-        if opentui_env:
-            bun_exe, tui_dir = opentui_env
-            try:
-                subprocess.run(
-                    [bun_exe, "run", "src/index.tsx"],
-                    cwd=str(tui_dir),
-                )
-                return None
-            except Exception:
-                pass  # Fallback to Python Textual on any execution error
-
         from argus.tui.app import ArgusTUIApp
 
         app = ArgusTUIApp(workspace=workspace_path)
@@ -92,23 +61,13 @@ def launch_terminal_app(
     # Dedicated Window Mode
     wt_exe = find_windows_terminal()
     if wt_exe:
-        if opentui_env:
-            bun_exe, tui_dir = opentui_env
-            cmd = [
-                wt_exe,
-                "-w", "new-window",
-                "--title", "Argus — OpenCode TUI",
-                "-d", str(tui_dir),
-                bun_exe, "run", "src/index.tsx",
-            ]
-        else:
-            cmd = [
-                wt_exe,
-                "-w", "new-window",
-                "--title", "Argus — Code Recovery",
-                "-d", workspace_path,
-                python_exe, "-m", "argus.cli", "tui",
-            ]
+        cmd = [
+            wt_exe,
+            "-w", "new-window",
+            "--title", "Argus — Code Recovery",
+            "-d", workspace_path,
+            python_exe, "-m", "argus.cli", "tui",
+        ]
         flags = subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0
         return subprocess.Popen(cmd, creationflags=flags)
 
@@ -117,14 +76,8 @@ def launch_terminal_app(
     # workspace path containing quotes or '&' cannot alter the command.
     if sys.platform == "win32":
         new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-        if opentui_env:
-            bun_exe, tui_dir = opentui_env
-            argv = [bun_exe, "run", "src/index.tsx"]
-            cwd = str(tui_dir)
-        else:
-            argv = [python_exe, "-m", "argus.tui.app"]
-            cwd = workspace_path
-        return subprocess.Popen(argv, cwd=cwd, creationflags=new_console, shell=False)
+        argv = [python_exe, "-m", "argus.tui.app"]
+        return subprocess.Popen(argv, cwd=workspace_path, creationflags=new_console, shell=False)
 
     # Non-Windows dedicated fallback: run directly in foreground
     from argus.tui.app import ArgusTUIApp
