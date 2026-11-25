@@ -76,8 +76,7 @@ python -m compileall -q argus tests
 ## 4. Branching & Commit Conventions
 
 ### Branch Strategy
-- `main`: Stable releases.
-- `dev`: Primary active integration branch. Feature branches branch from and merge into `dev`.
+- `main`: Primary integration and release branch. Feature and fix branches should branch from and target `main`.
 - Feature branches: `feat/<name>`, `fix/<name>`, `docs/<name>`, `test/<name>`.
 
 ### Commit Messages
