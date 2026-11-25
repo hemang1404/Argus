@@ -281,7 +281,10 @@ def discover_all_models(
 
     # 6. Google AI Studio (Gemini API)
     has_gemini_key = bool(storage.get_api_key("gemini") or storage.get_api_key("google"))
-    if not has_host_cli:
+    # With the host CLI present, list the API-key models only when a key is configured,
+    # so host users without a key do not see "Needs API Key" entries. IDs the host
+    # already lists keep their host entry (seen_ids), so OptionList IDs stay unique.
+    if has_gemini_key or not has_host_cli:
         gemini_models = ["gemini-2.5-flash", "gemini-2.5-pro"]
         for mid in gemini_models:
             if mid not in seen_ids:
