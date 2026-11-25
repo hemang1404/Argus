@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich.table import Table
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
@@ -35,7 +35,8 @@ class HelpModal(ModalScreen[None]):
                     yield Static("Keyboard & commands", id="config-title", classes="modal-title")
                 yield Static(f"[{_MUTED}]cheatsheet[/]", classes="modal-status")
 
-            yield Static(self._build_table(), id="help-table")
+            with VerticalScroll():
+                yield Static(self._build_table(), id="help-table")
 
             with Horizontal(classes="modal-footer"):
                 yield Static(f"[{_MUTED}]? toggle cheatsheet[/]", classes="footer-hint")
@@ -57,7 +58,8 @@ class HelpModal(ModalScreen[None]):
 
         # Global
         table.add_row(f"[bold {_BLUE}]?[/]", "Toggle this help & shortcut cheatsheet (Global)")
-        table.add_row(f"[bold {_BLUE}]Tab[/] / [bold {_BLUE}]Ctrl+P[/]", "Open slash-command palette modal")
+        table.add_row(f"[bold {_BLUE}]Tab[/]", "Open policy settings (Home)")
+        table.add_row(f"[bold {_BLUE}]Ctrl+P[/] / [bold {_BLUE}]Ctrl+K[/]", "Open command palette")
         table.add_row(f"[bold {_BLUE}]/[/]", "Quick-filter commands from home prompt")
         table.add_row(f"[bold {_BLUE}]Esc[/]", "Back / Dismiss active modal or screen")
         table.add_row(f"[bold {_BLUE}]Ctrl+C[/] / [bold {_BLUE}]q[/]", "Cleanly exit Argus router daemon")

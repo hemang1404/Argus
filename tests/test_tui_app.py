@@ -451,6 +451,16 @@ async def test_help_modal_opens_and_renders_shortcuts():
 
 
 @pytest.mark.asyncio
+async def test_help_close_button_is_clickable_at_80x24(tmp_path):
+    app = ArgusTUIApp(workspace=str(tmp_path))
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.open_help_modal()
+        await pilot.pause()
+        assert await pilot.click("#btn-help-close")
+        assert isinstance(app.screen, StartupScreen)
+
+
+@pytest.mark.asyncio
 async def test_execution_timeline_zoom_toggle():
     """Verify pressing 'z' toggles pane zoom in ExecutionTimelineScreen."""
     screen = ExecutionTimelineScreen(

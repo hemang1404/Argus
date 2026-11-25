@@ -202,6 +202,8 @@ argus tui
 
 A keyboard-driven Textual interface: enter a test command, watch the attempt timeline, review the diff, and approve. Approving and applying from the diff screen goes through the same signed-candidate checks as the CLI. The command palette (`/` or `Ctrl+P`) reaches provider setup, `/connect`, diagnostics and update checks.
 
+Press `?` for the shortcut list. On the home screen, `Tab` opens policy settings.
+
 ---
 
 ## Model Context Protocol (MCP)
