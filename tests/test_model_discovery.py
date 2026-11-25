@@ -214,3 +214,48 @@ def test_policy_modal_respects_selected_provider_and_model():
         assert modal.t2_model == "qwen-2.5-coder-32b"
         assert modal.t3_model == "qwen-2.5-coder-32b"
 
+
+
+class _KeyStorage:
+    """Minimal ProviderStorage stand-in that only knows a Gemini key."""
+
+    def __init__(self, gemini_key=None):
+        self._gemini_key = gemini_key
+
+    def get_api_key(self, provider):
+        return self._gemini_key if provider == "gemini" else None
+
+
+def _discover_with_host(host_models, gemini_key):
+    with patch("argus.providers.discovery.is_antigravity_cli_available", return_value=True):
+        with patch(
+            "argus.providers.antigravity.AntigravityHostAdapter.discover_capabilities",
+            return_value={"models": host_models},
+        ):
+            return discover_all_models(storage=_KeyStorage(gemini_key), force_refresh=True, probe_ollama=False)
+
+
+def test_gemini_key_models_discovered_when_host_cli_present():
+    models = _discover_with_host(["claude-sonnet-4-6"], gemini_key="test-key")
+    gemini = {m.model_id: m for m in models if m.provider == "gemini"}
+    assert set(gemini) == {"gemini-2.5-flash", "gemini-2.5-pro"}
+    for m in gemini.values():
+        assert m.is_available
+        assert m.status_tag == "ready_key"
+        assert m.status_label == "Ready · API Key"
+
+
+def test_gemini_key_models_keep_option_ids_unique_with_host_gemini():
+    # The host already lists gemini-2.5-flash: it keeps its host entry, no duplicate ID.
+    models = _discover_with_host(["gemini-2.5-flash", "claude-sonnet-4-6"], gemini_key="test-key")
+    ids = [m.model_id for m in models]
+    assert len(ids) == len(set(ids))
+    by_id = {m.model_id: m for m in models}
+    assert by_id["gemini-2.5-flash"].provider == "antigravity"
+    assert by_id["gemini-2.5-pro"].provider == "gemini"
+    assert by_id["gemini-2.5-pro"].status_tag == "ready_key"
+
+
+def test_no_gemini_key_models_listed_with_host_cli_and_no_key():
+    models = _discover_with_host(["claude-sonnet-4-6"], gemini_key=None)
+    assert not [m for m in models if m.provider == "gemini"]
