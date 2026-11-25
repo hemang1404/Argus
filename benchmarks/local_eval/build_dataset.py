@@ -1,13 +1,14 @@
 """Build a frozen, control-verified non-Docker Python pytest benchmark set.
 
 Reads single-file pure-Python tasks from a JSONL file or HuggingFace dataset
-(e.g. princeton-nlp/SWE-bench_Verified or SWE-bench_Lite), sets up cached per-repo
-virtualenvs without Docker, verifies each task passes the 3-part control check:
+(e.g. princeton-nlp/SWE-bench_Lite or princeton-nlp/SWE-bench_Verified), sets up
+cached per-repo virtualenvs without Docker, verifies each task passes the 3-part
+control check:
   1. Target FAIL_TO_PASS test fails on base_commit
   2. Existing PASS_TO_PASS regression subset passes on base_commit
   3. Applying the reference patch flips FAIL_TO_PASS to pass while preserving PASS_TO_PASS
 
-Then writes deterministic, disjoint ``dev.jsonl`` and ``heldout.jsonl`` manifests.
+Then writes deterministic, disjoint ``dev_40.jsonl`` and ``heldout_80.jsonl`` manifests.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import subprocess
 import sys
@@ -36,7 +38,6 @@ PURE_PYTHON_REPOS = frozenset(
         "encode/httpx",
         "more-itertools/more-itertools",
         "pypa/packaging",
-        "django/django",
     }
 )
 
@@ -97,27 +98,41 @@ def _ensure_repo_venv(repo: str, repo_dir: Path, cache_dir: Path) -> Path:
     safe_name = repo.replace("/", "__")
     venv_dir = cache_dir / "venvs" / safe_name
     py_exe = venv_dir / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
-    if not py_exe.exists():
-        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
-        subprocess.run([str(py_exe), "-m", "pip", "install", "-q", "--upgrade", "pip", "pytest"], check=True)
+    marker = venv_dir / ".argus_ready"
+    if not marker.exists():
+        if not py_exe.exists():
+            subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
         subprocess.run(
-            [str(py_exe), "-m", "pip", "install", "-q", "--no-build-isolation", "-e", str(repo_dir)],
+            [str(py_exe), "-m", "pip", "install", "-q", "--upgrade", "pip", "setuptools", "wheel", "pytest"],
+            check=True,
+        )
+        subprocess.run(
+            [str(py_exe), "-m", "pip", "install", "-q", str(repo_dir)],
             check=False,
         )
+        marker.write_text("ok", encoding="utf-8")
     return py_exe
 
 
 def _run_pytest_nodes(py_exe: Path, cwd: Path, nodes: List[str], timeout: int = 120) -> bool:
     if not nodes:
         return False
-    proc = subprocess.run(
-        [str(py_exe), "-m", "pytest", "-q", "-p", "no:cacheprovider", *nodes],
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return proc.returncode == 0
+    env = dict(os.environ)
+    src_dir = cwd / "src"
+    py_paths = [str(cwd)] + ([str(src_dir)] if src_dir.is_dir() else [])
+    env["PYTHONPATH"] = os.pathsep.join(py_paths) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    try:
+        proc = subprocess.run(
+            [str(py_exe), "-m", "pytest", "-q", "-p", "no:cacheprovider", *nodes],
+            cwd=str(cwd),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return proc.returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
 
 
 def _verify_control(
@@ -140,6 +155,18 @@ def _verify_control(
         subprocess.run(["git", "checkout", "-q", base_commit], cwd=str(work), check=True)
         py_exe = _ensure_repo_venv(repo, work, cache_dir)
 
+        test_patch = str(row.get("test_patch") or "")
+        if test_patch.strip():
+            tp = subprocess.run(
+                ["git", "apply", "--whitespace=nowarn", "-"],
+                input=test_patch,
+                text=True,
+                cwd=str(work),
+                capture_output=True,
+            )
+            if tp.returncode != 0:
+                return None
+
         # 1. Target must FAIL before patch
         if _run_pytest_nodes(py_exe, work, fail_to_pass):
             return None
@@ -147,19 +174,19 @@ def _verify_control(
         if pass_to_pass and not _run_pytest_nodes(py_exe, work, pass_to_pass):
             return None
 
-        # 3. Reference patch + test_patch must flip FAIL_TO_PASS -> PASS
-        for patch_field in ("test_patch", "patch"):
-            p_text = str(row.get(patch_field) or "")
-            if p_text.strip():
-                proc = subprocess.run(
-                    ["git", "apply", "--whitespace=nowarn", "-"],
-                    input=p_text,
-                    text=True,
-                    cwd=str(work),
-                    capture_output=True,
-                )
-                if proc.returncode != 0:
-                    return None
+        # 3. Reference patch must flip FAIL_TO_PASS -> PASS
+        p_text = str(row.get("patch") or "")
+        if not p_text.strip():
+            return None
+        proc = subprocess.run(
+            ["git", "apply", "--whitespace=nowarn", "-"],
+            input=p_text,
+            text=True,
+            cwd=str(work),
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            return None
 
         if not _run_pytest_nodes(py_exe, work, fail_to_pass):
             return None
@@ -174,7 +201,7 @@ def _verify_control(
         "problem_statement": str(row.get("problem_statement") or ""),
         "fail_to_pass": fail_to_pass,
         "pass_to_pass": pass_to_pass,
-        "test_patch": str(row.get("test_patch") or ""),
+        "test_patch": test_patch,
     }
 
 
@@ -185,6 +212,20 @@ def _load_candidates(source: str) -> List[Dict[str, Any]]:
     from datasets import load_dataset  # optional: pip install datasets
     ds = load_dataset(source, split="test")
     return [dict(row) for row in ds]
+
+
+def _write_manifests(verified: List[Dict[str, Any]], out_dir: Path, dev_count: int, heldout_count: int) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    dev_items = verified[:dev_count]
+    heldout_items = verified[dev_count : dev_count + heldout_count]
+    (out_dir / "dev_40.jsonl").write_text(
+        "\n".join(json.dumps(x) for x in dev_items) + ("\n" if dev_items else ""),
+        encoding="utf-8",
+    )
+    (out_dir / "heldout_80.jsonl").write_text(
+        "\n".join(json.dumps(x) for x in heldout_items) + ("\n" if heldout_items else ""),
+        encoding="utf-8",
+    )
 
 
 def main() -> None:
@@ -213,7 +254,10 @@ def main() -> None:
     needed = args.dev_count + args.heldout_count
     verified: List[Dict[str, Any]] = []
     cache_dir = Path(args.cache_dir).resolve()
-    for row, target in candidates:
+    out_dir = Path(args.out_dir)
+
+    print(f"Found {len(candidates)} eligible single-file candidates; verifying up to {needed}...", flush=True)
+    for idx, (row, target) in enumerate(candidates, 1):
         if len(verified) >= needed:
             break
         if args.skip_control:
@@ -233,22 +277,13 @@ def main() -> None:
         item = _verify_control(row, target, cache_dir)
         if item:
             verified.append(item)
-            print(f"[{len(verified)}/{needed}] verified {item['task_id']}", flush=True)
+            _write_manifests(verified, out_dir, args.dev_count, args.heldout_count)
+            print(f"[{len(verified)}/{needed}] (checked {idx}/{len(candidates)}) verified {item['task_id']}", flush=True)
 
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    dev_items = verified[: args.dev_count]
-    heldout_items = verified[args.dev_count : args.dev_count + args.heldout_count]
-
-    (out_dir / "dev_40.jsonl").write_text(
-        "\n".join(json.dumps(x) for x in dev_items) + ("\n" if dev_items else ""),
-        encoding="utf-8",
-    )
-    (out_dir / "heldout_80.jsonl").write_text(
-        "\n".join(json.dumps(x) for x in heldout_items) + ("\n" if heldout_items else ""),
-        encoding="utf-8",
-    )
-    print(f"Wrote {len(dev_items)} dev tasks and {len(heldout_items)} heldout tasks to {out_dir}")
+    _write_manifests(verified, out_dir, args.dev_count, args.heldout_count)
+    dev_written = min(len(verified), args.dev_count)
+    heldout_written = max(0, min(len(verified) - args.dev_count, args.heldout_count))
+    print(f"Wrote {dev_written} dev tasks and {heldout_written} heldout tasks to {out_dir}")
 
 
 if __name__ == "__main__":
