@@ -29,7 +29,7 @@ class ConnectModal(ModalScreen[None]):
     BINDINGS = [
         Binding("escape", "dismiss_modal", "Close"),
         Binding("enter", "dismiss_modal", "Close"),
-        Binding("c", "action_connect_all", "Connect All"),
+        Binding("c", "connect_all", "Connect All"),
     ]
 
     def __init__(self, workspace: str | Path = ".") -> None:
@@ -161,19 +161,21 @@ class ConnectModal(ModalScreen[None]):
             msg_widget.update(f"[{_ORANGE}]All detected tools are already connected.[/]")
 
     # ---- events ----------------------------------------------------------
+    def _connect_all(self) -> None:
+        """Connect every detected tool, then refresh the view and report the result."""
+        results = connect_all_detected(self.workspace)
+        self._refresh_view()
+        self._report_connection_result(results)
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-connect-close":
             self.dismiss(None)
         elif event.button.id == "btn-connect-all":
-            results = connect_all_detected(self.workspace)
-            self._refresh_view()
-            self._report_connection_result(results)
+            self._connect_all()
 
     def action_connect_all(self) -> None:
         """Trigger connecting all detected tools."""
-        results = connect_all_detected(self.workspace)
-        self._refresh_view()
-        self._report_connection_result(results)
+        self._connect_all()
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
