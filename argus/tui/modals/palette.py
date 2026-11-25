@@ -52,6 +52,13 @@ class CommandPaletteModal(ModalScreen[Optional[str]]):
         super().__init__()
         self.initial_query = initial_query
         self.filtered_commands: List[CommandEntry] = []
+        self._dismissed = False
+
+    def _dismiss_once(self, result: Optional[str]) -> None:
+        if self._dismissed:
+            return
+        self._dismissed = True
+        self.dismiss(result)
 
     def compose(self) -> ComposeResult:
         with Container(id="palette-container"):
@@ -81,17 +88,17 @@ class CommandPaletteModal(ModalScreen[Optional[str]]):
         options = self.query_one("#palette-options", OptionList)
         if options.highlighted is not None and 0 <= options.highlighted < len(self.filtered_commands):
             cmd = self.filtered_commands[options.highlighted]
-            self.dismiss(cmd.action_key)
+            self._dismiss_once(cmd.action_key)
         elif self.filtered_commands:
-            self.dismiss(self.filtered_commands[0].action_key)
+            self._dismiss_once(self.filtered_commands[0].action_key)
         else:
-            self.dismiss(None)
+            self._dismiss_once(None)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle mouse click or selection on an option."""
         if 0 <= event.option_index < len(self.filtered_commands):
             cmd = self.filtered_commands[event.option_index]
-            self.dismiss(cmd.action_key)
+            self._dismiss_once(cmd.action_key)
 
     def on_click(self, event: events.Click) -> None:
         """Handle first mouse click on any command option to execute it immediately."""
@@ -107,12 +114,13 @@ class CommandPaletteModal(ModalScreen[Optional[str]]):
                 if 0 <= rel_y < len(self.filtered_commands):
                     clicked_idx = rel_y
             if clicked_idx is not None and 0 <= clicked_idx < len(self.filtered_commands):
+                event.stop()
                 cmd = self.filtered_commands[clicked_idx]
-                self.dismiss(cmd.action_key)
+                self._dismiss_once(cmd.action_key)
 
     def action_dismiss_modal(self) -> None:
         """Dismiss without action."""
-        self.dismiss(None)
+        self._dismiss_once(None)
 
     def action_cursor_down(self) -> None:
         options = self.query_one("#palette-options", OptionList)

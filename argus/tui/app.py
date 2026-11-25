@@ -67,6 +67,8 @@ class ArgusTUIApp(App[None]):
                     self.config.budget_limit_usd = float(p_data["budget_limit_usd"])
                 if "max_attempts" in p_data:
                     self.config.max_attempts = int(p_data["max_attempts"])
+                if "provider" in p_data and p_data["provider"]:
+                    self.config.provider = str(p_data["provider"])
                 if "model" in p_data:
                     self.config.pin_model(str(p_data["model"]))
         except (OSError, TypeError, ValueError):
@@ -84,9 +86,13 @@ class ArgusTUIApp(App[None]):
         self.last_test_command: Optional[str] = None
         self.last_outcome: Optional[RecoveryOutcome] = None
 
+    def get_default_screen(self) -> StartupScreen:
+        """Use StartupScreen as the root screen so it can never be popped to a blank screen."""
+        return StartupScreen(workspace=self.workspace, config=self.config)
+
     def on_mount(self) -> None:
-        """Mount the initial StartupScreen."""
-        self.push_screen(StartupScreen(workspace=self.workspace, config=self.config))
+        """Lifecycle hook after the default StartupScreen is mounted."""
+        pass
 
     def action_quit_app(self) -> None:
         """Exit the application cleanly."""
@@ -166,7 +172,10 @@ class ArgusTUIApp(App[None]):
             t3 = result.get("t3_model")
             if not t1 or not t2 or not t3:
                 from argus.providers.discovery import resolve_dynamic_tiers
-                dyn = resolve_dynamic_tiers()
+                dyn = resolve_dynamic_tiers(
+                    active_provider=self.config.provider,
+                    selected_model=self.config.model,
+                )
                 t1 = t1 or dyn["t1"]["model"]
                 t2 = t2 or dyn["t2"]["model"]
                 t3 = t3 or dyn["t3"]["model"]
@@ -190,6 +199,7 @@ class ArgusTUIApp(App[None]):
                     "tier": tier,
                     "budget_limit_usd": budget,
                     "max_attempts": attempts,
+                    "provider": self.config.provider,
                     "model": self.config.model,
                 }
                 policy_file.write_text(json.dumps(policy_data, indent=2), encoding="utf-8")
@@ -256,7 +266,10 @@ class ArgusTUIApp(App[None]):
             elif ctype == "tier":
                 self.current_tier = str(cval)
                 from argus.providers.discovery import resolve_dynamic_tiers
-                dyn = resolve_dynamic_tiers()
+                dyn = resolve_dynamic_tiers(
+                    active_provider=self.config.provider,
+                    selected_model=self.config.model,
+                )
                 t1 = dyn["t1"]["model"]
                 t2 = dyn["t2"]["model"]
                 t3 = dyn["t3"]["model"]

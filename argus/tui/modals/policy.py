@@ -45,6 +45,20 @@ class PolicyModal(ModalScreen[Optional[dict[str, Any]]]):
         Binding("enter", "save_policy", "Apply", show=False),
     ]
 
+    def _resolve_active_provider(self) -> Optional[str]:
+        """Return the configured provider, or the stored active provider if unset."""
+        prov = (self.config.provider or "").strip()
+        if prov and prov.lower() != "auto":
+            return prov
+        try:
+            from argus.providers.storage import ProviderStorage
+            active = ProviderStorage().get_active_provider()
+            if active:
+                return active.name
+        except Exception:
+            pass
+        return None
+
     def __init__(
         self,
         current_config: ArgusConfig,
@@ -53,11 +67,24 @@ class PolicyModal(ModalScreen[Optional[dict[str, Any]]]):
         super().__init__()
         self.config = current_config
         self.selected_tier = current_tier
+        self._dismissed = False
         # Use cached tiers if already available, otherwise load defaults immediately
         # and refresh asynchronously in on_mount to avoid blocking the UI thread.
         from argus.providers.discovery import _cached_discovery
+        active_provider = self._resolve_active_provider()
+        selected_model = self.config.model
         if _cached_discovery is not None:
-            tiers = resolve_dynamic_tiers(_cached_discovery)
+            tiers = resolve_dynamic_tiers(
+                _cached_discovery,
+                active_provider=active_provider,
+                selected_model=selected_model,
+            )
+        elif selected_model:
+            tiers = {
+                "t1": {"name": "T1 FAST", "model": selected_model},
+                "t2": {"name": "T2 STRONG", "model": selected_model},
+                "t3": {"name": "T3 FRONTIER", "model": selected_model},
+            }
         else:
             tiers = {
                 "t1": {"name": "T1 FAST", "model": "gemini-3.8-flash-medium"},
@@ -174,7 +201,10 @@ class PolicyModal(ModalScreen[Optional[dict[str, Any]]]):
     def _refresh_tiers_async(self) -> None:
         """Discover available models off the UI thread and update cards."""
         try:
-            tiers = resolve_dynamic_tiers()
+            tiers = resolve_dynamic_tiers(
+                active_provider=self._resolve_active_provider(),
+                selected_model=self.config.model,
+            )
         except Exception:
             return
         t1 = tiers["t1"]["model"]
@@ -258,6 +288,9 @@ class PolicyModal(ModalScreen[Optional[dict[str, Any]]]):
         self._save_policy()
 
     def action_cancel(self) -> None:
+        if self._dismissed:
+            return
+        self._dismissed = True
         self.dismiss(None)
 
     def _save_policy(self) -> None:
@@ -287,6 +320,9 @@ class PolicyModal(ModalScreen[Optional[dict[str, Any]]]):
             err.update(f"[{_RED}]Invalid attempt count[/]")
             return
 
+        if self._dismissed:
+            return
+        self._dismissed = True
         self.dismiss({
             "tier": self.selected_tier,
             "budget": b_val,

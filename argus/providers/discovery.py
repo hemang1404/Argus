@@ -348,10 +348,40 @@ def discover_all_models(
 
 def resolve_dynamic_tiers(
     discovered: Optional[List[DiscoveredModel]] = None,
+    active_provider: Optional[str] = None,
+    selected_model: Optional[str] = None,
 ) -> Dict[str, Dict[str, str]]:
-    """Resolve active T1 FAST, T2 STRONG, and T3 FRONTIER models based on real availability."""
-    models = discovered or discover_all_models()
+    """Resolve active T1 FAST, T2 STRONG, and T3 FRONTIER models based on real availability.
+
+    When ``active_provider`` or ``selected_model`` is specified, tier resolution
+    stays scoped to that provider and bases T1 (first attempt) on ``selected_model``
+    instead of falling back to Antigravity host-native defaults.
+    """
+    models = discovered if discovered is not None else discover_all_models()
     avail = [m for m in models if m.is_available]
+
+    clean_selected = (selected_model or "").strip() or None
+    if clean_selected and clean_selected.lower() in ("argus/auto", "auto"):
+        clean_selected = None
+
+    effective_provider = (active_provider or "").strip().lower() or None
+    if effective_provider in ("auto", ""):
+        effective_provider = None
+
+    selected_meta = next((m for m in models if m.id == clean_selected), None) if clean_selected else None
+    if not effective_provider and selected_meta is not None:
+        effective_provider = selected_meta.provider.lower()
+
+    if effective_provider:
+        provider_avail = [m for m in avail if m.provider.lower() == effective_provider]
+        if provider_avail:
+            avail = provider_avail
+        elif clean_selected:
+            return {
+                "t1": {"name": "T1 FAST", "model": clean_selected},
+                "t2": {"name": "T2 STRONG", "model": clean_selected},
+                "t3": {"name": "T3 FRONTIER", "model": clean_selected},
+            }
 
     # Defaults
     t1_model = "gemini-3.8-flash-medium"
@@ -415,6 +445,17 @@ def resolve_dynamic_tiers(
     else:
         # If no frontier model available, use best strong model
         t3_model = t2_model
+
+    # Anchor the policy to the explicitly selected model when provided.
+    if clean_selected:
+        t1_model = clean_selected
+        if selected_meta is None or selected_meta.tier == "frontier":
+            t2_model = clean_selected
+            t3_model = clean_selected
+        elif selected_meta.tier == "strong":
+            t2_model = clean_selected
+            if not frontier_cands:
+                t3_model = clean_selected
 
     return {
         "t1": {"name": "T1 FAST", "model": t1_model},
