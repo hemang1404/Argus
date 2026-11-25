@@ -1100,7 +1100,7 @@ DiffViewer {
 #help-container {
     width: 74;
     max-width: 92%;
-    height: auto;
+    height: 90%;
 }
 
 #update-container {
