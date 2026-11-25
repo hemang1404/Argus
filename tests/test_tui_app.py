@@ -429,6 +429,21 @@ async def test_recovery_workflow_submits_with_test_command_alone(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_model_config_footer_is_clickable_at_80x24(tmp_path, monkeypatch):
+    monkeypatch.setattr(ConfigModal, "_status_chip", lambda self: "offline")
+    monkeypatch.setattr(ConfigModal, "_load_model_catalog", lambda self: None)
+    app = ArgusTUIApp(workspace=str(tmp_path))
+    async with app.run_test(size=(80, 24)) as pilot:
+        modal = ConfigModal(config_type="model", current_config=ArgusConfig())
+        app.push_screen(modal)
+        await pilot.pause()
+
+        assert modal.query_one("#btn-apply", Button).region.bottom <= 24
+        assert await pilot.click("#btn-cancel")
+        assert isinstance(app.screen, StartupScreen)
+
+
+@pytest.mark.asyncio
 async def test_help_modal_opens_and_renders_shortcuts():
     """Verify HelpModal mounts and displays global shortcuts."""
     app = ArgusTUIApp(workspace=".")

@@ -991,6 +991,15 @@ DiffViewer {
     height: auto;
 }
 
+#config-container.config-mode-model {
+    max-height: 100%;
+    height: 34;
+}
+
+#config-model-fields {
+    height: 1fr;
+}
+
 #config-container.config-mode-budget,
 #config-container.config-mode-attempts {
     width: 58;

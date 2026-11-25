@@ -8,7 +8,7 @@ from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, OptionList, Static
@@ -80,37 +80,38 @@ class ConfigModal(ModalScreen[Optional[Any]]):
                         yield Static("Inference model", id="config-title", classes="modal-title")
                     yield Static(self._status_chip(), id="config-status-chip", classes="modal-status")
 
-                # Provider banner discovered off the UI thread in on_mount
-                yield Static(
-                    f"[{_MUTED}]● Detecting providers and available models…[/]",
-                    id="config-provider-status",
-                )
+                with VerticalScroll(id="config-model-fields"):
+                    # Provider banner discovered off the UI thread in on_mount
+                    yield Static(
+                        f"[{_MUTED}]● Detecting providers and available models…[/]",
+                        id="config-provider-status",
+                    )
 
-                with Horizontal(classes="field-head"):
-                    yield Static("MODEL", classes="field-label")
-                    yield Static(f"[{_MUTED}]available models[/]", id="config-models-meta", classes="field-meta")
-                yield OptionList(id="config-options")
+                    with Horizontal(classes="field-head"):
+                        yield Static("MODEL", classes="field-label")
+                        yield Static(f"[{_MUTED}]available models[/]", id="config-models-meta", classes="field-meta")
+                    yield OptionList(id="config-options")
 
-                yield Static("CUSTOM MODEL ID", classes="field-label")
-                yield Input(
-                    value=self.current_config.model or "",
-                    id="config-input",
-                    placeholder="e.g. gemini-3.8-flash-medium or gpt-4o-mini",
-                )
+                    yield Static("CUSTOM MODEL ID", classes="field-label")
+                    yield Input(
+                        value=self.current_config.model or "",
+                        id="config-input",
+                        placeholder="e.g. gemini-3.8-flash-medium or gpt-4o-mini",
+                    )
 
-                with Horizontal(classes="field-head"):
-                    yield Static("PROVIDER API KEY", classes="field-label")
-                    yield Static(f"[{_MUTED}]optional · OS keyring[/]", classes="field-meta")
-                yield Input(
-                    placeholder="sk-... (blank keeps current key)",
-                    password=True,
-                    id="config-api-key",
-                )
+                    with Horizontal(classes="field-head"):
+                        yield Static("PROVIDER API KEY", classes="field-label")
+                        yield Static(f"[{_MUTED}]optional · OS keyring[/]", classes="field-meta")
+                    yield Input(
+                        placeholder="sk-... (blank keeps current key)",
+                        password=True,
+                        id="config-api-key",
+                    )
 
-                yield Static(
-                    f"[{_MUTED}]Saved securely to the OS keyring. Host-native models need no key.[/]",
-                    id="config-field-note",
-                )
+                    yield Static(
+                        f"[{_MUTED}]Saved securely to the OS keyring. Host-native models need no key.[/]",
+                        id="config-field-note",
+                    )
 
             elif self.config_type == "tier":
                 with Horizontal(classes="modal-header"):
