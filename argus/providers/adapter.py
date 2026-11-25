@@ -145,14 +145,20 @@ class OpenAICompatibleAdapter(ProviderAdapter):
     def _supports_reasoning_effort(self, model_name: str) -> bool:
         """Whether ``reasoning_effort`` may be sent for this model.
 
-        Groq rejects the parameter for non-reasoning models (llama, qwen), so there it is
-        sent only for gpt-oss models. Every other provider keeps its existing behaviour.
+        Groq and local OpenAI-compatible runtimes (Ollama, LM Studio, custom localhost)
+        reject ``reasoning_effort`` on non-reasoning models such as ``qwen2.5-coder``
+        or ``llama``. Only send it there for models known to support reasoning effort.
         """
+        name_l = self.config.name.strip().lower()
         base = (self.config.base_url or "").lower()
-        is_groq = self.config.name.strip().lower() == "groq" or "://api.groq.com" in base
-        if not is_groq:
+        is_groq = name_l == "groq" or "://api.groq.com" in base
+        is_local_or_custom = name_l in ("ollama", "lmstudio", "custom") or any(
+            h in base for h in ("//localhost", "//127.0.0.1", "//[::1]")
+        )
+        if not is_groq and not is_local_or_custom:
             return True
-        return "gpt-oss" in model_name.lower()
+        m_low = model_name.lower()
+        return any(tok in m_low for tok in ("gpt-oss", "deepseek-r1", "deepseek-reasoner", "o1", "o3", "o4", "inkling"))
 
     def _raise_http_status_error(
         self,
