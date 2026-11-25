@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from argus.providers.antigravity import AntigravityHostAdapter, is_antigravity_cli_available
+from argus.providers.models import PROVIDER_PRESETS
 from argus.providers.storage import ProviderStorage
 
 logger = logging.getLogger("argus.providers.discovery")
@@ -303,7 +304,38 @@ def discover_all_models(
                 )
                 seen_ids.add(mid)
 
-    # 7. Local Ollama
+    # 7. Saved OpenAI-compatible endpoints (LM Studio and custom providers)
+    # These are configured by the user, so use their saved model IDs instead of
+    # showing only the preset placeholder model. As with remote API providers,
+    # availability here means the endpoint is selectable; it is not a live probe.
+    for provider_config in storage.list_providers():
+        provider_name = provider_config.name.lower()
+        if provider_name not in {"lmstudio", "custom"}:
+            continue
+
+        model_id = provider_config.model.strip()
+        if not model_id or model_id in seen_ids:
+            continue
+
+        preset = PROVIDER_PRESETS[provider_name]
+        has_key = bool(provider_config.api_key)
+        is_available = has_key or not preset.requires_key
+        endpoint_status = "Local Endpoint" if provider_name == "lmstudio" else "Configured Endpoint"
+        models.append(
+            DiscoveredModel(
+                id=model_id,
+                name=model_id,
+                provider=provider_name,
+                tier="fast",
+                is_available=is_available,
+                status_label=(f"Ready · {endpoint_status}" if is_available else "Needs API Key"),
+                status_tag=("ready_key" if is_available else "needs_key"),
+                description=f"{endpoint_status} · {preset.display_name}",
+            )
+        )
+        seen_ids.add(model_id)
+
+    # 8. Local Ollama
     ollama_online = False
     if probe_ollama:
         try:
