@@ -7,6 +7,7 @@ All notable changes to Argus are documented in this file. The format is based on
 ## Next release (not yet published)
 
 ### Changed
+- The model configuration dialog keeps Cancel and Apply visible on short terminals and scrolls its model and API key fields.
 - The help dialog keeps its Close button visible on short terminals and shows the correct shortcuts for policy settings and the command palette.
 - **Groq is now a normal provider.** The earlier blanket prohibition was removed: a `groq` preset (OpenAI-compatible, default model `openai/gpt-oss-120b`, your own `GROQ_API_KEY`) works in the CLI, TUI, MCP server, Python API and gateway. Like every provider it is used only when you configure or name it, unknown models are still refused until priced, and `GROQ_` variables are still scrubbed from the test subprocess environment.
 
