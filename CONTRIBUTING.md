@@ -46,9 +46,10 @@ pytest tests/test_runtime_and_workspace_safety.py tests/test_gateway_security.py
 # 3. The 500-case synthetic adversarial patch corpus
 pytest -v tests/test_patch_adversarial_corpus.py
 
-# 4. Lint and compile check
+# 4. Lint, typecheck, and compile check (or run `make gates`)
 ruff check .
 python -m compileall -q argus tests
+mypy argus
 ```
 
 ---
