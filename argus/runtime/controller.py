@@ -1380,11 +1380,20 @@ class RecoveryController:
 
                     try:
                         dispatched = True
+                        temp_override = (
+                            max(float(getattr(self.config, "temperature", 0.0)), 0.7)
+                            if (
+                                getattr(self.config, "trap_aware_retry", False)
+                                and last_error.startswith("Repetition loop detected:")
+                            )
+                            else None
+                        )
                         call_res = self._call_model(
                             prompt,
                             effort=tier_effort,
                             model=tier_model,
                             cwd=str(ws.workspace_root),
+                            temperature_override=temp_override,
                         )
                         (
                             response_text, p_tokens, c_tokens, cached_tokens,
@@ -1629,6 +1638,7 @@ class RecoveryController:
                     PatchParser.parse_search_replace_detailed(response_text).errors if not patch_blocks else []
                 )
                 truncated = (finish_reason or "").lower() in ("length", "max_tokens")
+                loop_aborted = (finish_reason or "").lower() == "loop_aborted"
                 if patch_blocks:
                     curr_parsed_patch = "\n".join(
                         getattr(b, "raw_block", f"<<<<<<< SEARCH\n{b.search_text}\n=======\n{b.replace_text}\n>>>>>>> REPLACE")
@@ -1647,12 +1657,16 @@ class RecoveryController:
                         patch_success=False,
                         test_passed=False,
                         error_summary=(
-                            "Model output was truncated (finish_reason=length) before a complete SEARCH/REPLACE block."
-                            if truncated
+                            "Model entered a repetition loop and was aborted early."
+                            if loop_aborted
                             else (
-                                "Malformed SEARCH/REPLACE response: " + " ".join(parse_errors)
-                                if parse_errors
-                                else "Model did not produce recognizable SEARCH/REPLACE blocks."
+                                "Model output was truncated (finish_reason=length) before a complete SEARCH/REPLACE block."
+                                if truncated
+                                else (
+                                    "Malformed SEARCH/REPLACE response: " + " ".join(parse_errors)
+                                    if parse_errors
+                                    else "Model did not produce recognizable SEARCH/REPLACE blocks."
+                                )
                             )
                         ),
                         model_used=tier_model,
@@ -1677,7 +1691,12 @@ class RecoveryController:
                             ast_valid=False,
                             error_summary=record.error_summary,
                         )
-                    if parse_errors and not truncated:
+                    if loop_aborted:
+                        last_error = (
+                            "Repetition loop detected: your previous response repeated itself and was aborted early. "
+                            "Respond again with ONE concise SEARCH/REPLACE block (2-6 lines of context) and no commentary."
+                        )
+                    elif parse_errors and not truncated:
                         last_error = (
                             "Malformed SEARCH/REPLACE response, nothing was applied: "
                             + " ".join(parse_errors)
@@ -2009,6 +2028,7 @@ class RecoveryController:
         effort: Optional[str] = None,
         model: Optional[str] = None,
         cwd: Optional[str] = None,
+        temperature_override: Optional[float] = None,
     ) -> tuple:
         """Invoke the configured inference provider via its adapter.
 
@@ -2023,12 +2043,18 @@ class RecoveryController:
             {"role": "user", "content": prompt},
         ]
         eff_tokens = getattr(self.config, "max_tokens", 2500) or 2500
-        eff_temp = float(getattr(self.config, "temperature", 0.0))
+        eff_temp = (
+            float(temperature_override)
+            if temperature_override is not None
+            else float(getattr(self.config, "temperature", 0.0))
+        )
         kwargs: dict[str, Any] = {
             "messages": messages,
             "temperature": eff_temp,
             "max_tokens": eff_tokens,
         }
+        if getattr(self.config, "loop_guard_enabled", False):
+            kwargs["loop_guard"] = True
         if getattr(self.config, "max_completion_tokens", None) is not None:
             kwargs["max_completion_tokens"] = self.config.max_completion_tokens
         eff_effort = getattr(self.config, "reasoning_effort", None) or effort

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NoReturn, Optional
 
 import httpx
 
+from argus.providers.loop_guard import RepetitionLoopDetector
 from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
 from argus.providers.storage import scrub_secrets
 from argus.utils.redaction import scrub_prompt
@@ -152,6 +154,144 @@ class OpenAICompatibleAdapter(ProviderAdapter):
             return True
         return "gpt-oss" in model_name.lower()
 
+    def _raise_http_status_error(
+        self,
+        status_code: int,
+        text: str,
+        headers: Any,
+        url: str,
+    ) -> NoReturn:
+        """Classify HTTP non-200 responses consistently across sync and streaming paths."""
+        error_body = self._scrub(text[:300])
+        if status_code == 401:
+            msg = f"Authentication failed (HTTP 401) for provider '{self.config.name}'. Please verify your API key."
+        elif status_code == 403:
+            msg = f"Access forbidden (HTTP 403) for provider '{self.config.name}'. Check permissions or account balance."
+        elif status_code == 404:
+            msg = f"Endpoint not found (HTTP 404) at '{url}'. Verify base_url and model identifier '{self.config.model}'."
+        elif status_code == 429:
+            msg = f"Rate limit reached (HTTP 429) for provider '{self.config.name}': {error_body}"
+            retry_after_hdr = headers.get("retry-after") if headers else None
+            retry_after_sec = None
+            if retry_after_hdr:
+                try:
+                    retry_after_sec = float(retry_after_hdr)
+                except ValueError:
+                    pass
+            raise ProviderError(msg, status_code=429, retry_after=retry_after_sec, is_retryable=True)
+        else:
+            msg = f"Provider '{self.config.name}' returned HTTP {status_code}: {error_body}"
+        raise ProviderError(msg, status_code=status_code)
+
+    def _stream_chat_completion(
+        self,
+        client: httpx.Client,
+        url: str,
+        headers: Dict[str, str],
+        payload: Dict[str, Any],
+        messages: List[Dict[str, str]],
+        active_model: str,
+        start_time: float,
+    ) -> CompletionResponse:
+        """Stream SSE tokens and abort early if a repetition loop is detected."""
+        stream_payload = dict(payload)
+        stream_payload["stream"] = True
+        stream_payload["stream_options"] = {"include_usage": True}
+
+        detector = RepetitionLoopDetector()
+        content_parts: List[str] = []
+        reasoning_parts: List[str] = []
+        finish_reason: Optional[str] = None
+        resp_model: Optional[str] = None
+        prompt_tokens = 0
+        completion_tokens = 0
+        cache_read_tokens = 0
+        loop_reason: Optional[str] = None
+
+        try:
+            with client.stream("POST", url, headers=headers, json=stream_payload) as resp:
+                if resp.status_code != 200:
+                    resp.read()
+                    self._raise_http_status_error(resp.status_code, resp.text, resp.headers, url)
+
+                for raw_line in resp.iter_lines():
+                    line = raw_line.strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload_str = line[5:].strip()
+                    if payload_str == "[DONE]":
+                        break
+                    try:
+                        chunk_obj = json.loads(payload_str)
+                    except json.JSONDecodeError:
+                        continue
+
+                    if not resp_model and isinstance(chunk_obj.get("model"), str):
+                        resp_model = chunk_obj["model"]
+
+                    usage = chunk_obj.get("usage")
+                    if isinstance(usage, dict):
+                        prompt_tokens = usage.get("prompt_tokens", prompt_tokens) or prompt_tokens
+                        completion_tokens = usage.get("completion_tokens", completion_tokens) or completion_tokens
+                        p_details = usage.get("prompt_tokens_details") or {}
+                        cache_read_tokens = (
+                            p_details.get("cached_tokens", 0)
+                            or usage.get("prompt_cache_hit_tokens", 0)
+                            or usage.get("cached_tokens", 0)
+                            or cache_read_tokens
+                        )
+
+                    choices = chunk_obj.get("choices") or []
+                    if not choices:
+                        continue
+                    choice = choices[0]
+                    if choice.get("finish_reason") and not finish_reason:
+                        finish_reason = choice.get("finish_reason")
+                    delta = choice.get("delta") or {}
+
+                    delta_content = delta.get("content") or ""
+                    delta_reasoning = delta.get("reasoning_content") or delta.get("reasoning") or ""
+                    if delta_content:
+                        content_parts.append(delta_content)
+                        loop_reason = detector.feed(delta_content)
+                    if delta_reasoning and loop_reason is None:
+                        reasoning_parts.append(delta_reasoning)
+                        loop_reason = detector.feed(delta_reasoning)
+
+                    if loop_reason is not None:
+                        finish_reason = "loop_aborted"
+                        break
+        except httpx.TimeoutException as ex:
+            err_msg = self._scrub(f"Request to {self.config.name} timed out after {self.config.timeout_seconds}s: {ex}")
+            raise ProviderError(err_msg, status_code=504) from None
+        except httpx.RequestError as ex:
+            err_msg = self._scrub(f"Network error connecting to {self.config.name} ({url}): {ex}")
+            raise ProviderError(err_msg) from None
+
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        content = "".join(content_parts)
+        usage_estimated = False
+        if prompt_tokens == 0 and completion_tokens == 0:
+            usage_estimated = True
+            prompt_tokens = sum(len(m.get("content", "").split()) for m in messages)
+            completion_tokens = len((content + "".join(reasoning_parts)).split())
+
+        logged_payload = {k: v for k, v in stream_payload.items() if k != "messages"}
+        logged_payload["messages_count"] = len(messages)
+
+        return CompletionResponse(
+            content=content,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            duration_ms=duration_ms,
+            model=resp_model or active_model,
+            raw_response={"loop_guard_reason": loop_reason} if loop_reason else {},
+            cache_read_tokens=cache_read_tokens,
+            transmitted_payload=logged_payload,
+            finish_reason=finish_reason,
+            usage_estimated=usage_estimated,
+        )
+
     def chat_completion(
         self,
         messages: List[Dict[str, str]],
@@ -159,6 +299,7 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         max_tokens: Optional[int] = None,
         effort: Optional[str] = None,
         model: Optional[str] = None,
+        loop_guard: bool = False,
         **kwargs: Any,
     ) -> CompletionResponse:
         """Execute chat completion dispatch against the configured endpoint."""
@@ -199,6 +340,17 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         start_time = time.perf_counter()
         client = self._get_client()
 
+        if loop_guard:
+            return self._stream_chat_completion(
+                client=client,
+                url=url,
+                headers=headers,
+                payload=payload,
+                messages=messages,
+                active_model=str(active_model),
+                start_time=start_time,
+            )
+
         try:
             resp = client.post(url, headers=headers, json=payload)
         except httpx.TimeoutException as ex:
@@ -211,26 +363,7 @@ class OpenAICompatibleAdapter(ProviderAdapter):
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
         if resp.status_code != 200:
-            error_body = self._scrub(resp.text[:300])
-            if resp.status_code == 401:
-                msg = f"Authentication failed (HTTP 401) for provider '{self.config.name}'. Please verify your API key."
-            elif resp.status_code == 403:
-                msg = f"Access forbidden (HTTP 403) for provider '{self.config.name}'. Check permissions or account balance."
-            elif resp.status_code == 404:
-                msg = f"Endpoint not found (HTTP 404) at '{url}'. Verify base_url and model identifier '{self.config.model}'."
-            elif resp.status_code == 429:
-                msg = f"Rate limit reached (HTTP 429) for provider '{self.config.name}': {error_body}"
-                retry_after_hdr = resp.headers.get("retry-after")
-                retry_after_sec = None
-                if retry_after_hdr:
-                    try:
-                        retry_after_sec = float(retry_after_hdr)
-                    except ValueError:
-                        pass
-                raise ProviderError(msg, status_code=429, retry_after=retry_after_sec, is_retryable=True)
-            else:
-                msg = f"Provider '{self.config.name}' returned HTTP {resp.status_code}: {error_body}"
-            raise ProviderError(msg, status_code=resp.status_code)
+            self._raise_http_status_error(resp.status_code, resp.text, resp.headers, url)
 
         try:
             data = resp.json()

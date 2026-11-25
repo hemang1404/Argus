@@ -194,6 +194,8 @@ class ArgusConfig:
     reasoning_effort: Optional[str] = None
     temperature: float = 0.0
     include_feedback: bool = True
+    loop_guard_enabled: bool = False
+    trap_aware_retry: bool = False
     budget_limit_usd: float = DEFAULT_BUDGET_USD
 
     # Container evaluation harness parameters (Milestone 2)

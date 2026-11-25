@@ -35,6 +35,7 @@ from tasks import TASKS  # noqa: E402
 PY = sys.executable
 ARGUS = [PY, "-c", "import sys; from argus.cli import main; main()"]
 KEY_ENV = {"gemini": "GOOGLE_API_KEY", "groq": "GROQ_API_KEY", "openai": "OPENAI_API_KEY", "deepseek": "DEEPSEEK_API_KEY"}
+LOCAL_PROVIDERS = ("custom", "ollama", "lmstudio")
 
 
 def load_dotenv_key(name: str) -> str:
@@ -60,9 +61,6 @@ class Harness:
         self.cfg.mkdir()
         self.spent = 0.0
         self.results = []
-        key = load_dotenv_key(KEY_ENV[args.provider])
-        if not key:
-            sys.exit(f"{KEY_ENV[args.provider]} not found in .env or the environment")
         self.env = dict(os.environ)
         self.env.update(
             ARGUS_CONFIG_DIR=str(self.cfg),
@@ -70,8 +68,13 @@ class Harness:
             PYTHONUTF8="1",
             PYTHONPATH=str(REPO) + os.pathsep + self.env.get("PYTHONPATH", ""),
         )
-        self.env[KEY_ENV[args.provider]] = key
-        self.key_secret = key
+        self.key_secret = ""
+        if args.provider in KEY_ENV:
+            key = load_dotenv_key(KEY_ENV[args.provider])
+            if not key:
+                sys.exit(f"{KEY_ENV[args.provider]} not found in .env or the environment")
+            self.env[KEY_ENV[args.provider]] = key
+            self.key_secret = key
 
     # ---------------------------------------------------------------- helpers
     def scrub(self, text: str) -> str:
@@ -85,7 +88,11 @@ class Harness:
     def setup_provider(self):
         a = self.args
         extra = ["--model", a.model] if a.model else []
-        r = self.argus("provider", "set", "--preset", a.provider, "--api-key-env", KEY_ENV[a.provider], *extra)
+        if getattr(a, "base_url", None):
+            extra += ["--base-url", a.base_url]
+        if a.provider in KEY_ENV:
+            extra += ["--api-key-env", KEY_ENV[a.provider]]
+        r = self.argus("provider", "set", "--preset", a.provider, *extra)
         if r["code"] != 0:
             sys.exit("provider set failed:\n" + r["out"] + r["err"])
         return r
@@ -260,7 +267,8 @@ class Harness:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--provider", default="gemini", choices=sorted(KEY_ENV))
+    ap.add_argument("--provider", default="gemini", choices=sorted([*KEY_ENV, *LOCAL_PROVIDERS]))
+    ap.add_argument("--base-url", default=None, help="override provider base URL (e.g. http://127.0.0.1:8000/v1)")
     ap.add_argument("--model", default=None, help="pin a model (default: the preset's model)")
     ap.add_argument("--phase", default="all", choices=["all", "functional", "negative", "repeat"])
     ap.add_argument("--only", nargs="*", help="task ids (functional phase only)")
