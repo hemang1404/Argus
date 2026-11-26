@@ -79,3 +79,32 @@ def test_connect_modal_table_mount(tmp_path: Path):
     modal = ConnectModal(workspace=tmp_path)
     table = modal._build_discovery_table()
     assert len(table.rows) >= 6
+
+
+@pytest.mark.asyncio
+async def test_connect_modal_c_shortcut_triggers_connect_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Verify pressing 'c' in ConnectModal triggers connect_all_detected."""
+    import argus.tui.modals.connect as connect_module
+    from textual.app import App
+
+    calls: list[Path] = []
+
+    def fake_connect_all(workspace_root="."):
+        calls.append(Path(workspace_root))
+        return {}
+
+    monkeypatch.setattr(connect_module, "connect_all_detected", fake_connect_all)
+
+    class ConnectShortcutApp(App):
+        def on_mount(self) -> None:
+            self.push_screen(ConnectModal(workspace=tmp_path))
+
+    app = ConnectShortcutApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+
+    assert calls == [tmp_path.resolve()]
