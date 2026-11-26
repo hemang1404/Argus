@@ -226,13 +226,20 @@ class BudgetGuard:
         prompt_tokens: int,
         completion_tokens: int,
         is_subscription: bool = False,
+        provider: Optional[str] = None,
+        base_url: Optional[str] = None,
     ) -> float:
-        """Phase 2: Reconcile reservation with actual observed tokens and record final spend."""
+        """Phase 2: Reconcile reservation with actual observed tokens and record final spend.
+
+        ``provider`` and ``base_url`` are the routed upstream's, as the pre-flight price check used
+        them: a local or loopback upstream (Ollama, LM Studio, localhost) serving a model that is
+        not in the registry reconciles at $0.00 instead of charging the whole reservation.
+        """
         if is_subscription or (model and "antigravity" in model.lower()):
             cost = 0.0
         else:
             try:
-                cost = price_for_model(model).calculate_cost(prompt_tokens, completion_tokens)
+                cost = price_for_model(model, provider, base_url).calculate_cost(prompt_tokens, completion_tokens)
             except UnpricedModelError:
                 # The route handlers refuse unpriced models before the upstream call, so this is a
                 # defensive path: never guess a low price. Charge the whole reservation as uncertain.
