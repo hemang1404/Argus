@@ -28,12 +28,12 @@ _DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 
 def normalize_patch_path(raw: Optional[str]) -> Optional[str]:
-    """Normalize a unified-diff path to a workspace-relative POSIX path.
+    """Normalize a patch path to a workspace-relative POSIX path.
 
     Returns ``None`` for an absent path (search/replace blocks without a hint).
     Raises ``PatchTargetError`` for absolute paths, traversal, NUL bytes and
-    device paths such as ``/dev/null``. ``a/`` and ``b/`` prefixes are removed
-    only as a leading diff prefix, not as an arbitrary directory component.
+    device paths such as ``/dev/null``. Preserve leading ``a/`` and ``b/``
+    directories: PatchParser already strips the unified-diff prefix once.
     """
     if raw is None:
         return None
@@ -63,10 +63,6 @@ def normalize_patch_path(raw: Optional[str]) -> Optional[str]:
             "PATCH_PATH_TRAVERSAL",
             f"Patch path '{raw}' contains '..' traversal.",
         )
-
-    # Standard unified-diff prefixes: a/foo.py and b/foo.py.
-    if len(parts) >= 2 and parts[0] in ("a", "b"):
-        parts = parts[1:]
 
     if not parts:
         return None
