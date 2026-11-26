@@ -755,6 +755,7 @@ async def chat_completions(request: Request) -> Response:
             tier=target.tier_name,
             start_time=start_time,
             res_id=res_id,
+            provider_name=target.provider_name,
         )
 
     # 6. Non-Streaming Mode Execution
@@ -769,6 +770,7 @@ async def chat_completions(request: Request) -> Response:
         tier=target.tier_name,
         start_time=start_time,
         res_id=res_id,
+        provider_name=target.provider_name,
     )
 
 
@@ -962,6 +964,7 @@ async def _handle_sync_request(
     tier: str = "cheap",
     start_time: float = 0.0,
     res_id: Optional[str] = None,
+    provider_name: Optional[str] = None,
 ) -> Response:
     """Handle non-streaming request, heal any diff blocks in message content, track spend with retry."""
     assert _budget_guard is not None and _healer is not None
@@ -1089,6 +1092,8 @@ async def _handle_sync_request(
                 prompt_tokens=rep_p_tokens,
                 completion_tokens=rep_c_tokens,
                 is_subscription=is_sub,
+                provider=provider_name,
+                base_url=upstream_url,
             )
             TelemetryRegistry.get().record_turn(
                 client=client,
@@ -1173,6 +1178,8 @@ async def _handle_sync_request(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         is_subscription=is_sub,
+        provider=provider_name,
+        base_url=upstream_url,
     )
     usage_source = "provider_reported" if has_reported_usage else "locally_estimated"
     cost_status = "zero_subscription" if is_sub else "estimated"
@@ -1202,6 +1209,7 @@ async def _stream_openai_chunks(
     tier: str = "cheap",
     start_time: float = 0.0,
     res_id: Optional[str] = None,
+    provider_name: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Core generator that streams upstream chunks and processes them through StreamInterceptor."""
     assert _budget_guard is not None and _healer is not None
@@ -1488,6 +1496,8 @@ async def _stream_openai_chunks(
                 prompt_tokens=total_prompt_tokens,
                 completion_tokens=total_completion_tokens,
                 is_subscription=is_sub,
+                provider=provider_name,
+                base_url=upstream_url,
             )
             usage_source = "provider_reported" if has_reported_usage else "locally_estimated"
             cost_status = "zero_subscription" if is_sub else "estimated"
@@ -1518,6 +1528,7 @@ async def _handle_streaming_request(
     tier: str = "cheap",
     start_time: float = 0.0,
     res_id: Optional[str] = None,
+    provider_name: Optional[str] = None,
 ) -> StreamingResponse:
     """Stream upstream response through StreamInterceptor, healing diff blocks in-flight."""
     return StreamingResponse(
@@ -1532,6 +1543,7 @@ async def _handle_streaming_request(
             tier=tier,
             start_time=start_time,
             res_id=res_id,
+            provider_name=provider_name,
         ),
         media_type="text/event-stream",
     )
@@ -1680,6 +1692,7 @@ async def anthropic_messages(request: Request) -> Response:
             tier=target.tier_name,
             start_time=start_time,
             res_id=res_id,
+            provider_name=target.provider_name,
         )
         anthropic_stream = transform_openai_stream_to_anthropic(gen, requested_model)
         return StreamingResponse(anthropic_stream, media_type="text/event-stream")
@@ -1695,6 +1708,7 @@ async def anthropic_messages(request: Request) -> Response:
         tier=target.tier_name,
         start_time=start_time,
         res_id=res_id,
+        provider_name=target.provider_name,
     )
 
 
@@ -1709,6 +1723,7 @@ async def _handle_anthropic_sync(
     tier: str = "cheap",
     start_time: float = 0.0,
     res_id: Optional[str] = None,
+    provider_name: Optional[str] = None,
 ) -> Response:
     """Handle non-streaming request, heal diff blocks, and format as Anthropic message response."""
     assert _budget_guard is not None and _healer is not None
@@ -1841,6 +1856,8 @@ async def _handle_anthropic_sync(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         is_subscription=is_sub,
+        provider=provider_name,
+        base_url=upstream_url,
     )
     usage_source = "provider_reported" if has_reported_usage else "locally_estimated"
     cost_status = "zero_subscription" if is_sub else "estimated"
