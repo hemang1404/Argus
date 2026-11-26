@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import base64
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 if TYPE_CHECKING:  # Pillow is optional: only graphical banner rendering needs it.

@@ -25,7 +25,7 @@ from argus.config import (
     ModelCost,
 )
 from argus.providers.adapter import OpenAICompatibleAdapter
-from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
+from argus.providers.models import PROVIDER_PRESETS, ProviderConfig
 from argus.providers.storage import ProviderStorage
 from argus.runtime.candidate import (
     AuthoritativePatchApplier,
@@ -1290,8 +1290,8 @@ def _gateway_options(func):
 def _start_gateway(port: int, host: str, workspace: Optional[str], config: Optional[str], allow_remote: bool) -> None:
     """Start the gateway proxy. A plain function, shared by ``gateway`` and ``serve``."""
     try:
-        import uvicorn
         import fastapi  # noqa: F401
+        import uvicorn
     except ImportError:
         console.print("[red]The Argus Gateway proxy requires the optional 'gateway' dependencies.[/red]")
         console.print('Please install them with: [bold]pip install "argus-recovery\\[gateway]"[/bold]\n')

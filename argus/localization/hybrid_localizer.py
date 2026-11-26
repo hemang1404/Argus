@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
-
 EXCLUDED_DIRS = {
     "tests", "test", "testing", "docs", "doc", "documentation",
     "tutorials", "examples", "benchmarks", ".github", "build", "dist",

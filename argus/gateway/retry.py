@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Tuple
+
 import httpx
 
 logger = logging.getLogger("argus.gateway.retry")

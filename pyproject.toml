@@ -118,12 +118,15 @@ markers = [
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-extend-exclude = ["argus-website", "node_modules", "build", "dist"]
+extend-exclude = ["argus-website", "node_modules", "build", "dist", "tests/fixtures"]
 
 [tool.ruff.lint]
 # pyflakes (undefined names, unused imports/variables) and pycodestyle errors. F821 caught real
 # bugs in this repo (undefined names swallowed by `except Exception: pass`).
-select = ["E4", "E7", "E9", "F"]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["argus"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from argus.config import CASCADE_LADDERS, ArgusConfig, DEFAULT_BUDGET_USD
+from argus.config import CASCADE_LADDERS, DEFAULT_BUDGET_USD, ArgusConfig
 from argus.providers.models import ProviderConfig
-
 
 LADDER_PRESETS = sorted(CASCADE_LADDERS)  # openai, deepseek, gemini, antigravity
 

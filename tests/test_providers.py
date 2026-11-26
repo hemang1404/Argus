@@ -1,12 +1,13 @@
 import os
 import tempfile
 from pathlib import Path
+
 import pytest
 
 from argus.config import ArgusConfig
-from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
-from argus.providers.storage import ProviderStorage, scrub_secrets, maybe_load_dotenv
 from argus.providers.adapter import OpenAICompatibleAdapter, ProviderError
+from argus.providers.models import PROVIDER_PRESETS, ProviderConfig
+from argus.providers.storage import ProviderStorage, maybe_load_dotenv, scrub_secrets
 from tests.mock_server import MockOpenAIServer
 
 

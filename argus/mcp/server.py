@@ -19,18 +19,16 @@ from mcp.server.fastmcp import FastMCP
 
 from argus.config import DEFAULT_BUDGET_USD, DEFAULT_MAX_ATTEMPTS, ArgusConfig
 from argus.providers.models import ProviderConfig
-from argus.providers.storage import ProviderStorage
+from argus.providers.storage import ProviderStorage, maybe_load_dotenv
 from argus.runtime.candidate import (
     AuthoritativePatchApplier,
     CandidateApplicationError,
     CandidateArtifactStore,
 )
-from argus.runtime.runner import HOST_EXECUTION_WARNING
 from argus.runtime.controller import RecoveryController, RecoveryOutcome, validate_target_file
+from argus.runtime.runner import HOST_EXECUTION_WARNING
 
 # Conditionally load .env only if explicitly enabled
-from argus.providers.storage import maybe_load_dotenv
-
 maybe_load_dotenv()
 
 # Configure logging exclusively to sys.stderr so stdout remains pure JSON-RPC

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
-from argus.patch.fuzzy_engine import ResilientPatchEngine, PatchResult
+
+from argus.patch.fuzzy_engine import PatchResult, ResilientPatchEngine
 from argus.patch.parser import PatchParser
 
 

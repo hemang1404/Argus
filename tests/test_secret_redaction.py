@@ -13,7 +13,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
 from argus.config import ArgusConfig
 from argus.providers.adapter import OpenAICompatibleAdapter
 from argus.providers.models import ProviderConfig
@@ -21,7 +20,6 @@ from argus.runtime.candidate import CandidateArtifactStore
 from argus.runtime.controller import RecoveryController
 from argus.runtime.runner import SubprocessTestRunner
 from argus.utils.redaction import scrub_object, scrub_secrets
-
 
 # Synthetic, non-real test credentials for testing redaction mechanisms
 SYNTHETIC_OPENAI_KEY = "sk-proj-DEMO1234567890abcdefghijklmnopqrstuvwxyz"

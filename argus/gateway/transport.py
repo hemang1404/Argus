@@ -9,11 +9,12 @@ from __future__ import annotations
 import ipaddress
 import logging
 from typing import Any, Optional, Set
+
 import anyio
 import anyio.abc
 import httpcore
-from httpcore._backends.anyio import AnyIOBackend
 import httpx
+from httpcore._backends.anyio import AnyIOBackend
 
 logger = logging.getLogger("argus.gateway.transport")
 

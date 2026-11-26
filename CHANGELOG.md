@@ -14,6 +14,9 @@ All notable changes to Argus are documented in this file. The format is based on
 ### Fixed
 - With the Antigravity CLI installed, a configured `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) now lists `gemini-2.5-flash` and `gemini-2.5-pro` as `Ready · API Key` in `discover_all_models()` and the model picker. A model ID the host CLI already lists keeps its host entry, so picker IDs stay unique; without a key, host users still see no "Needs API Key" Gemini entries (#22).
 
+### Development
+- `ruff check .` now enforces import sorting (rule `I`, with `argus` as first-party), and existing imports in `argus/` and `tests/` are sorted. The vendored Flask fixture in `tests/fixtures/` is excluded from ruff so it stays byte-for-byte identical to upstream (#33).
+
 ### Tests
 - Added `tests/test_cascade_reachability.py`, which pins the current behaviour that the CLI and MCP server always send the stored provider's model (so the cheap-first cascade applies only to library use of `ArgusConfig`).
 

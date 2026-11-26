@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 
 from argus.config import ArgusConfig
-from argus.runtime import controller as controller_module
 from argus.providers.models import (
     PROVIDER_PRESETS,
     ProviderConfig,
     ProviderConfigurationError,
 )
 from argus.providers.storage import ProviderStorage
+from argus.runtime import controller as controller_module
 from argus.runtime.controller import RecoveryController
 
 

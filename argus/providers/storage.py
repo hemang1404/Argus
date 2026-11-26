@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
+from argus.providers.models import PROVIDER_PRESETS, ProviderConfig
 from argus.utils.redaction import scrub_secrets  # noqa: F401  (re-exported for adapters, gateway and tests)
 
 SERVICE_NAME = "argus_ai_inference"
@@ -54,7 +54,7 @@ def maybe_load_dotenv(force: bool = False) -> None:
     custom_path = os.getenv("ARGUS_DOTENV_PATH")
     if should_load or custom_path:
         try:
-            from dotenv import load_dotenv, find_dotenv
+            from dotenv import find_dotenv, load_dotenv
             if custom_path and Path(custom_path).is_file():
                 load_dotenv(custom_path)
             else:

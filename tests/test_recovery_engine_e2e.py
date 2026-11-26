@@ -4,11 +4,11 @@ import tempfile
 from pathlib import Path
 
 from argus.config import ArgusConfig
-from argus.providers.models import ProviderConfig
 from argus.providers.adapter import OpenAICompatibleAdapter
-from tests.mock_server import MockOpenAIServer
+from argus.providers.models import ProviderConfig
 from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
 from argus.runtime.controller import RecoveryController, RecoveryOutcome
+from tests.mock_server import MockOpenAIServer
 
 
 def test_end_to_end_recovery_and_approval_flow():

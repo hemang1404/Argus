@@ -11,10 +11,10 @@ from argus.config import MODEL_REGISTRY, ModelCost
 from argus.gateway.budget import BudgetGuard
 from argus.gateway.config import BudgetConfig, GatewayConfig, ProviderConfig, TierDefinition
 from argus.gateway.server import (
-    app,
-    init_gateway,
-    estimate_request_cost,
     GatewayRateLimiter,
+    app,
+    estimate_request_cost,
+    init_gateway,
     lifespan,
 )
 

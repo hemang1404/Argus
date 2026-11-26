@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+
 from starlette.testclient import TestClient
 
 from argus.gateway.config import GatewayConfig, ProviderConfig, TierDefinition

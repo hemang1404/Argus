@@ -23,7 +23,6 @@ from argus.update import (
     verify_update,
 )
 
-
 # =============================================================================
 # 1. Installer Detection Tests
 # =============================================================================
@@ -350,6 +349,7 @@ async def test_tui_update_modal_check_and_apply_flow():
     try:
         from textual.app import App, ComposeResult
         from textual.widgets import Button, Static
+
         from argus.tui.modals.update import UpdateModal
     except ImportError:
         pytest.skip("textual not installed in this environment")
@@ -396,6 +396,7 @@ async def test_tui_update_modal_apply_failure():
     try:
         from textual.app import App, ComposeResult
         from textual.widgets import Static
+
         from argus.tui.modals.update import UpdateModal
     except ImportError:
         pytest.skip("textual not installed in this environment")

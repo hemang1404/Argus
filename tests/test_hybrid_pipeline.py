@@ -1,6 +1,7 @@
 """Unit tests for Argus Deterministic Hybrid Pipeline (Localizer)."""
 
 from pathlib import Path
+
 import pytest
 
 from argus.localization.localizer import DeterministicLocalizer

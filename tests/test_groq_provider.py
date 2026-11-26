@@ -24,7 +24,8 @@ from starlette.testclient import TestClient
 
 from argus.cli import main
 from argus.config import CASCADE_LADDERS, MODEL_REGISTRY, ArgusConfig
-from argus.gateway.config import GatewayConfig, ProviderConfig as GWProviderConfig
+from argus.gateway.config import GatewayConfig
+from argus.gateway.config import ProviderConfig as GWProviderConfig
 from argus.gateway.router import GatewayRouter, NoEligibleProviderError
 from argus.gateway.server import app, init_gateway, validate_upstream_url
 from argus.mcp.server import create_mcp_server

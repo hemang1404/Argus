@@ -21,7 +21,6 @@ from argus.patch.fuzzy_engine import PatchResult, ResilientPatchEngine
 from argus.patch.parser import PatchBlock
 from argus.patch.textio import decode_source, encode_source
 
-
 # Names that are never part of a workspace snapshot, at any depth: VCS
 # internals, Argus's own run directory, and bytecode caches.
 ALWAYS_EXCLUDED_NAMES: Set[str] = {".git", ".argus", "__pycache__"}

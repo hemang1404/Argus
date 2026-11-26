@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from typing import Any, List, Optional
 
-
 # Token-shaped patterns: vendor-prefixed credentials and PEM private keys. These match
 # only strings that are credentials by construction, so they are safe to apply to
 # source code that is sent to a model.

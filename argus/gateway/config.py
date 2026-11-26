@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
-from pydantic import BaseModel, Field
+
 import yaml
+from pydantic import BaseModel, Field
+
 from argus.providers.storage import maybe_load_dotenv
 
 maybe_load_dotenv()

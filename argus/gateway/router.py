@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, List, Optional
+
 from argus.gateway.config import GatewayConfig
 from argus.routing.difficulty import DifficultyClassifier
 

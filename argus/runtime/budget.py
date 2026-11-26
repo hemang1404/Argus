@@ -11,7 +11,7 @@ import math
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from argus.config import DEFAULT_BUDGET_USD
 

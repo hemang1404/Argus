@@ -1,8 +1,8 @@
 """Argus Provider Management and Extensible Inference Adapters."""
 
-from argus.providers.models import ProviderConfig, ProviderPreset, PROVIDER_PRESETS
+from argus.providers.adapter import OpenAICompatibleAdapter, ProviderAdapter
+from argus.providers.models import PROVIDER_PRESETS, ProviderConfig, ProviderPreset
 from argus.providers.storage import ProviderStorage
-from argus.providers.adapter import ProviderAdapter, OpenAICompatibleAdapter
 
 __all__ = [
     "ProviderConfig",

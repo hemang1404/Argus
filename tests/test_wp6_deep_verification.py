@@ -5,12 +5,12 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import os
-import psutil
 import shutil
 import tempfile
 import time
 from pathlib import Path
 
+import psutil
 
 from argus.config import ArgusConfig
 from argus.providers.adapter import OpenAICompatibleAdapter
@@ -22,7 +22,6 @@ from argus.runtime.workspace import (
     get_process_create_time,
     is_process_alive,
 )
-
 
 # ============================================================================
 # 1. Memory Measurement: 1 GB Logical Output Stream Test
@@ -283,6 +282,7 @@ def test_ps_create_time_parses_lstart_output(monkeypatch):
     """macOS/BSD have no /proc: the `ps -o lstart=` fallback must parse the C-locale timestamp."""
     import subprocess as sp
     import time as _time
+
     from argus.runtime import workspace as ws
 
     class _Res:

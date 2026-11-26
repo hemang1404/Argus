@@ -7,9 +7,9 @@ import threading
 import time
 import uuid
 from typing import Dict, Optional, Tuple
+
 from argus.config import MODEL_REGISTRY, ModelCost, UnpricedModelError
 from argus.gateway.config import BudgetConfig
-
 
 _FREE_PROVIDER_NAMES = {"antigravity", "ollama", "lmstudio"}
 _LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "::1", "[::1]"}

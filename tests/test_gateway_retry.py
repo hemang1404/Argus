@@ -2,6 +2,7 @@
 
 import email.utils
 import time
+
 import httpx
 
 from argus.gateway.retry import (
