@@ -225,6 +225,9 @@ class _KeyStorage:
     def get_api_key(self, provider):
         return self._gemini_key if provider == "gemini" else None
 
+    def list_providers(self):
+        return []
+
 
 def _discover_with_host(host_models, gemini_key):
     with patch("argus.providers.discovery.is_antigravity_cli_available", return_value=True):
@@ -259,3 +262,36 @@ def test_gemini_key_models_keep_option_ids_unique_with_host_gemini():
 def test_no_gemini_key_models_listed_with_host_cli_and_no_key():
     models = _discover_with_host(["claude-sonnet-4-6"], gemini_key=None)
     assert not [m for m in models if m.provider == "gemini"]
+
+
+def test_discover_saved_lmstudio_and_custom_providers():
+    from argus.providers.models import ProviderConfig
+
+    class ConfiguredProviderStorage(_KeyStorage):
+        def list_providers(self):
+            return [
+                ProviderConfig(
+                    name="lmstudio",
+                    base_url="http://localhost:1234/v1",
+                    model="local-llama",
+                ),
+                ProviderConfig(
+                    name="custom",
+                    base_url="http://localhost:8000/v1",
+                    model="my-deployment",
+                    api_key="test-key",
+                ),
+            ]
+
+    with patch("argus.providers.discovery.is_antigravity_cli_available", return_value=False):
+        models = discover_all_models(
+            storage=ConfiguredProviderStorage(),
+            force_refresh=True,
+            probe_ollama=False,
+        )
+
+    configured = {model.provider: model for model in models if model.provider in {"lmstudio", "custom"}}
+    assert configured["lmstudio"].model_id == "local-llama"
+    assert configured["custom"].model_id == "my-deployment"
+    assert configured["lmstudio"].is_available
+    assert configured["custom"].is_available
