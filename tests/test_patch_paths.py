@@ -8,9 +8,10 @@ from argus.patch.parser import PatchBlock, PatchParser
 from argus.patch.paths import PatchTargetError, normalize_patch_path, validate_patch_blocks
 
 
-def test_normalize_strips_diff_prefixes() -> None:
-    assert normalize_patch_path("a/src/mod.py") == "src/mod.py"
-    assert normalize_patch_path("b/src/mod.py") == "src/mod.py"
+def test_normalize_preserves_real_directory_components() -> None:
+    assert normalize_patch_path("a/src/mod.py") == "a/src/mod.py"
+    assert normalize_patch_path("b/src/mod.py") == "b/src/mod.py"
+    assert normalize_patch_path("a/a/foo.py") == "a/a/foo.py"
     assert normalize_patch_path("src\\mod.py") == "src/mod.py"
     assert normalize_patch_path(None) is None
 
@@ -24,6 +25,8 @@ def test_normalize_strips_diff_prefixes() -> None:
         ("src/../../outside.py", "PATCH_PATH_TRAVERSAL"),
         ("/dev/null", "NULL_PATCH_PATH"),
         ("a/\x00mod.py", "INVALID_PATCH_PATH"),
+        ("a/../outside.py", "PATCH_PATH_TRAVERSAL"),
+        ("b/../outside.py", "PATCH_PATH_TRAVERSAL"),
     ],
 )
 def test_normalize_rejects_unsafe_paths(raw: str, code: str) -> None:
@@ -34,11 +37,71 @@ def test_normalize_rejects_unsafe_paths(raw: str, code: str) -> None:
 
 def test_legitimate_single_file_passes() -> None:
     blocks = [
-        PatchBlock(search_text="x = 1", replace_text="x = 2", file_path="b/src/mod.py"),
-        PatchBlock(search_text="y = 1", replace_text="y = 2", file_path="a/src/mod.py"),
+        # PatchParser returns workspace-relative paths, not Git diff header prefixes.
+        PatchBlock(search_text="x = 1", replace_text="x = 2", file_path="src/mod.py"),
+        PatchBlock(search_text="y = 1", replace_text="y = 2", file_path="src/mod.py"),
     ]
     validate_patch_blocks(blocks, "src/mod.py")  # must not raise
 
+
+@pytest.mark.parametrize("directory", ["a", "b"])
+def test_unified_diff_keeps_real_leading_directory(directory: str) -> None:
+    nested = f"{directory}/foo.py"
+    diff = (
+        f"diff --git a/{nested} b/{nested}\n"
+        f"--- a/{nested}\n+++ b/{nested}\n"
+        "@@ -1,1 +1,1 @@\n-x = 1\n+x = 2\n"
+    )
+    blocks = PatchParser.parse_unified_diff(diff)
+
+    assert len(blocks) == 1
+    assert blocks[0].source_path == nested
+    assert blocks[0].file_path == nested
+    validate_patch_blocks(blocks, nested)
+
+    with pytest.raises(PatchTargetError) as exc:
+        validate_patch_blocks(blocks, "foo.py")
+    assert exc.value.code == "PATCH_TARGET_MISMATCH"
+
+
+@pytest.mark.parametrize("directory", ["a", "b"])
+def test_unified_diff_for_root_file_cannot_target_nested_file(directory: str) -> None:
+    diff = "--- a/foo.py\n+++ b/foo.py\n@@ -1,1 +1,1 @@\n-x = 1\n+x = 2\n"
+    blocks = PatchParser.parse_unified_diff(diff)
+
+    validate_patch_blocks(blocks, "foo.py")
+    with pytest.raises(PatchTargetError) as exc:
+        validate_patch_blocks(blocks, f"{directory}/foo.py")
+    assert exc.value.code == "PATCH_TARGET_MISMATCH"
+
+
+@pytest.mark.parametrize("directory", ["a", "b"])
+def test_search_replace_header_keeps_real_leading_directory(directory: str) -> None:
+    nested = f"{directory}/foo.py"
+    text = f"<<<<<<< SEARCH {nested}\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE"
+    blocks = PatchParser.parse_search_replace(text)
+
+    assert len(blocks) == 1
+    assert blocks[0].file_path == nested
+    validate_patch_blocks(blocks, nested)
+
+    with pytest.raises(PatchTargetError) as exc:
+        validate_patch_blocks(blocks, "foo.py")
+    assert exc.value.code == "PATCH_TARGET_MISMATCH"
+
+
+@pytest.mark.parametrize("directory", ["a", "b"])
+def test_search_replace_root_header_cannot_target_nested_file(directory: str) -> None:
+    text = "<<<<<<< SEARCH foo.py\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE"
+    blocks = PatchParser.parse_search_replace(text)
+
+    assert len(blocks) == 1
+    assert blocks[0].file_path == "foo.py"
+    validate_patch_blocks(blocks, "foo.py")
+
+    with pytest.raises(PatchTargetError) as exc:
+        validate_patch_blocks(blocks, f"{directory}/foo.py")
+    assert exc.value.code == "PATCH_TARGET_MISMATCH"
 
 def test_cross_file_hunk_is_refused_even_when_code_would_match() -> None:
     text = (

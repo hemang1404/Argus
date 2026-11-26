@@ -12,6 +12,7 @@ All notable changes to Argus are documented in this file. The format is based on
 - **Groq is now a normal provider.** The earlier blanket prohibition was removed: a `groq` preset (OpenAI-compatible, default model `openai/gpt-oss-120b`, your own `GROQ_API_KEY`) works in the CLI, TUI, MCP server, Python API and gateway. Like every provider it is used only when you configure or name it, unknown models are still refused until priced, and `GROQ_` variables are still scrubbed from the test subprocess environment.
 
 ### Fixed
+- Patch validation now preserves real top-level `a/` and `b/` directories after Git diff prefix removal, preventing cross-file path confusion (#46).
 - With the Antigravity CLI installed, a configured `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) now lists `gemini-2.5-flash` and `gemini-2.5-pro` as `Ready · API Key` in `discover_all_models()` and the model picker. A model ID the host CLI already lists keeps its host entry, so picker IDs stay unique; without a key, host users still see no "Needs API Key" Gemini entries (#22).
 
 ### Development
