@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
 from argus.providers.storage import maybe_load_dotenv
 
 # Conditionally load .env only if explicitly enabled via ARGUS_LOAD_DOTENV=1 or ARGUS_DOTENV_PATH

@@ -145,6 +145,7 @@ async def test_config_modal_accepts_google_ai_studio_key(tmp_path, monkeypatch):
 async def test_config_modal_accepts_groq_key_as_normal_provider(tmp_path, monkeypatch):
     """Verify ConfigModal treats a gsk_ key as a normal Groq provider key."""
     import keyring
+
     from argus.providers.storage import ProviderStorage
 
     vault = {}

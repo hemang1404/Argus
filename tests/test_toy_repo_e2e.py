@@ -5,12 +5,13 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from click.testing import CliRunner
+
 import pytest
+from click.testing import CliRunner
 
 from argus.cli import main
-from tests.mock_server import MockOpenAIServer
 from argus.runtime.candidate import CandidateArtifactStore
+from tests.mock_server import MockOpenAIServer
 
 
 def test_complete_toy_repo_recovery_workflow(monkeypatch):
@@ -180,8 +181,8 @@ def test_live_provider_toy_repo_recovery(tmp_path: Path):
 
     from argus.config import ArgusConfig
     from argus.providers.storage import ProviderStorage
-    from argus.runtime.controller import RecoveryController
     from argus.runtime.candidate import AuthoritativePatchApplier
+    from argus.runtime.controller import RecoveryController
 
     storage = ProviderStorage()
     active_cfg = storage.get_active_provider()

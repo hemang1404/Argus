@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-
 from argus.config import ArgusConfig
 from argus.providers.discovery import (
     DiscoveredModel,

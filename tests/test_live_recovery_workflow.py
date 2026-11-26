@@ -20,7 +20,8 @@ import pytest
 from starlette.testclient import TestClient
 
 from argus.config import ArgusConfig
-from argus.gateway.config import GatewayConfig, ProviderConfig as GWProviderConfig, TierDefinition
+from argus.gateway.config import GatewayConfig, TierDefinition
+from argus.gateway.config import ProviderConfig as GWProviderConfig
 from argus.gateway.server import app, init_gateway
 from argus.gateway.telemetry import TelemetryRegistry
 from argus.providers.antigravity import find_antigravity_cli

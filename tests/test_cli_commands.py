@@ -2,12 +2,13 @@
 
 import tempfile
 from pathlib import Path
-from click.testing import CliRunner
+
 import pytest
+from click.testing import CliRunner
 
 from argus.cli import main
-from tests.mock_server import MockOpenAIServer
 from argus.runtime.candidate import CandidateArtifactStore
+from tests.mock_server import MockOpenAIServer
 
 
 def test_cli_provider_workflow(monkeypatch: pytest.MonkeyPatch):

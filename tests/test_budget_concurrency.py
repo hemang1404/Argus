@@ -14,7 +14,6 @@ import random
 import time
 from typing import List
 
-
 from argus.config import ModelCost
 from argus.runtime.budget import GlobalExperimentBudget, TaskConditionBudget
 

@@ -8,8 +8,8 @@ from typing import Optional
 from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.css.query import NoMatches
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Input, Static
 

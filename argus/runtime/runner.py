@@ -35,7 +35,6 @@ from typing import Deque, List, Optional, Set
 
 from argus.utils.redaction import scrub_secrets
 
-
 HOST_EXECUTION_WARNING = (
     "Argus runs your test command, including model-generated code, directly on this machine "
     "with your user permissions, network and files. It is not sandboxed. Only run it on "

@@ -11,6 +11,7 @@ src/flask/blueprints.py at commit 7ee9ceb71e868944a46e1ff00b506772a53a4f1d:
 """
 
 from pathlib import Path
+
 import pytest
 
 from argus.patch.fuzzy_engine import (
@@ -222,6 +223,7 @@ def test_forensic_artifacts_preserved_on_failed_attempt(flask_blueprints_source:
     """
     import json
     from unittest.mock import MagicMock
+
     from argus.config import ArgusConfig
     from argus.providers.adapter import CompletionResponse
     from argus.runtime.controller import RecoveryController

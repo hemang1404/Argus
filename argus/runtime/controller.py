@@ -18,14 +18,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from argus.config import ArgusConfig
-from argus.patch.fuzzy_engine import PatchResult, RefusalReason, ResilientPatchEngine
 from argus.patch.ast_checker import ASTChecker, is_python_filename
+from argus.patch.fuzzy_engine import PatchResult, RefusalReason, ResilientPatchEngine
 from argus.patch.parser import PatchParser
-from argus.patch.textio import UnsupportedEncodingError
 from argus.patch.paths import PatchTargetError, validate_patch_blocks
-from argus.providers.models import ProviderConfigurationError
+from argus.patch.textio import UnsupportedEncodingError
 from argus.providers.adapter import OpenAICompatibleAdapter, ProviderAdapter, ProviderError
-from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
+from argus.providers.models import PROVIDER_PRESETS, ProviderConfig, ProviderConfigurationError
 from argus.runtime.budget import (
     ARGUS_SYSTEM_PROMPT,
     TaskConditionBudget,
@@ -626,9 +625,10 @@ class RecoveryController:
         test_command: str,
     ) -> Optional[Path]:
         """Auto-localize the most probable buggy source file using traceback parsing and hybrid AST indexing."""
-        from argus.localization.localizer import DeterministicLocalizer, EXCLUDED_DIRS
         import ast
         import re
+
+        from argus.localization.localizer import EXCLUDED_DIRS, DeterministicLocalizer
 
         # 1. Parse Traceback Frames directly
         tb_matches = re.findall(r'File "([^"]+\.py)"', failure_output)

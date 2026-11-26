@@ -11,16 +11,15 @@ Validates:
 
 from __future__ import annotations
 
-from starlette.testclient import TestClient
-
 import pytest
+from starlette.testclient import TestClient
 
 from argus.gateway.config import GatewayConfig, ProviderConfig, TierDefinition
 from argus.gateway.server import (
-    app,
-    init_gateway,
-    estimate_request_cost,
     GatewayRateLimiter,
+    app,
+    estimate_request_cost,
+    init_gateway,
 )
 
 

@@ -718,8 +718,9 @@ def test_conflicting_credential_headers_transport_never_called(tmp_path):
 @pytest.mark.asyncio
 async def test_dns_rebinding_socket_intercept_deterministic():
     """Verify SafeAnyIOBackend deterministically blocks connection when hostname resolves to restricted IP."""
-    from argus.gateway.transport import SafeAsyncHTTPTransport
     import anyio
+
+    from argus.gateway.transport import SafeAsyncHTTPTransport
 
     listener = await anyio.create_tcp_listener(local_host="127.0.0.1")
     port = listener.extra(anyio.abc.SocketAttribute.local_address)[1]
@@ -873,7 +874,7 @@ def test_budget_duplicate_reconciliation_is_idempotent():
 
 def test_recovery_safety_fuzzy_engine_rejects_ambiguous_anchors():
     """ResilientPatchEngine refuses ambiguous patch blocks matching multiple locations."""
-    from argus.patch.fuzzy_engine import ResilientPatchEngine, RefusalReason
+    from argus.patch.fuzzy_engine import RefusalReason, ResilientPatchEngine
     from argus.patch.parser import PatchBlock
 
     engine = ResilientPatchEngine()
@@ -895,8 +896,9 @@ def test_recovery_safety_fuzzy_engine_rejects_ambiguous_anchors():
 
 def test_recovery_safety_candidate_applier_rejections_preserve_target(tmp_path):
     """AuthoritativePatchApplier strictly refuses invalid patches and preserves original file on disk."""
-    from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
     import hashlib
+
+    from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
 
     target = tmp_path / "calc.py"
     original_code = "def add(a, b):\n    return a + b\n"

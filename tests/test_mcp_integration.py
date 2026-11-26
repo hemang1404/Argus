@@ -6,8 +6,8 @@ from pathlib import Path
 
 from argus.mcp.installer import (
     install_antigravity,
-    install_opencode,
     install_gemini,
+    install_opencode,
     verify_mcp_handshake,
 )
 from argus.mcp.server import create_mcp_server

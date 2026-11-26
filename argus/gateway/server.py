@@ -20,6 +20,7 @@ import socket
 import threading
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator, Deque, Dict, List, Optional
 from urllib.parse import urlsplit
@@ -27,17 +28,15 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from argus import __version__
-from argus.config import MODEL_REGISTRY, ModelCost
 from argus.adapters.protocol import (
     anthropic_to_openai_request,
     openai_to_anthropic_response,
     transform_openai_stream_to_anthropic,
 )
-from argus.config import UnpricedModelError
+from argus.config import MODEL_REGISTRY, ModelCost, UnpricedModelError
 from argus.gateway.budget import BudgetGuard, price_for_model
 from argus.gateway.config import GatewayConfig
 from argus.gateway.interceptor import StreamInterceptor, StreamPatchHealer

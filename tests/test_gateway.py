@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+
 from starlette.testclient import TestClient
 
 from argus.gateway.budget import BudgetGuard

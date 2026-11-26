@@ -19,7 +19,6 @@ from argus.providers.antigravity import is_antigravity_cli_available
 from argus.providers.discovery import discover_all_models
 from argus.providers.storage import ProviderStorage
 
-
 # Design tokens matching styles.tcss and other modals
 _TEXT = "#e1e4ec"
 _SECONDARY = "#9298a8"

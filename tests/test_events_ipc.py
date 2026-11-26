@@ -13,12 +13,13 @@ import io
 import json
 from pathlib import Path
 from unittest.mock import patch
+
 from click.testing import CliRunner
 
 from argus.cli import main
 from argus.config import ArgusConfig
 from argus.runtime.controller import RecoveryController
-from argus.runtime.events import ArgusEvent, EventType, JsonLinesEmitter, PROTOCOL_VERSION
+from argus.runtime.events import PROTOCOL_VERSION, ArgusEvent, EventType, JsonLinesEmitter
 
 
 def test_argus_event_serialization_and_deserialization():

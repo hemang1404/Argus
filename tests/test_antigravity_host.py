@@ -15,7 +15,6 @@ from argus.routing.difficulty import DifficultyClassifier
 from argus.runtime.candidate import AuthoritativePatchApplier, CandidateArtifactStore
 from argus.runtime.controller import RecoveryController
 
-
 # =============================================================================
 # 1. Difficulty Routing Tests (Low, Medium, High)
 # =============================================================================

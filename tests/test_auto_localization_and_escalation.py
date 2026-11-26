@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from argus.config import ArgusConfig
-from argus.providers.adapter import CompletionResponse, ProviderAdapter, ConnectionTestResult
+from argus.providers.adapter import CompletionResponse, ConnectionTestResult, ProviderAdapter
 from argus.runtime.controller import RecoveryController
 
 

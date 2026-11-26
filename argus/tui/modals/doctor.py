@@ -15,7 +15,6 @@ from textual.widgets import Button, Static
 from argus.config import ArgusConfig
 from argus.providers.storage import ProviderStorage
 
-
 # Design tokens matching styles.tcss and other modals
 _TEXT = "#e1e4ec"
 _SECONDARY = "#9298a8"

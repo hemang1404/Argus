@@ -11,7 +11,7 @@ from typing import Any, Dict, List, NoReturn, Optional
 import httpx
 
 from argus.providers.loop_guard import RepetitionLoopDetector
-from argus.providers.models import ProviderConfig, PROVIDER_PRESETS
+from argus.providers.models import PROVIDER_PRESETS, ProviderConfig
 from argus.providers.storage import scrub_secrets
 from argus.utils.redaction import scrub_prompt
 

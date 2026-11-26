@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch
 
-
 from argus.config import ArgusConfig
 from argus.runtime.container import (
     ContainerConfig,

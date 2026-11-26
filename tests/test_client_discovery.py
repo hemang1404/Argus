@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
 import pytest
 
 from argus.adapters.discovery import (
@@ -86,8 +87,9 @@ async def test_connect_modal_c_shortcut_triggers_connect_all(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     """Verify pressing 'c' in ConnectModal triggers connect_all_detected."""
-    import argus.tui.modals.connect as connect_module
     from textual.app import App
+
+    import argus.tui.modals.connect as connect_module
 
     calls: list[Path] = []
 

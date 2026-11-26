@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from argus.config import ArgusConfig, MODEL_REGISTRY
+from argus.config import MODEL_REGISTRY, ArgusConfig
 from argus.providers.adapter import (
     ProviderError,
 )
@@ -21,7 +21,6 @@ from argus.runtime.budget import (
     count_prompt_tokens,
 )
 from argus.runtime.controller import RecoveryController
-
 
 # =============================================================================
 # 1. Provider Configuration and Official Groq Pricing
