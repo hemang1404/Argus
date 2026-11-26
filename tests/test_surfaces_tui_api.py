@@ -95,6 +95,43 @@ async def test_doctor_configured_provider_is_not_claimed_connected():
 
 
 @pytest.mark.asyncio
+async def test_doctor_reports_key_stored_when_key_is_only_in_key_store():
+    """Provider set via the settings screen leaves provider_config empty; the
+    key saved in the key store must still be reported as stored."""
+    config = ArgusConfig(provider="groq", model=None)
+    assert config.provider_config is None
+    app = ArgusTUIApp(workspace=".", config=config)
+    with patch("argus.tui.modals.doctor.ProviderStorage") as storage_cls:
+        storage_cls.return_value.get_api_key.return_value = "k-stored-in-keyring"
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.push_screen(DoctorModal(config=config))
+            await pilot.pause()
+            out = _screen_text(app.screen)
+    storage_cls.return_value.get_api_key.assert_called_once_with("groq")
+    assert "groq" in out
+    assert "key stored" in out
+    assert "no stored key" not in out
+
+
+@pytest.mark.asyncio
+async def test_doctor_reports_no_stored_key_when_key_store_is_empty():
+    config = ArgusConfig(provider="groq", model=None)
+    assert config.provider_config is None
+    app = ArgusTUIApp(workspace=".", config=config)
+    with patch("argus.tui.modals.doctor.ProviderStorage") as storage_cls:
+        storage_cls.return_value.get_api_key.return_value = None
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.push_screen(DoctorModal(config=config))
+            await pilot.pause()
+            out = _screen_text(app.screen)
+    storage_cls.return_value.get_api_key.assert_called_once_with("groq")
+    assert "groq" in out
+    assert "no stored key" in out
+
+
+@pytest.mark.asyncio
 async def test_idle_stats_modal_never_claims_a_running_gateway():
     app = ArgusTUIApp(workspace=".")
     async with app.run_test() as pilot:
