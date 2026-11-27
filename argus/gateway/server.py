@@ -1583,11 +1583,6 @@ async def anthropic_messages(request: Request) -> Response:
             status_code=400,
             content={"type": "error", "error": {"type": "invalid_request_error", "message": "Invalid Anthropic message content."}},
         )
-    system_prompt = next(
-        (msg["content"] for msg in openai_body["messages"] if msg["role"] == "system"),
-        None,
-    )
-
     # 2. Budget Guardrail Enforcement (Phase 1 Reservation with dynamic size estimation)
     est_amount = estimate_request_cost(body, model=requested_model)
     res_ok, res_err, res_id = _budget_guard.reserve(run_id, estimated_cost=est_amount)
@@ -1608,7 +1603,6 @@ async def anthropic_messages(request: Request) -> Response:
     try:
         target = _router.resolve(
             requested_model=requested_model,
-            prompt=system_prompt,
             messages=openai_body["messages"],
         )
     except NoEligibleProviderError as ex:
