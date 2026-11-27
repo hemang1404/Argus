@@ -6,9 +6,9 @@ CLI, any model provider, or a network request.
 
 from __future__ import annotations
 
-import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from starlette.testclient import TestClient
 
@@ -113,7 +113,9 @@ def test_anthropic_system_blocks_are_normalized_before_auto_routing(tmp_path):
         budget=BudgetConfig(per_task_usd=1.0, per_session_usd=1.0),
     )
     init_gateway(config=cfg, workspace=tmp_path)
-    response = CompletionResponse(content="done", prompt_tokens=1, completion_tokens=1, duration_ms=1, model=HOST_MODEL)
+    response = CompletionResponse(
+        content="done", prompt_tokens=1, completion_tokens=1, duration_ms=1, model=HOST_MODEL
+    )
     with (
         patch("argus.providers.antigravity.AntigravityHostAdapter.chat_completion", return_value=response),
         patch.object(server._router.classifier, "classify", wraps=server._router.classifier.classify) as classify,
@@ -145,3 +147,30 @@ def test_unexpected_router_error_releases_budget(host_gateway):
         response = TestClient(app, raise_server_exceptions=False).post("/v1/messages", json=_request())
 
     assert response.status_code == 500
+
+
+def test_anthropic_system_blocks_route_over_http_without_leaking_budget(tmp_path):
+    cfg = GatewayConfig(
+        providers=[ProviderConfig(name="mock", base_url="https://api.mock.com/v1", api_key="mock-key")],
+        tiers={"cheap": TierDefinition(provider="mock", model="gpt-4o")},
+        budget=BudgetConfig(per_task_usd=1.0, per_session_usd=1.0),
+    )
+    init_gateway(config=cfg, workspace=tmp_path)
+    upstream = httpx.Response(
+        200,
+        json={
+            "id": "chatcmpl-test",
+            "choices": [{"message": {"role": "assistant", "content": "Hello."}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 3},
+        },
+        request=httpx.Request("POST", "https://api.mock.com/v1/chat/completions"),
+    )
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=upstream) as post:
+        result = TestClient(app).post("/v1/messages", json=_request())
+
+    assert result.status_code == 200, result.text
+    assert result.json()["content"] == [{"type": "text", "text": "Hello."}]
+    sent = post.call_args.kwargs["json"]["messages"]
+    assert sent[0]["content"] == "You are a careful assistant."
+    assert sent[1]["content"] == "Say hello."
+    assert not server._budget_guard._active_reservations
