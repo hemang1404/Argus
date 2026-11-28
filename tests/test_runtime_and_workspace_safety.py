@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -23,7 +24,7 @@ import pytest
 
 from argus.providers.adapter import OpenAICompatibleAdapter
 from argus.providers.models import ProviderConfig
-from argus.runtime.runner import BoundedOutputCollector, SubprocessTestRunner
+from argus.runtime.runner import BoundedOutputCollector, SubprocessTestRunner, validate_and_tokenize_command
 from argus.runtime.workspace import (
     WorkspaceManager,
     cleanup_stale_temp_workspaces,
@@ -233,3 +234,87 @@ def test_openai_adapter_context_manager() -> None:
         assert client.is_closed is False
 
     assert client.is_closed is True
+
+
+def _make_fake_venv(root: Path) -> tuple[Path, Path]:
+    """Create a minimal .venv directory with python and pytest stubs."""
+    bin_dir = root / ".venv" / ("Scripts" if sys.platform == "win32" else "bin")
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    py_exe = bin_dir / ("python.exe" if sys.platform == "win32" else "python")
+    pytest_exe = bin_dir / ("pytest.exe" if sys.platform == "win32" else "pytest")
+    py_exe.write_text("", encoding="utf-8")
+    pytest_exe.write_text("", encoding="utf-8")
+    return py_exe.resolve(), pytest_exe.resolve()
+
+
+def test_validate_and_tokenize_uses_venv_root_when_cwd_lacks_venv(tmp_path: Path) -> None:
+    """Virtualenv resolution must inspect venv_root even when cwd is an isolated temp copy."""
+    repo_root = tmp_path / "repo"
+    isolated_cwd = tmp_path / "temp_ws"
+    repo_root.mkdir()
+    isolated_cwd.mkdir()
+    py_exe, pytest_exe = _make_fake_venv(repo_root)
+
+    assert validate_and_tokenize_command("pytest -q", cwd=isolated_cwd, venv_root=repo_root)[0] == str(pytest_exe)
+    assert validate_and_tokenize_command("python -m pytest", cwd=isolated_cwd, venv_root=repo_root)[0] == str(py_exe)
+    assert validate_and_tokenize_command(str(py_exe), cwd=isolated_cwd, venv_root=repo_root)[0] == str(py_exe)
+
+
+def test_runner_run_test_injects_venv_root_env_while_running_in_isolated_cwd(tmp_path: Path) -> None:
+    """SubprocessTestRunner keeps cwd in temp_dir while exporting VIRTUAL_ENV/PATH from venv_root."""
+    repo_root = tmp_path / "repo"
+    isolated_cwd = tmp_path / "temp_ws"
+    repo_root.mkdir()
+    isolated_cwd.mkdir()
+    py_exe, _ = _make_fake_venv(repo_root)
+
+    runner = SubprocessTestRunner(timeout_seconds=10)
+    cmd = f'"{sys.executable}" -c "import os; print(os.getcwd()); print(os.environ.get(\'VIRTUAL_ENV\')); print(os.environ.get(\'PATH\', \'\'))"'
+    res = runner.run_test(cmd, cwd=isolated_cwd, venv_root=repo_root)
+
+    assert res.passed is True, res.stderr
+    lines = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
+    assert Path(lines[0]).resolve() == isolated_cwd.resolve()
+    assert Path(lines[1]).resolve() == (repo_root / ".venv").resolve()
+    assert str(py_exe.parent) in lines[2]
+
+
+def test_controller_passes_repo_root_as_venv_root_during_recovery(tmp_path: Path) -> None:
+    """RecoveryController must pass workspace_root as venv_root across auto-localization and test runs."""
+    from argus.config import ArgusConfig
+    from argus.providers.adapter import CompletionResponse, ConnectionTestResult, ProviderAdapter
+    from argus.runtime.controller import RecoveryController
+
+    class _NoopAdapter(ProviderAdapter):
+        def chat_completion(self, messages, temperature=None, max_tokens=None, effort=None, model=None, **kwargs):
+            return CompletionResponse(
+                content="no patch", prompt_tokens=1, completion_tokens=1, duration_ms=1.0, model=model or "m"
+            )
+
+        def test_connection(self) -> ConnectionTestResult:
+            return ConnectionTestResult(True, 200, 1.0, "m", "ok")
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _make_fake_venv(repo_root)
+    (repo_root / "app.py").write_text("def add(a, b):\n    raise RuntimeError('bug')\n", encoding="utf-8")
+    (repo_root / "test_app.py").write_text("from app import add\nadd(1, 2)\n", encoding="utf-8")
+
+    controller = RecoveryController(
+        config=ArgusConfig(provider="openai", model="gpt-4o-mini", max_attempts=1),
+        adapter=_NoopAdapter(),
+    )
+    seen_calls: list[tuple[Path, Path | None]] = []
+    orig_run_test = controller.test_runner.run_test
+
+    def spy_run_test(command: str, cwd: Path, untrusted=None, venv_root=None):
+        seen_calls.append((Path(cwd), Path(venv_root) if venv_root is not None else None))
+        return orig_run_test(command, cwd=cwd, untrusted=untrusted, venv_root=venv_root)
+
+    controller.test_runner.run_test = spy_run_test  # type: ignore[method-assign]
+    controller.run(target_file=None, test_command=f'"{sys.executable}" test_app.py', workspace_root=repo_root)
+
+    assert len(seen_calls) >= 2  # auto-localization prelim check + baseline run
+    for cwd_arg, venv_arg in seen_calls:
+        assert cwd_arg != repo_root.resolve()
+        assert venv_arg == repo_root.resolve()
