@@ -315,6 +315,23 @@ class ArgusConfig:
         self.large_model = None
         self._resolve_model_ladder()
 
+    def set_ladder(self, small_model: Optional[str] = None, large_model: Optional[str] = None) -> None:
+        """Configure an explicit escalation ladder (``small_model`` -> ``large_model``).
+
+        Clears any single-model pin and re-resolves the ladder; if both rungs are empty,
+        falls back to the active provider's cascade or default model.
+        """
+        small = (small_model or "").strip()
+        large = (large_model or "").strip()
+        if small.lower() in _PSEUDO_MODELS:
+            small = ""
+        if large.lower() in _PSEUDO_MODELS:
+            large = ""
+        self.small_model = small or None
+        self.large_model = large or None
+        self.model = self.small_model
+        self._resolve_model_ladder()
+
     def model_for_tier(self, tier_idx: int) -> Optional[str]:
         """Model dispatched at escalation tier ``tier_idx`` (1-2: small rung, 3: large rung)."""
         if not self.escalation_enabled or self.ladder_source not in ("explicit-ladder", "provider-cascade"):

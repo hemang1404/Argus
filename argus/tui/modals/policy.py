@@ -79,6 +79,12 @@ class PolicyModal(ModalScreen[Optional[dict[str, Any]]]):
                 active_provider=active_provider,
                 selected_model=selected_model,
             )
+        elif self.config.ladder_source in ("explicit-ladder", "provider-cascade") and self.config.small_model:
+            tiers = {
+                "t1": {"name": "T1 FAST", "model": self.config.small_model},
+                "t2": {"name": "T2 STRONG", "model": self.config.large_model or self.config.small_model},
+                "t3": {"name": "T3 FRONTIER", "model": self.config.large_model or self.config.small_model},
+            }
         elif selected_model:
             tiers = {
                 "t1": {"name": "T1 FAST", "model": selected_model},
