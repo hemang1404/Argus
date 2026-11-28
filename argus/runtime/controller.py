@@ -868,7 +868,7 @@ class RecoveryController:
                 ) as loc_ws:
                     scratch = (loc_ws.temp_dir or ws_root).resolve()
                     scratch_cmd = test_command.replace(str(ws_root), str(scratch))
-                    prelim_res = self.test_runner.run_test(scratch_cmd, cwd=scratch)
+                    prelim_res = self.test_runner.run_test(scratch_cmd, cwd=scratch, venv_root=ws_root)
                     if prelim_res.passed:
                         return _early("ALREADY_PASSING", "Target test suite already passes without any modifications.")
 
@@ -1179,7 +1179,7 @@ class RecoveryController:
                             message="SECURITY REFUSAL: Container runner or isolation is required by configuration, but no active container evaluator is available. Host execution of untrusted code is prohibited.",
                         )
                     )
-                baseline_res = self.test_runner.run_test(exec_test_cmd, cwd=ws.temp_dir)
+                baseline_res = self.test_runner.run_test(exec_test_cmd, cwd=ws.temp_dir, venv_root=ws_root)
                 if baseline_res.passed:
                     return _finalize(
                         RecoveryOutcome(
@@ -1927,7 +1927,7 @@ class RecoveryController:
                                 model_tier=tier_idx,
                             )
                         )
-                    test_res = self.test_runner.run_test(exec_test_cmd, cwd=ws.temp_dir)
+                    test_res = self.test_runner.run_test(exec_test_cmd, cwd=ws.temp_dir, venv_root=ws_root)
                     test_passed = test_res.passed
                     test_summary = "" if test_passed else test_res.traceback_summary
 

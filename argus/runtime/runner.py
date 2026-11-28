@@ -193,6 +193,17 @@ def detect_project_virtualenv(cwd: Path) -> Optional[Path]:
     return None
 
 
+def _resolve_project_virtualenv(cwd: Optional[Path], venv_root: Optional[Path] = None) -> Optional[Path]:
+    """Detect the project virtualenv from ``venv_root`` (original repo) first, falling back to ``cwd``."""
+    if venv_root is not None:
+        venv_py = detect_project_virtualenv(venv_root)
+        if venv_py is not None:
+            return venv_py
+    if cwd is not None and cwd != venv_root:
+        return detect_project_virtualenv(cwd)
+    return None
+
+
 def get_sanitized_environment(cwd: Path, venv_py: Optional[Path] = None) -> dict[str, str]:
     """Return a sanitized copy of os.environ with secrets and credentials removed."""
     safe_env: dict[str, str] = {}
@@ -240,7 +251,11 @@ def is_container_available() -> bool:
     return False
 
 
-def validate_and_tokenize_command(command: str, cwd: Optional[Path] = None) -> List[str]:
+def validate_and_tokenize_command(
+    command: str,
+    cwd: Optional[Path] = None,
+    venv_root: Optional[Path] = None,
+) -> List[str]:
     """Parse and validate command string into an argument list without a shell.
 
     Enforces permitted test executables, rejects shell metacharacters and chaining.
@@ -286,8 +301,8 @@ def validate_and_tokenize_command(command: str, cwd: Optional[Path] = None) -> L
     raw_exe = tokens[0].strip("\"'")
     exe_name = Path(raw_exe).name.lower()
 
-    # Detect local project virtualenv
-    venv_py = detect_project_virtualenv(cwd) if cwd else None
+    # Detect local project virtualenv (check original repo root before isolated temp cwd)
+    venv_py = _resolve_project_virtualenv(cwd, venv_root=venv_root)
 
     # Allow python executable if it matches current sys.executable or project venv
     is_current_python = (Path(raw_exe).resolve() == Path(sys.executable).resolve())
@@ -350,6 +365,7 @@ class SubprocessTestRunner:
         command: str,
         cwd: Path,
         untrusted: Optional[bool] = None,
+        venv_root: Optional[Path] = None,
     ) -> TestExecutionResult:
         """Execute test command with argument validation, timeout, bounded memory output capture, and process-tree termination.
 
@@ -387,7 +403,7 @@ class SubprocessTestRunner:
 
         # 2. Tokenize and validate the command
         try:
-            tokens = validate_and_tokenize_command(command, cwd=cwd)
+            tokens = validate_and_tokenize_command(command, cwd=cwd, venv_root=venv_root)
         except CommandSecurityError as err:
             return TestExecutionResult(
                 passed=False,
@@ -400,7 +416,7 @@ class SubprocessTestRunner:
             )
 
         # 3. Prepare sanitized environment with virtualenv detection
-        venv_py = detect_project_virtualenv(cwd)
+        venv_py = _resolve_project_virtualenv(cwd, venv_root=venv_root)
         env = get_sanitized_environment(cwd, venv_py=venv_py)
         is_windows = sys.platform == "win32"
 
