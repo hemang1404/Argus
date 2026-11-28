@@ -69,7 +69,18 @@ class ArgusTUIApp(App[None]):
                     self.config.max_attempts = int(p_data["max_attempts"])
                 if "provider" in p_data and p_data["provider"]:
                     self.config.provider = str(p_data["provider"])
-                if "model" in p_data:
+                p_tier = str(p_data.get("tier") or "").strip()
+                if p_tier in ("argus/auto", "auto"):
+                    small_m = p_data.get("small_model")
+                    large_m = p_data.get("large_model")
+                    if small_m or large_m:
+                        self.config.set_ladder(
+                            str(small_m) if small_m else None,
+                            str(large_m) if large_m else None,
+                        )
+                    else:
+                        self.config.pin_model(None)
+                elif "model" in p_data and p_data["model"]:
                     self.config.pin_model(str(p_data["model"]))
         except (OSError, TypeError, ValueError):
             # Unreadable or corrupt policy file: keep defaults rather than crashing startup.
@@ -153,6 +164,41 @@ class ArgusTUIApp(App[None]):
         """Open HelpModal displaying shortcuts and navigation cheat-sheet."""
         self.push_screen(HelpModal())
 
+    def _apply_tier_selection(
+        self,
+        tier: str,
+        t1: Optional[str] = None,
+        t2: Optional[str] = None,
+        t3: Optional[str] = None,
+    ) -> None:
+        """Apply a routing tier choice without collapsing ``argus/auto`` into a single pinned model."""
+        if not t1 or not t2 or not t3:
+            from argus.providers.discovery import resolve_dynamic_tiers
+            selected = None if tier in ("argus/auto", "auto", "") else self.config.model
+            dyn = resolve_dynamic_tiers(
+                active_provider=self.config.provider,
+                selected_model=selected,
+            )
+            t1 = t1 or dyn["t1"]["model"]
+            t2 = t2 or dyn["t2"]["model"]
+            t3 = t3 or dyn["t3"]["model"]
+
+        if tier in ("argus/auto", "auto", ""):
+            self.config.escalation_enabled = True
+            self.config.set_ladder(t1, t3 or t2 or t1)
+            return
+
+        tier_models = {
+            "argus/cheap": t1,
+            "t1": t1,
+            "argus/strong": t2,
+            "t2": t2,
+            "argus/frontier": t3,
+            "t3": t3,
+        }
+        if tier in tier_models:
+            self.config.pin_model(tier_models[tier])
+
     def open_policy_modal(self) -> None:
         """Open unified PolicyModal."""
         def handle_policy(result: Optional[dict[str, Any]]) -> None:
@@ -166,32 +212,14 @@ class ArgusTUIApp(App[None]):
             self.config.budget_limit_usd = float(budget)
             self.config.max_attempts = int(attempts)
 
-            # Resolve tier model dynamically based on discovered active tiers
-            t1 = result.get("t1_model")
-            t2 = result.get("t2_model")
-            t3 = result.get("t3_model")
-            if not t1 or not t2 or not t3:
-                from argus.providers.discovery import resolve_dynamic_tiers
-                dyn = resolve_dynamic_tiers(
-                    active_provider=self.config.provider,
-                    selected_model=self.config.model,
-                )
-                t1 = t1 or dyn["t1"]["model"]
-                t2 = t2 or dyn["t2"]["model"]
-                t3 = t3 or dyn["t3"]["model"]
+            self._apply_tier_selection(
+                tier,
+                t1=result.get("t1_model"),
+                t2=result.get("t2_model"),
+                t3=result.get("t3_model"),
+            )
 
-            tier_models = {
-                "argus/auto": t1,
-                "argus/cheap": t1,
-                "t1": t1,
-                "argus/strong": t2,
-                "t2": t2,
-                "argus/frontier": t3,
-                "t3": t3,
-            }
-            if tier in tier_models:
-                self.config.pin_model(tier_models[tier])
-
+            is_auto = tier in ("argus/auto", "auto", "")
             try:
                 from argus.providers.storage import get_config_dir
                 policy_file = get_config_dir() / "policy.json"
@@ -200,7 +228,9 @@ class ArgusTUIApp(App[None]):
                     "budget_limit_usd": budget,
                     "max_attempts": attempts,
                     "provider": self.config.provider,
-                    "model": self.config.model,
+                    "model": None if is_auto else self.config.model,
+                    "small_model": self.config.small_model if is_auto else None,
+                    "large_model": self.config.large_model if is_auto else None,
                 }
                 policy_file.write_text(json.dumps(policy_data, indent=2), encoding="utf-8")
             except OSError as ex:
@@ -265,25 +295,7 @@ class ArgusTUIApp(App[None]):
                 self.notify(f"Active model set to: {cval}", severity="information")
             elif ctype == "tier":
                 self.current_tier = str(cval)
-                from argus.providers.discovery import resolve_dynamic_tiers
-                dyn = resolve_dynamic_tiers(
-                    active_provider=self.config.provider,
-                    selected_model=self.config.model,
-                )
-                t1 = dyn["t1"]["model"]
-                t2 = dyn["t2"]["model"]
-                t3 = dyn["t3"]["model"]
-                tier_models = {
-                    "argus/auto": t1,
-                    "argus/cheap": t1,
-                    "t1": t1,
-                    "argus/strong": t2,
-                    "t2": t2,
-                    "argus/frontier": t3,
-                    "t3": t3,
-                }
-                if str(cval) in tier_models:
-                    self.config.pin_model(tier_models[str(cval)])
+                self._apply_tier_selection(self.current_tier)
                 self.notify(f"Routing tier configured: {cval}", severity="information")
             elif ctype == "budget":
                 self.config.budget_limit_usd = float(cval)
