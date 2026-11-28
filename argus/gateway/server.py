@@ -1574,6 +1574,15 @@ async def anthropic_messages(request: Request) -> Response:
     if auth_err is not None:
         return auth_err
 
+    # Normalize Anthropic text blocks once, before reserving budget or classifying
+    # the prompt. The host adapter and HTTP upstream share this same payload.
+    try:
+        openai_body = anthropic_to_openai_request(body)
+    except (AttributeError, TypeError, ValueError):
+        return JSONResponse(
+            status_code=400,
+            content={"type": "error", "error": {"type": "invalid_request_error", "message": "Invalid Anthropic message content."}},
+        )
     # 2. Budget Guardrail Enforcement (Phase 1 Reservation with dynamic size estimation)
     est_amount = estimate_request_cost(body, model=requested_model)
     res_ok, res_err, res_id = _budget_guard.reserve(run_id, estimated_cost=est_amount)
@@ -1594,8 +1603,7 @@ async def anthropic_messages(request: Request) -> Response:
     try:
         target = _router.resolve(
             requested_model=requested_model,
-            prompt=body.get("system"),
-            messages=body.get("messages"),
+            messages=openai_body["messages"],
         )
     except NoEligibleProviderError as ex:
         _budget_guard.release(res_id)
@@ -1610,6 +1618,11 @@ async def anthropic_messages(request: Request) -> Response:
                 },
             },
         )
+    except Exception:
+        # No request was dispatched yet: unexpected routing failures must not
+        # hold the pre-flight budget reservation.
+        _budget_guard.release(res_id)
+        raise
 
     # 4. SSRF and Upstream Host Validation
     if not validate_upstream_url(target.base_url):
@@ -1669,9 +1682,47 @@ async def anthropic_messages(request: Request) -> Response:
             },
         )
 
-    # 6. Translate Anthropic request to standard OpenAI format
-    openai_body = anthropic_to_openai_request(body)
+    # 6. Use the previously normalized Anthropic payload for both transports.
     openai_body["model"] = target.upstream_model
+
+    if target.base_url.startswith("host://") or target.provider_name == "antigravity":
+        try:
+            host_response = await _handle_host_request(
+                upstream_body=openai_body,
+                requested_model=requested_model,
+                target_model=target.upstream_model,
+                run_id=run_id,
+                client=client,
+                tier=target.tier_name,
+                start_time=start_time,
+                res_id=res_id,
+                stream=stream,
+            )
+        except Exception:
+            _budget_guard.release(res_id)
+            raise
+
+        if stream and isinstance(host_response, StreamingResponse):
+            async def host_chunks() -> AsyncGenerator[str, None]:
+                try:
+                    async for chunk in host_response.body_iterator:
+                        yield chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+                finally:
+                    # Also release when the Anthropic client disconnects early.
+                    _budget_guard.release(res_id)
+
+            anthropic_stream = transform_openai_stream_to_anthropic(host_chunks(), requested_model)
+            return StreamingResponse(anthropic_stream, media_type="text/event-stream")
+
+        # Host inference is OpenAI-shaped internally; return Anthropic-shaped
+        # success and error envelopes to clients of /v1/messages.
+        host_data = json.loads(host_response.body)
+        if host_response.status_code != 200:
+            return JSONResponse(
+                status_code=host_response.status_code,
+                content={"type": "error", "error": host_data["error"]},
+            )
+        return JSONResponse(content=openai_to_anthropic_response(host_data, requested_model))
 
     upstream_url = f"{target.base_url.rstrip('/')}/chat/completions"
     headers = {
