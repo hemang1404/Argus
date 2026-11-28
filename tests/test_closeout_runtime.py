@@ -167,6 +167,115 @@ def test_tui_persisted_policy_model_pins_the_model(tmp_path, monkeypatch):
     assert [app.config.model_for_tier(t) for t in (1, 2, 3)] == ["gpt-4o"] * 3
 
 
+def test_set_ladder_configures_escalation_and_clears_pin():
+    cfg = ArgusConfig(provider="openai")
+    cfg.pin_model("gpt-4o")
+    assert cfg.ladder_source == "pinned-model"
+
+    cfg.set_ladder("gpt-4o-mini", "gpt-4o")
+    assert cfg.ladder_source == "explicit-ladder"
+    assert cfg.model_for_tier(1) == "gpt-4o-mini"
+    assert cfg.model_for_tier(2) == "gpt-4o-mini"
+    assert cfg.model_for_tier(3) == "gpt-4o"
+
+    cfg.set_ladder(None, None)
+    assert cfg.ladder_source == "provider-cascade"
+
+
+@pytest.mark.asyncio
+async def test_tui_policy_auto_preserves_escalation_across_save_and_reload(tmp_path, monkeypatch):
+    from unittest.mock import patch
+
+    from argus.tui.app import ArgusTUIApp
+
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv("ARGUS_CONFIG_DIR", str(cfg_dir))
+
+    tiers = {
+        "t1": {"name": "T1 FAST", "model": "m1"},
+        "t2": {"name": "T2 STRONG", "model": "m2"},
+        "t3": {"name": "T3 FRONTIER", "model": "m3"},
+    }
+    app = ArgusTUIApp(workspace=str(tmp_path), config=ArgusConfig(provider="openai"))
+    with patch("argus.tui.modals.policy.resolve_dynamic_tiers", return_value=tiers):
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.open_policy_modal()
+            await pilot.pause()
+            app.screen.dismiss(
+                {
+                    "tier": "argus/auto",
+                    "budget": 0.50,
+                    "attempts": 3,
+                    "t1_model": "m1",
+                    "t2_model": "m2",
+                    "t3_model": "m3",
+                }
+            )
+            await pilot.pause()
+
+    assert app.current_tier == "argus/auto"
+    assert app.config.ladder_source == "explicit-ladder"
+    assert app.config.model_for_tier(1) == "m1"
+    assert app.config.model_for_tier(2) == "m1"
+    assert app.config.model_for_tier(3) == "m3"
+
+    reloaded = ArgusTUIApp(workspace=str(tmp_path), config=ArgusConfig(provider="openai"))
+    assert reloaded.current_tier == "argus/auto"
+    assert reloaded.config.ladder_source == "explicit-ladder"
+    assert reloaded.config.model_for_tier(1) == "m1"
+    assert reloaded.config.model_for_tier(3) == "m3"
+
+
+def test_tui_reloaded_legacy_auto_policy_does_not_pin_model(tmp_path, monkeypatch):
+    import json
+
+    from argus.tui.app import ArgusTUIApp
+
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    (cfg_dir / "policy.json").write_text(
+        json.dumps({"tier": "argus/auto", "model": "gpt-4o-mini"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ARGUS_CONFIG_DIR", str(cfg_dir))
+    app = ArgusTUIApp(workspace=str(tmp_path), config=ArgusConfig(provider="openai"))
+    assert app.config.ladder_source == "provider-cascade"
+    assert app.config.model_for_tier(1) == "gpt-4o-mini"
+    assert app.config.model_for_tier(3) == "gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_tui_config_tier_auto_restores_escalation_after_pinned_model(tmp_path):
+    from unittest.mock import patch
+
+    from argus.tui.app import ArgusTUIApp
+
+    tiers = {
+        "t1": {"name": "T1 FAST", "model": "m1"},
+        "t2": {"name": "T2 STRONG", "model": "m2"},
+        "t3": {"name": "T3 FRONTIER", "model": "m3"},
+    }
+    app = ArgusTUIApp(workspace=str(tmp_path), config=ArgusConfig(provider="openai", model="gpt-4o"))
+    assert app.config.ladder_source == "pinned-model"
+
+    with patch("argus.providers.discovery.resolve_dynamic_tiers", return_value=tiers):
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            captured = {}
+            real_push = app.push_screen
+            app.push_screen = lambda screen, callback=None: captured.update(cb=callback)  # type: ignore[assignment]
+            app._open_config_modal("tier")
+            app.push_screen = real_push  # type: ignore[assignment]
+            captured["cb"]({"type": "tier", "value": "argus/auto"})
+
+    assert app.current_tier == "argus/auto"
+    assert app.config.ladder_source == "explicit-ladder"
+    assert app.config.model_for_tier(1) == "m1"
+    assert app.config.model_for_tier(3) == "m3"
+
+
 # --- UX-021 / ARCH-12 partials ---------------------------------------------------------------
 
 
